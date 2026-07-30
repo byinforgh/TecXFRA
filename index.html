@@ -1,0 +1,1739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TecXFRA — Complete Total Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#123642; --navy-deep:#0c262f; --teal:#4aa8b8; --teal-dim:#3a8b99; --teal-tint:#eaf5f6;
+  --cream:#faf8f3; --paper:#ffffff; --line:#e6e0d2; --line-soft:#f0ebe0;
+  --ink:#16333a; --ink-dim:#657577; --muted:#93a0a1;
+  --amber:#c98a2e; --amber-tint:#fbf1e2; --coral:#c0584a; --coral-tint:#f8ebe8; --green:#3f8f5f; --green-tint:#eaf5ee;
+  --r-sm:8px; --r-md:12px; --r-lg:18px;
+  --shadow:0 1px 2px rgba(18,54,66,.04), 0 8px 24px -12px rgba(18,54,66,.10);
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--cream); color:var(--ink); font-family:'Inter',sans-serif; min-height:100vh; -webkit-font-smoothing:antialiased;}
+.disp{font-family:'Space Grotesk',sans-serif;}
+.mono{font-family:'IBM Plex Mono',monospace;}
+a{color:inherit;}
+button{font-family:inherit; cursor:pointer;}
+input,select,textarea{font-family:inherit; font-size:14px;}
+::-webkit-scrollbar{width:9px; height:9px;}
+::-webkit-scrollbar-thumb{background:#d8d0bd; border-radius:10px;}
+.hidden{display:none !important;}
+
+/* ============ SIGNATURE MARK ============ */
+.mark{position:relative; width:34px; height:34px; flex-shrink:0;}
+.mark svg{width:100%; height:100%; display:block;}
+
+/* ============ SETUP WIZARD ============ */
+#wizard{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:32px 20px; background:
+  radial-gradient(circle at 12% 8%, rgba(74,168,184,.10), transparent 46%),
+  radial-gradient(circle at 88% 92%, rgba(18,54,66,.06), transparent 46%), var(--cream);}
+.wiz-card{width:100%; max-width:640px; background:var(--paper); border:1px solid var(--line); border-radius:var(--r-lg); padding:44px 40px; box-shadow:var(--shadow);}
+.wiz-brand{display:flex; align-items:center; gap:12px; margin-bottom:28px;}
+.wiz-brand .name{font-weight:700; font-size:19px; letter-spacing:-.2px;}
+.wiz-brand .tag{font-size:11px; color:var(--muted); letter-spacing:1.5px; text-transform:uppercase; margin-top:1px;}
+.wiz-step{display:none;}
+.wiz-step.active{display:block; animation:fade .35s ease;}
+@keyframes fade{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:translateY(0)}}
+.wiz-eyebrow{font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--teal-dim); font-weight:700; margin-bottom:10px;}
+.wiz-h{font-size:26px; font-weight:700; line-height:1.25; margin-bottom:8px; letter-spacing:-.3px;}
+.wiz-sub{font-size:13.5px; color:var(--ink-dim); line-height:1.6; margin-bottom:26px;}
+.industry-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:22px;}
+@media(min-width:520px){.industry-grid{grid-template-columns:repeat(3,1fr);}}
+.industry-pin{background:var(--cream); border:1.5px solid var(--line); border-radius:var(--r-md); padding:16px 12px; text-align:center; cursor:pointer; transition:.15s;}
+.industry-pin:hover{border-color:var(--teal); transform:translateY(-2px);}
+.industry-pin.sel{border-color:var(--teal); background:var(--teal-tint); box-shadow:0 0 0 3px rgba(74,168,184,.14);}
+.industry-pin .ic{font-size:22px; margin-bottom:6px;}
+.industry-pin .lb{font-size:12px; font-weight:600; line-height:1.3;}
+.field{margin-bottom:16px;}
+.field label{display:block; font-size:11px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px;}
+.field input,.field select{width:100%; background:var(--cream); border:1.5px solid var(--line); border-radius:10px; padding:12px 14px; outline:none; color:var(--ink);}
+.field input:focus,.field select:focus{border-color:var(--teal);}
+.wiz-row{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; border-radius:10px; font-weight:700; font-size:13.5px; padding:13px 22px; cursor:pointer; transition:.15s;}
+.btn-primary{background:var(--navy); color:#fff;}
+.btn-primary:hover{background:var(--navy-deep);}
+.btn-ghost{background:transparent; color:var(--ink-dim); border:1.5px solid var(--line);}
+.btn-ghost:hover{border-color:var(--ink-dim); color:var(--ink);}
+.btn-full{width:100%;}
+.wiz-nav{display:flex; justify-content:space-between; align-items:center; margin-top:8px;}
+.mod-list{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:22px; max-height:360px; overflow-y:auto; padding-right:4px;}
+.mod-scroll{max-height:380px; overflow-y:auto; margin-bottom:22px; padding-right:4px;}
+.mod-check{display:flex; align-items:flex-start; gap:10px; background:var(--cream); border:1.5px solid var(--line); border-radius:10px; padding:11px 12px; cursor:pointer;}
+.mod-check.on{border-color:var(--teal); background:var(--teal-tint);}
+.mod-check input{margin-top:2px; accent-color:var(--teal);}
+.mod-check .mn{font-size:12.5px; font-weight:700;}
+.mod-check .md{font-size:10.5px; color:var(--muted); margin-top:1px; line-height:1.4;}
+.wiz-dots{display:flex; gap:6px; justify-content:center; margin-top:22px;}
+.wiz-dots span{width:6px; height:6px; border-radius:50%; background:var(--line);}
+.wiz-dots span.on{background:var(--teal); width:18px; border-radius:4px;}
+
+/* ============ APP SHELL ============ */
+#app{display:none; min-height:100vh;}
+#app.active{display:flex;}
+.sidebar{width:236px; flex-shrink:0; background:var(--navy); color:#eaf3f4; display:flex; flex-direction:column; height:100vh; position:sticky; top:0;}
+.sb-brand{display:flex; align-items:center; gap:10px; padding:20px 18px; border-bottom:1px solid rgba(255,255,255,.08);}
+.sb-brand .name{font-weight:700; font-size:15px; letter-spacing:-.2px; color:#fff;}
+.sb-brand .biz{font-size:10.5px; color:#9fc3ca; letter-spacing:.5px;}
+.sb-slogan{padding:7px 18px 11px; font-size:9px; letter-spacing:1.6px; text-transform:uppercase; color:var(--teal); font-weight:800; border-bottom:1px solid rgba(255,255,255,.08); cursor:pointer;}
+.sb-slogan:hover{color:#fff;}
+.sb-nav{flex:1; overflow-y:auto; padding:14px 10px;}
+.sb-group-label{font-size:9.5px; letter-spacing:1.6px; text-transform:uppercase; color:#5f8890; font-weight:700; padding:14px 10px 6px;}
+.sb-letter{display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:4px; background:var(--teal); color:#fff; font-family:'IBM Plex Mono',monospace; font-size:9px; font-weight:800; margin-right:4px; letter-spacing:0; text-transform:none;}
+.sb-item{display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:9px; font-size:13px; font-weight:500; color:#c9e0e3; cursor:pointer; margin-bottom:2px; position:relative;}
+.sb-item:hover{background:rgba(255,255,255,.06); color:#fff;}
+.sb-item.active{background:var(--teal); color:#fff; font-weight:700;}
+.sb-item .ic{font-size:15px; width:18px; text-align:center; flex-shrink:0;}
+.sb-item .badge{margin-left:auto; background:var(--coral); color:#fff; font-size:9.5px; font-weight:800; padding:2px 6px; border-radius:10px; font-family:'IBM Plex Mono',monospace;}
+.sb-item.active .badge{background:rgba(255,255,255,.28);}
+.sb-foot{padding:14px; border-top:1px solid rgba(255,255,255,.08);}
+.sb-staff{display:flex; align-items:center; gap:9px; padding:8px 8px; border-radius:9px; cursor:pointer;}
+.sb-staff:hover{background:rgba(255,255,255,.06);}
+.sb-avatar{width:30px; height:30px; border-radius:50%; background:var(--teal); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; color:#fff; flex-shrink:0;}
+.sb-staff .sn{font-size:12px; font-weight:700; color:#fff;}
+.sb-staff .sr{font-size:10px; color:#9fc3ca;}
+
+.main{flex:1; min-width:0; display:flex; flex-direction:column;}
+.topbar{background:var(--paper); border-bottom:1px solid var(--line); padding:14px 26px; display:flex; align-items:center; justify-content:space-between; gap:14px; position:sticky; top:0; z-index:40;}
+.topbar .th{font-size:19px; font-weight:700; letter-spacing:-.3px;}
+.topbar .ts{font-size:12px; color:var(--muted); margin-top:1px;}
+.top-actions{display:flex; align-items:center; gap:10px;}
+.icon-btn{width:36px; height:36px; border-radius:9px; border:1.5px solid var(--line); background:var(--paper); display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--ink-dim);}
+.icon-btn:hover{border-color:var(--teal); color:var(--teal-dim);}
+.content{padding:24px 26px 60px; max-width:1400px; width:100%; margin:0 auto;}
+
+/* ============ SHARED UI ============ */
+.grid-metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:20px;}
+.metric{background:var(--paper); border:1px solid var(--line); border-radius:var(--r-md); padding:17px 18px; position:relative; overflow:hidden;}
+.metric::before{content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--teal);}
+.metric.amber::before{background:var(--amber);} .metric.coral::before{background:var(--coral);} .metric.green::before{background:var(--green);} .metric.navy::before{background:var(--navy);}
+.metric .ml{font-size:10.5px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-bottom:8px;}
+.metric .mv{font-family:'Space Grotesk',sans-serif; font-size:27px; font-weight:700; color:var(--navy);}
+.metric .ms{font-size:11px; color:var(--ink-dim); margin-top:5px;}
+.card{background:var(--paper); border:1px solid var(--line); border-radius:var(--r-md); padding:20px; margin-bottom:16px;}
+.card-title{font-size:11px; font-weight:800; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; gap:10px;}
+.card-title .sub{font-weight:400; text-transform:none; letter-spacing:0; color:var(--muted); font-size:11.5px;}
+.two-col{display:grid; grid-template-columns:1.35fr 1fr; gap:16px;}
+@media(max-width:980px){.two-col{grid-template-columns:1fr;}}
+.tab-row{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px;}
+.tab-pill{background:var(--cream); border:1.5px solid var(--line); color:var(--ink-dim); padding:7px 14px; border-radius:20px; font-size:11.5px; font-weight:700; cursor:pointer;}
+.tab-pill.active{background:var(--navy); color:#fff; border-color:var(--navy);}
+table{width:100%; border-collapse:collapse; font-size:12.5px;}
+th{text-align:left; padding:8px 10px; color:var(--muted); font-weight:700; letter-spacing:.6px; text-transform:uppercase; font-size:10px; border-bottom:1.5px solid var(--line);}
+td{padding:9px 10px; border-bottom:1px solid var(--line-soft);}
+tr:last-child td{border-bottom:none;}
+.scroll-tbl{max-height:440px; overflow-y:auto;}
+input.inp,select.inp,textarea.inp{width:100%; background:var(--cream); border:1.5px solid var(--line); border-radius:9px; padding:10px 13px; outline:none; margin-bottom:9px;}
+input.inp:focus,select.inp:focus,textarea.inp:focus{border-color:var(--teal);}
+label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px; text-transform:uppercase; color:var(--ink-dim); margin:0 0 5px;}
+.pill{display:inline-block; padding:3px 10px; border-radius:20px; font-size:10.5px; font-weight:700;}
+.pill-hot{background:#fdeee8; color:var(--coral);}
+.pill-warm{background:var(--amber-tint); color:var(--amber);}
+.pill-active{background:var(--green-tint); color:var(--green);}
+.pill-cold{background:#eef1f1; color:var(--ink-dim);}
+.pill-client{background:var(--teal-tint); color:var(--teal-dim);}
+.empty{text-align:center; padding:34px 10px; color:var(--muted); font-size:12.5px;}
+.temp-dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; vertical-align:middle;}
+.list-row{display:flex; justify-content:space-between; align-items:center; padding:10px 4px; border-bottom:1px solid var(--line-soft); gap:10px;}
+.list-row:last-child{border-bottom:none;}
+.toast{position:fixed; bottom:24px; right:24px; background:var(--navy); color:#fff; padding:11px 18px; border-radius:10px; font-size:12.5px; font-weight:600; opacity:0; transform:translateY(14px); transition:.28s; z-index:999; box-shadow:var(--shadow);}
+.toast.show{opacity:1; transform:translateY(0);}
+.calendar-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px;}
+.cal-dow{font-size:9.5px; font-weight:700; letter-spacing:1px; color:var(--muted); text-align:center; padding:4px 0; text-transform:uppercase;}
+.cal-cell{background:var(--cream); border:1px solid var(--line); border-radius:8px; min-height:78px; padding:6px; display:flex; flex-direction:column; gap:3px;}
+.cal-cell.empty2{background:transparent; border:none;}
+.cal-cell.today{border-color:var(--teal); border-width:2px;}
+.cal-daynum{font-size:10.5px; font-weight:700; color:var(--ink-dim); font-family:'IBM Plex Mono',monospace;}
+.cal-pill{font-size:9px; padding:2px 6px; border-radius:5px; background:var(--paper); border:1px solid var(--line); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;}
+.chip{display:inline-flex; align-items:center; gap:5px; background:var(--teal-tint); color:var(--teal-dim); padding:5px 11px; border-radius:20px; font-size:11px; font-weight:700; margin:2px 4px 2px 0;}
+.modal-overlay{display:none; position:fixed; inset:0; background:rgba(12,38,47,.55); z-index:200; align-items:flex-start; justify-content:center; padding:50px 16px; overflow-y:auto;}
+.modal-overlay.show{display:flex;}
+.modal{background:var(--paper); border-radius:var(--r-lg); padding:26px; width:100%; max-width:560px; box-shadow:var(--shadow);}
+.modal-head{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;}
+.modal-head h3{font-size:17px; font-weight:700;}
+.modal-close{background:none; border:1.5px solid var(--line); border-radius:8px; width:30px; height:30px; font-size:15px; color:var(--ink-dim);}
+.progress-track{background:var(--line-soft); border-radius:6px; height:8px; overflow:hidden;}
+.progress-fill{height:100%; background:var(--teal); border-radius:6px;}
+.qs-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; max-height:300px; overflow-y:auto;}
+.qs-item{background:var(--cream); border:1.5px solid var(--line); border-radius:10px; padding:10px; cursor:pointer; text-align:left;}
+.qs-item:hover{border-color:var(--teal);}
+.qs-item .qn{font-size:12.5px; font-weight:700;}
+.qs-item .qp{font-size:11px; color:var(--teal-dim); font-family:'IBM Plex Mono',monospace; margin-top:3px;}
+.cart-row{display:flex; align-items:center; gap:8px; background:var(--cream); border:1px solid var(--line); border-radius:9px; padding:8px 10px; margin-bottom:6px;}
+.cart-row .cn{flex:1; font-size:12.5px; font-weight:600;}
+.stepper{display:flex; align-items:center; gap:7px;}
+.stepper button{width:22px; height:22px; border-radius:6px; border:1px solid var(--line); background:#fff; font-weight:700;}
+.guide-item{border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:10px; cursor:pointer;}
+.guide-item:hover{border-color:var(--teal);}
+.guide-item h4{font-size:13px; font-weight:700; margin-bottom:4px;}
+.guide-item p{font-size:11.5px; color:var(--ink-dim); line-height:1.6;}
+.guide-body{font-size:12.5px; color:var(--ink-dim); line-height:1.75; margin-top:8px; display:none;}
+.guide-item.open .guide-body{display:block;}
+.ai-log{max-height:340px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; margin-bottom:12px;}
+.ai-msg{padding:11px 14px; border-radius:11px; font-size:12.5px; line-height:1.65; max-width:88%; white-space:pre-wrap;}
+.ai-msg.user{align-self:flex-end; background:var(--navy); color:#fff;}
+.ai-msg.bot{align-self:flex-start; background:var(--cream); border:1px solid var(--line);}
+.settings-tabs{display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap;}
+.industry-badge{display:inline-flex; align-items:center; gap:6px; background:var(--teal-tint); color:var(--teal-dim); padding:5px 12px; border-radius:20px; font-size:11px; font-weight:700;}
+@media(max-width:860px){
+  .sidebar{position:fixed; left:-236px; z-index:100; transition:.2s;} .sidebar.open{left:0;}
+  .content{padding:18px 14px 50px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ================= SETUP WIZARD ================= -->
+<div id="wizard">
+  <div class="wiz-card">
+    <div class="wiz-brand">
+      <div class="mark">
+        <svg viewBox="0 0 100 100"><circle cx="50" cy="46" r="9" fill="#4aa8b8"/><path d="M50 55 C42 68 44 84 50 96 C56 84 58 68 50 55 Z" fill="#4aa8b8"/><circle cx="47" cy="42" r="6.5" fill="#eaf5f6" opacity=".55"/></svg>
+      </div>
+      <div><div class="name">TecXFRA</div><div class="tag">Complete Total Control</div></div>
+    </div>
+
+    <!-- STEP 1: business basics -->
+    <div class="wiz-step active" data-step="1">
+      <div class="wiz-eyebrow">Step 1 of 3</div>
+      <div class="wiz-h">Let's set up your business.</div>
+      <div class="wiz-sub">Two minutes of setup, then TecXFRA configures itself around how your business actually runs.</div>
+      <div class="field"><label>Business name</label><input id="setupBizName" placeholder="e.g. Harbor & Vine"></div>
+      <div class="wiz-row">
+        <div class="field"><label>Owner / your name</label><input id="setupOwnerName" placeholder="e.g. Ama Owusu"></div>
+        <div class="field"><label>Country</label>
+          <select id="setupCountry" onchange="onWizCountryChange()"></select>
+        </div>
+      </div>
+      <div class="wiz-row">
+        <div class="field"><label>Currency</label><select id="setupCurrency"></select></div>
+        <div class="field"><label>Daily tone — how should TecXFRA talk to you?</label>
+          <select id="setupTone">
+            <option value="motivation">Motivation &amp; Discipline</option>
+            <option value="faith">Faith &amp; Scripture</option>
+            <option value="neutral">Plain &amp; Neutral</option>
+          </select>
+        </div>
+      </div>
+      <div class="wiz-nav"><span></span><button class="btn btn-primary" onclick="wizGo(2)">Next — pick your industry →</button></div>
+    </div>
+
+    <!-- STEP 2: industry -->
+    <div class="wiz-step" data-step="2">
+      <div class="wiz-eyebrow">Step 2 of 3</div>
+      <div class="wiz-h">What kind of business is this?</div>
+      <div class="wiz-sub">TecXFRA relabels itself and pre-selects the right modules across all 7 layers — Tec (Today, Expenses, CRM), X (Execution & Growth) and FRA (Follow-Ups, Revenue, Accountability) — for your industry. You can fine-tune everything on the next step, and change this anytime in Settings.</div>
+      <div class="industry-grid" id="industryGrid"></div>
+      <div class="wiz-nav"><button class="btn btn-ghost" onclick="wizGo(1)">← Back</button><button class="btn btn-primary" onclick="wizGo(3)">Next — modules →</button></div>
+    </div>
+
+    <!-- STEP 3: modules -->
+    <div class="wiz-step" data-step="3">
+      <div class="wiz-eyebrow">Step 3 of 3</div>
+      <div class="wiz-h">Turn on what you need — organised by the TecXFRA system.</div>
+      <div class="wiz-sub">Every module sits under one of the 7 letters — <b>T</b>ec (Today, Expenses, CRM) · <b>X</b> (Execution & Growth) · <b>F</b>RA (Follow-Ups, Revenue, Accountability). We've pre-checked what businesses like yours usually use — leave the rest on too, it costs nothing to have them ready for when you grow into them.</div>
+      <div class="mod-scroll" id="moduleList"></div>
+      <div class="wiz-nav"><button class="btn btn-ghost" onclick="wizGo(2)">← Back</button><button class="btn btn-primary" onclick="finishSetup()">Enter TecXFRA →</button></div>
+    </div>
+
+    <div class="wiz-dots"><span id="dot1" class="on"></span><span id="dot2"></span><span id="dot3"></span></div>
+  </div>
+</div>
+
+<!-- ================= APP SHELL ================= -->
+<div id="app">
+  <div class="sidebar" id="sidebar">
+    <div class="sb-brand">
+      <div class="mark"><svg viewBox="0 0 100 100"><circle cx="50" cy="46" r="9" fill="#4aa8b8"/><path d="M50 55 C42 68 44 84 50 96 C56 84 58 68 50 55 Z" fill="#4aa8b8"/><circle cx="47" cy="42" r="6.5" fill="#0c262f" opacity=".35"/></svg></div>
+      <div><div class="name" id="sbBizName">—</div><div class="biz" id="sbIndustry">—</div></div>
+    </div>
+    <div class="sb-slogan" onclick="navTo('system')">TecXFRA · Complete Total Control</div>
+    <div class="sb-nav" id="sbNav"></div>
+    <div class="sb-foot">
+      <div class="sb-staff" onclick="navTo('settings')">
+        <div class="sb-avatar" id="sbAvatar">—</div>
+        <div><div class="sn" id="sbOwnerName">—</div><div class="sr">Owner · Settings</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div><div class="th" id="pageTitle">Today</div><div class="ts" id="pageSub">—</div></div>
+      <div class="top-actions">
+        <button class="icon-btn" onclick="navTo('calendar')" title="Calendar">📅</button>
+        <button class="icon-btn" onclick="navTo('followups')" title="Follow-ups">🔔</button>
+        <button class="icon-btn" onclick="navTo('ai')" title="AI Assistant">✨</button>
+        <button class="icon-btn hidden" id="menuToggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+      </div>
+    </div>
+    <div class="content" id="pageContent"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="modal-overlay" id="modalRoot"></div>
+
+<script>
+/* ============================================================
+   BEACON — CORE DATA MODEL
+============================================================ */
+
+const INDUSTRIES = [
+  {key:'hospitality', ic:'🍸', label:'Bar / Restaurant / Café', crmNoun:'Guests', pipelineNoun:'Table & Bar Orders', itemNoun:'Menu Items'},
+  {key:'retail', ic:'🛍️', label:'Retail / Shop', crmNoun:'Customers', pipelineNoun:'Sales', itemNoun:'Products'},
+  {key:'salon', ic:'💇', label:'Salon / Spa / Wellness', crmNoun:'Clients', pipelineNoun:'Bookings', itemNoun:'Services'},
+  {key:'services', ic:'💼', label:'Consulting / Agency / Services', crmNoun:'Clients', pipelineNoun:'Deals', itemNoun:'Service Packages'},
+  {key:'realestate', ic:'🏠', label:'Real Estate', crmNoun:'Leads', pipelineNoun:'Listings & Deals', itemNoun:'Properties'},
+  {key:'logistics', ic:'🚚', label:'Logistics / Transport', crmNoun:'Clients', pipelineNoun:'Jobs', itemNoun:'Routes & Services'},
+  {key:'manufacturing', ic:'🏭', label:'Manufacturing / Production', crmNoun:'Buyers', pipelineNoun:'Orders', itemNoun:'Products & Materials'},
+  {key:'education', ic:'🎓', label:'Education / Training', crmNoun:'Students', pipelineNoun:'Enrollments', itemNoun:'Courses'},
+  {key:'healthcare', ic:'🩺', label:'Clinic / Wellness (front office)', crmNoun:'Patients', pipelineNoun:'Appointments', itemNoun:'Services'},
+  {key:'nonprofit', ic:'🤝', label:'Nonprofit / Membership', crmNoun:'Members', pipelineNoun:'Engagements', itemNoun:'Programs'},
+  {key:'events', ic:'🎪', label:'Events & Venues', crmNoun:'Clients', pipelineNoun:'Bookings', itemNoun:'Packages'},
+  {key:'general', ic:'🧭', label:'Something else / General', crmNoun:'Contacts', pipelineNoun:'Pipeline', itemNoun:'Items'}
+];
+
+const MODULES = [
+  {key:'today', name:'Today', ic:'🏠', desc:'Daily overview', core:true},
+  {key:'calendar', name:'Calendar', ic:'📅', desc:'Every appointment, shift & renewal', core:true},
+  {key:'crm', name:'CRM & Pipeline', ic:'👥', desc:'Contacts, stages, temperature labels', core:true},
+  {key:'followups', name:'Follow-Ups', ic:'🔔', desc:'What needs a reply today', core:true},
+  {key:'pos', name:'Sales / Point of Sale', ic:'🧾', desc:'Cart-based till for walk-in sales', industries:['hospitality','retail','events']},
+  {key:'bookings', name:'Bookings & Orders', ic:'📋', desc:'Appointments, jobs, table orders', industries:['hospitality','salon','realestate','logistics','manufacturing','healthcare','events']},
+  {key:'inventory', name:'Inventory & Stock', ic:'📦', desc:'Stock levels, par levels, restocks', industries:['hospitality','retail','manufacturing']},
+  {key:'invoicing', name:'Invoicing & Debtors', ic:'💳', desc:'Invoices, who owes what', industries:['services','realestate','logistics','manufacturing','nonprofit']},
+  {key:'expenses', name:'Expenses & Budgets', ic:'💸', desc:'Spend tracked against budget', core:true},
+  {key:'staff', name:'Staff & Shifts', ic:'🧑‍💼', desc:'Roster, check-in, payroll basics', core:true},
+  {key:'revenue', name:'Revenue & Analytics', ic:'📊', desc:'Trends, conversion, summaries', core:true},
+  {key:'messages', name:'Messages & Templates', ic:'💬', desc:'Cold/warm/close scripts, WhatsApp', core:true},
+  {key:'referrals', name:'Referrals & Retention', ic:'🤝', desc:'Turn customers into referrers & partners', core:true},
+  {key:'persona', name:'Ideal Client Persona', ic:'🎯', desc:'Build a profile of who you sell to best', core:true},
+  {key:'audit', name:'Business Audit', ic:'🧭', desc:'Deep diagnostic — where you are, where you\'re going', core:true},
+  {key:'accountability', name:'Daily Accountability', ic:'✅', desc:'Daily/weekly/monthly checklist & score', core:true},
+  {key:'journal', name:'Journal & Notes', ic:'📓', desc:'Diary for you and every client', core:true},
+  {key:'ai', name:'AI Assistant', ic:'✨', desc:'Ask about your business, get suggestions', core:true},
+  {key:'guides', name:'Growth Library', ic:'📖', desc:'Guides, SOPs & daily tips for your team', core:true},
+  {key:'archive', name:'Archive', ic:'🗄️', desc:'Nothing deleted, everything restorable', core:true},
+  {key:'system', name:'The TecXFRA System', ic:'🏭', desc:'What TecXFRA means and how every module locks together', core:true},
+  {key:'settings', name:'Settings', ic:'⚙️', desc:'Industry, branding, modules, users', core:true}
+];
+
+const INDUSTRY_DEFAULTS = {
+  hospitality:['today','calendar','crm','followups','pos','bookings','inventory','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
+  retail:['today','calendar','crm','followups','pos','inventory','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
+  salon:['today','calendar','crm','followups','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
+  services:['today','calendar','crm','followups','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
+  realestate:['today','calendar','crm','followups','bookings','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
+  logistics:['today','calendar','crm','followups','bookings','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
+  manufacturing:['today','calendar','crm','followups','bookings','inventory','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
+  education:['today','calendar','crm','followups','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
+  healthcare:['today','calendar','crm','followups','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
+  nonprofit:['today','calendar','crm','followups','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
+  events:['today','calendar','crm','followups','pos','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
+  general:['today','calendar','crm','followups','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings']
+};
+
+const COUNTRIES = [
+  {country:'Ghana', currency:'GHS', sym:'GHS ', tax:'VAT + NHIL + GETFund', taxNote:'Standard VAT/NHIL/GETFund flat rate applies to most goods & services — check current GRA rates.', payroll:'SSNIT (13% employer / 5.5% employee) + PAYE'},
+  {country:'Nigeria', currency:'NGN', sym:'₦', tax:'VAT', taxNote:'Standard VAT rate applies on most goods & services — verify current FIRS rate.', payroll:'PAYE + Pension (employer/employee contributions)'},
+  {country:'Kenya', currency:'KES', sym:'KSh ', tax:'VAT', taxNote:'Standard VAT rate applies — verify current KRA rate.', payroll:'NSSF + NHIF/SHIF + PAYE'},
+  {country:'South Africa', currency:'ZAR', sym:'R', tax:'VAT', taxNote:'Standard VAT rate applies — verify current SARS rate.', payroll:'UIF + PAYE'},
+  {country:'United Kingdom', currency:'GBP', sym:'£', tax:'VAT', taxNote:'Standard VAT rate applies to most goods & services — check current HMRC rate and thresholds.', payroll:'PAYE + National Insurance'},
+  {country:'United States', currency:'USD', sym:'$', tax:'Sales Tax', taxNote:'Sales tax varies by state — no federal VAT. Check your state and local rates.', payroll:'Federal/State withholding + FICA (Social Security & Medicare)'},
+  {country:'Canada', currency:'CAD', sym:'C$', tax:'GST/HST', taxNote:'GST or combined HST depending on province — verify your provincial rate.', payroll:'CPP + EI + federal/provincial withholding'},
+  {country:'India', currency:'INR', sym:'₹', tax:'GST', taxNote:'GST rate depends on goods/service category (commonly 5/12/18/28%) — verify current slab.', payroll:'EPF + ESI + TDS'},
+  {country:'United Arab Emirates', currency:'AED', sym:'AED ', tax:'VAT', taxNote:'Standard VAT rate applies on most goods & services — verify current FTA rate.', payroll:'No personal income tax; check End of Service Gratuity rules'},
+  {country:'Germany / Eurozone', currency:'EUR', sym:'€', tax:'VAT (MwSt/TVA)', taxNote:'Standard VAT rate applies, reduced rate for some goods — verify your country\'s rate within the Eurozone.', payroll:'Social security contributions + income tax withholding'},
+  {country:'Other / Not listed', currency:'USD', sym:'$', tax:'Local Tax', taxNote:'Set your own tax terminology and rate in Settings once you know your local requirements.', payroll:'Check your local labour & payroll authority'}
+];
+function populateWizCountry(){
+  const sel = document.getElementById('setupCountry');
+  if(!sel || sel.options.length) return;
+  sel.innerHTML = COUNTRIES.map(c=>`<option value="${c.country}">${c.country}</option>`).join('');
+  onWizCountryChange();
+}
+function onWizCountryChange(){
+  const sel = document.getElementById('setupCountry');
+  const c = COUNTRIES.find(x=>x.country===sel.value) || COUNTRIES[0];
+  const curSel = document.getElementById('setupCurrency');
+  const already = curSel.value;
+  curSel.innerHTML = COUNTRIES.map(x=>x.currency).filter((v,i,a)=>a.indexOf(v)===i).map(cur=>`<option value="${cur}" ${cur===c.currency?'selected':''}>${cur}</option>`).join('');
+  if(already && Array.from(curSel.options).some(o=>o.value===already)) curSel.value = already;
+}
+
+const TEMPS = [
+  {key:'cold', label:'New / Unread', color:'#93a0a1', pillClass:'pill-cold'},
+  {key:'warm', label:'In Conversation', color:'#c98a2e', pillClass:'pill-warm'},
+  {key:'hot', label:'Hot — Ready to Close', color:'#c0584a', pillClass:'pill-hot'},
+  {key:'active', label:'Active / Client', color:'#3f8f5f', pillClass:'pill-active'}
+];
+
+let CFG = null;
+let DATA = null;
+let CUR_PAGE = 'today';
+let CUR_INDUSTRY_OBJ = null;
+let cart = {};
+let calMonth = new Date().getMonth(), calYear = new Date().getFullYear();
+
+async function saveCfg(){ try{ await window.storage.set('beacon_cfg_v1', JSON.stringify(CFG)); }catch(e){} }
+async function saveData(){ try{ await window.storage.set('beacon_data_v1', JSON.stringify(DATA)); }catch(e){} }
+async function loadAll(){
+  try{ const c = await window.storage.get('beacon_cfg_v1'); CFG = JSON.parse(c.value); }catch(e){ CFG = null; }
+  try{ const d = await window.storage.get('beacon_data_v1'); DATA = JSON.parse(d.value); }catch(e){ DATA = null; }
+}
+
+function getCountryInfo(){
+  return COUNTRIES.find(c=>c.country===CFG.country) || COUNTRIES.find(c=>c.currency===CFG.currency) || COUNTRIES[COUNTRIES.length-1];
+}
+function money(n){
+  n = parseFloat(n)||0;
+  const ci = getCountryInfo();
+  const sym = (ci && ci.currency===CFG.currency) ? ci.sym : (CFG.currency+' ');
+  return sym + n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function uid(p){ return p+'-'+Math.random().toString(36).slice(2,8).toUpperCase(); }
+
+/* ---------- KNOWLEDGE ACCUMULATION LAYER ----------
+   Every time the business tells TecXFRA something durable (persona,
+   audit result, journal note, loyalty tier, reward plan), it gets
+   recorded here with a timestamp. The AI Assistant reads this list
+   every time it answers, so the more a business feeds it, the
+   sharper and more specific its answers get — instead of resetting
+   to generic advice every conversation. */
+async function addKnowledgeFact(text){
+  if(!DATA.knowledge) DATA.knowledge = {facts:[], questionsAsked:0};
+  DATA.knowledge.facts.push({date:todayStr(), text});
+  if(DATA.knowledge.facts.length>200) DATA.knowledge.facts = DATA.knowledge.facts.slice(-200);
+  await saveData();
+}
+function knowledgeStrength(){
+  const n = (DATA.knowledge?.facts||[]).length;
+  return {facts:n, pct: Math.min(100, Math.round(n*6))};
+}
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(s){ if(!s) return '—'; const d=new Date(s); if(isNaN(d)) return s; return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
+function initials(name){ return (name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
+
+function seedData(industryKey){
+  const noun = INDUSTRIES.find(i=>i.key===industryKey);
+  const names = ['Ama Boateng','Kwesi Owusu','Linda Frimpong','David Mensah','Efua Asante','Yaw Darko','Priscilla Owusu','Nana Kojo'];
+  const contacts = names.map((n,i)=>({
+    id: uid('C'), name:n, phone:'024'+(1000000+i*137421), company:'',
+    temp: ['hot','warm','warm','active','cold','active','cold','hot'][i],
+    stage: ['New Lead','Conversation','Conversation','Client','New Lead','Client','New Lead','Proposal Sent'][i],
+    lastContact: i%2===0? todayStr() : new Date(Date.now()-4*86400000).toISOString().slice(0,10),
+    nextFollowUp: i%3===0? todayStr() : (i%3===1? new Date(Date.now()+2*86400000).toISOString().slice(0,10) : ''),
+    notes:'', value: [180,0,750,50,0,120,0,320][i], source:['WhatsApp','Walk-in','Referral','Instagram','Walk-in','Referral','Google','WhatsApp'][i]
+  }));
+  const items = {
+    hospitality:[['House Lager',18],['Signature Cocktail',45],['Grilled Chicken',65],['Jollof & Salad',40],['Sparkling Water',12],['Cheese Platter',80]],
+    retail:[['Classic Tee',60],['Everyday Tote',120],['Ceramic Mug',35],['Scented Candle',55],['Notebook',25],['Tote Bag Set',150]],
+    salon:[['Signature Haircut',80],['Deep Condition',60],['Gel Manicure',70],['Full Colour',220],['Blowout',90],['Facial',150]],
+    services:[['Discovery Session',0],['Brand Sprint (1wk)',3500],['Retainer — Growth',1500],['Retainer — Starter',600],['Website Build',2800],['Audit Report',450]],
+    realestate:[['2-Bed Apartment — Airport',280000],['Studio — Osu',95000],['Office Suite — Ring Rd',4500],['3-Bed House — East Legon',520000]],
+    logistics:[['Same-Day Local Delivery',60],['Inter-city Haul',900],['Warehousing / mo',1200],['Fleet Charter (day)',1800]],
+    manufacturing:[['Custom Order — Batch 100',3200],['Raw Material — Steel Sheet',210],['Packaging Run',450],['Finished Unit — SKU A',38]],
+    education:[['Full Course — 8wk',650],['Single Workshop',80],['1:1 Tutoring / hr',120],['Corporate Training Day',2200]],
+    healthcare:[['Consultation',150],['Follow-up Visit',80],['Wellness Package',450],['Lab Panel',220]],
+    nonprofit:[['Annual Membership',200],['Event Ticket',50],['Sponsorship — Bronze',1500],['Sponsorship — Gold',6000]],
+    events:[['Full Day Venue Hire',3500],['Half Day Hire',2000],['Catering Package / head',85],['AV & Sound Add-on',600]],
+    general:[['Standard Package',250],['Premium Package',600],['Consultation',0],['Add-on Service',75]]
+  }[industryKey] || [];
+  const inventory = items.slice(0,5).map((it,i)=>({id:uid('I'), name:it[0], stock: [4,22,60,3,90,15][i]||20, par:10, cost: Math.round(it[1]*0.4), price:it[1]}));
+  const staff = [
+    {id:uid('S'), name:CFG?.ownerName||'Owner', role:'Owner', dept:'Management', onDuty:true, payType:'Owner', payRate:0},
+    {id:uid('S'), name:'Kojo Antwi', role: industryKey==='hospitality'?'Bartender':'Team Member', dept:'Front of House', onDuty:true, payType:'Daily', payRate:120},
+    {id:uid('S'), name:'Abena Sarpong', role: industryKey==='salon'?'Stylist':'Team Member', dept:'Operations', onDuty:false, payType:'Monthly', payRate:2400}
+  ];
+  const transactions = [];
+  for(let d=6; d>=0; d--){
+    const day = new Date(Date.now()-d*86400000).toISOString().slice(0,10);
+    const n = 2 + Math.floor(Math.random()*4);
+    for(let i=0;i<n;i++){
+      const it = items[Math.floor(Math.random()*items.length)];
+      if(!it) continue;
+      transactions.push({id:uid('T'), date:day, item:it[0], amount:it[1], type:'sale', staff:staff[1].name, contact: contacts[Math.floor(Math.random()*contacts.length)].name});
+    }
+  }
+  const expenses = [
+    {id:uid('E'), date:todayStr(), item:'Supplier restock', category:'Cost of Goods', amount: Math.round((items[0]?.[1]||100)*8), paidBy:'Cash'},
+    {id:uid('E'), date:new Date(Date.now()-2*86400000).toISOString().slice(0,10), item:'Utilities', category:'Overheads', amount:340, paidBy:'MoMo/Card'}
+  ];
+  const events = [
+    {id:uid('EV'), title:'Team huddle', date:todayStr(), time:'09:00', type:'internal'},
+    {id:uid('EV'), title: (noun?.pipelineNoun||'Follow-up')+' — '+contacts[2].name, date:todayStr(), time:'15:00', type:'followup'},
+    {id:uid('EV'), title:'Supplier delivery', date:new Date(Date.now()+2*86400000).toISOString().slice(0,10), time:'11:00', type:'internal'}
+  ];
+  const followups = contacts.filter(c=>c.nextFollowUp).map(c=>({id:uid('F'), contactId:c.id, contactName:c.name, due:c.nextFollowUp, detail:'Check in — '+c.stage, done:false}));
+  const archive = [];
+  return {contacts, items, inventory, staff, transactions, expenses, events, followups, archive, messageLog:[],
+    journal:[], persona:null, auditAnswers:{}, auditScore:null, accountability:{daily:{}, log:[]},
+    referrals:[], knowledge:{facts:[], questionsAsked:0}
+  };
+}
+
+function getTemplates(){
+  const noun = (CUR_INDUSTRY_OBJ?.crmNoun || 'contacts').toLowerCase();
+  return {
+    cold:[
+      {title:'Opening question', body:`Hi [NAME], quick question — how are you currently finding ${CFG.bizName}? Always looking to make it easier for ${noun} like you.`},
+      {title:'Direct intro', body:`Hi [NAME], this is ${CFG.ownerName} from ${CFG.bizName}. Would you be open to a quick chat about how we could help?`}
+    ],
+    warm:[
+      {title:'Gentle re-engage', body:`Hi [NAME], following up on our last chat — any questions I can help with before you decide?`},
+      {title:'Value nudge', body:`Hi [NAME], just circling back — happy to walk you through the options whenever suits you.`}
+    ],
+    close:[
+      {title:'Direct close', body:`Hi [NAME], I have everything ready on our end. Shall we lock it in today?`},
+      {title:'Soft close with offer', body:`Hi [NAME], if it helps, we can start with the smaller option first and grow from there — want me to set that up?`}
+    ],
+    objection:[
+      {title:'Price pushback', body:`Totally fair — let's look at what matters most to you and find the option that fits, no pressure either way.`},
+      {title:'"Let me think about it"', body:`Of course — while you think it over, is there anything specific holding you back that I can clear up now?`}
+    ]
+  };
+}
+
+let wizIndustry = null;
+function renderIndustryGrid(){
+  document.getElementById('industryGrid').innerHTML = INDUSTRIES.map(i=>`
+    <div class="industry-pin" data-k="${i.key}" onclick="pickIndustry('${i.key}')">
+      <div class="ic">${i.ic}</div><div class="lb">${i.label}</div>
+    </div>`).join('');
+}
+function pickIndustry(k){
+  wizIndustry = k;
+  document.querySelectorAll('.industry-pin').forEach(el=>el.classList.toggle('sel', el.dataset.k===k));
+}
+function renderModuleList(){
+  const defaults = INDUSTRY_DEFAULTS[wizIndustry||'general'];
+  function checkHtml(m){
+    const on = defaults.includes(m.key);
+    return `<label class="mod-check ${on?'on':''}" data-k="${m.key}">
+      <input type="checkbox" ${on?'checked':''} ${m.core?'disabled':''} onchange="toggleModCheck(this)">
+      <div><div class="mn">${m.ic} ${m.name}${m.core?' <span style=\'color:var(--muted);font-weight:400\'>(always on)</span>':''}</div><div class="md">${m.desc}</div></div>
+    </label>`;
+  }
+  let html = '';
+  TECXFRA_GROUPS.forEach(g=>{
+    const items = MODULES.filter(m=>g.keys.includes(m.key));
+    if(!items.length) return;
+    html += `<div style="font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--teal-dim);margin:10px 0 6px;display:flex;align-items:center;gap:6px">
+      <span class="sb-letter" style="background:var(--navy)">${g.letter}</span> ${g.label}</div>
+      <div class="mod-list" style="max-height:none;margin-bottom:4px">${items.map(checkHtml).join('')}</div>`;
+  });
+  const moreItems = MODULES.filter(m=>TECXFRA_MORE_KEYS.includes(m.key));
+  if(moreItems.length){
+    html += `<div style="font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin:10px 0 6px">More</div>
+      <div class="mod-list" style="max-height:none;margin-bottom:4px">${moreItems.map(checkHtml).join('')}</div>`;
+  }
+  document.getElementById('moduleList').innerHTML = html;
+}
+function toggleModCheck(el){ el.closest('.mod-check').classList.toggle('on', el.checked); }
+function wizGo(step){
+  if(step===2 && !document.getElementById('setupBizName').value.trim()){ showToast('Add a business name first'); return; }
+  if(step===3 && !wizIndustry){ showToast('Pick an industry first'); return; }
+  if(step===3) renderModuleList();
+  document.querySelectorAll('.wiz-step').forEach(s=>s.classList.remove('active'));
+  document.querySelector(`.wiz-step[data-step="${step}"]`).classList.add('active');
+  [1,2,3].forEach(n=>document.getElementById('dot'+n).classList.toggle('on', n===step));
+}
+async function finishSetup(){
+  const modules = Array.from(document.querySelectorAll('.mod-check input')).filter(i=>i.checked).map(i=>i.closest('.mod-check').dataset.k);
+  CFG = {
+    bizName: document.getElementById('setupBizName').value.trim() || 'My Business',
+    ownerName: document.getElementById('setupOwnerName').value.trim() || 'Owner',
+    currency: document.getElementById('setupCurrency').value,
+    country: document.getElementById('setupCountry').value || 'Other / Not listed',
+    tone: document.getElementById('setupTone').value || 'motivation',
+    industry: wizIndustry,
+    modules,
+    plan: 'enterprise',
+    brandColor: '#4aa8b8',
+    logoEmoji: '',
+    digestPhone: '',
+    digestTime: '18:00'
+  };
+  DATA = seedData(wizIndustry);
+  await saveCfg(); await saveData();
+  boot();
+}
+
+function boot(){
+  CUR_INDUSTRY_OBJ = INDUSTRIES.find(i=>i.key===CFG.industry) || INDUSTRIES[INDUSTRIES.length-1];
+  document.getElementById('wizard').style.display = 'none';
+  document.getElementById('app').classList.add('active');
+  document.getElementById('sbBizName').textContent = CFG.bizName;
+  document.getElementById('sbIndustry').textContent = CUR_INDUSTRY_OBJ.label;
+  document.getElementById('sbOwnerName').textContent = CFG.ownerName;
+  document.getElementById('sbAvatar').textContent = initials(CFG.ownerName);
+  renderSidebar();
+  navTo('today');
+}
+const TECXFRA_GROUPS = [
+  {letter:'T', label:'Today & Tasks', keys:['today']},
+  {letter:'e', label:'Expenses & Resources', keys:['expenses','inventory']},
+  {letter:'c', label:'CRM & Calendar', keys:['crm','calendar','bookings']},
+  {letter:'X', label:'Execution & Growth', keys:['referrals','persona','guides']},
+  {letter:'F', label:'Follow-Ups & Messaging', keys:['followups','messages']},
+  {letter:'R', label:'Revenue & Invoicing', keys:['revenue','pos','invoicing']},
+  {letter:'A', label:'Accountability & AI', keys:['accountability','audit','ai']}
+];
+const TECXFRA_MORE_KEYS = ['staff','journal','archive','system','settings'];
+const PLANS = [
+  {key:'starter', label:'Starter', price:'Free', tagline:'Run the daily basics — Tec + F + R',
+    desc:'Today, CRM, Calendar, Follow-Ups, Messages, Expenses, Revenue, POS/Bookings, Staff, Guides.',
+    locked:['referrals','persona','audit','accountability','journal'], aiFacts:3, whiteLabel:false, csvImport:false},
+  {key:'growth', label:'Growth', price:'Paid', tagline:'Adds the X layer — analytics & retention',
+    desc:'Everything in Starter, plus Referrals & Retention, Persona, Business Audit, Accountability.',
+    locked:['journal'], aiFacts:10, whiteLabel:false, csvImport:true},
+  {key:'enterprise', label:'Enterprise', price:'Custom', tagline:'Everything unlocked, deepest AI recall',
+    desc:'Everything in Growth, plus Journal, full AI knowledge recall, white-label branding, and CSV import.',
+    locked:[], aiFacts:200, whiteLabel:true, csvImport:true}
+];
+function currentPlan(){ return PLANS.find(p=>p.key===(CFG.plan||'enterprise')) || PLANS[2]; }
+function isLocked(moduleKey){ return currentPlan().locked.includes(moduleKey); }
+function renderSidebar(){
+  const on = MODULES.filter(m=>CFG.modules.includes(m.key));
+  function row(m){
+    let badge = '';
+    if(m.key==='followups'){ const n=(DATA.followups||[]).filter(f=>!f.done && f.due<=todayStr()).length; if(n) badge=`<span class="badge">${n}</span>`; }
+    if(m.key==='accountability'){ const sc = accountabilityTodayScore(); if(sc.total>0) badge=`<span class="badge">${sc.done}/${sc.total}</span>`; }
+    if(isLocked(m.key)) badge = `<span style="margin-left:auto;font-size:11px">🔒</span>`;
+    return `<div class="sb-item" data-page="${m.key}" onclick="navTo('${m.key}')"><span class="ic">${m.ic}</span><span>${labelFor(m.key)}</span>${badge}</div>`;
+  }
+  let html = '';
+  TECXFRA_GROUPS.forEach(g=>{
+    const items = on.filter(m=>g.keys.includes(m.key));
+    if(!items.length) return;
+    html += `<div class="sb-group-label"><span class="sb-letter">${g.letter}</span> ${g.label}</div>` + items.map(row).join('');
+  });
+  const moreItems = on.filter(m=>TECXFRA_MORE_KEYS.includes(m.key));
+  if(moreItems.length) html += `<div class="sb-group-label">More</div>` + moreItems.map(row).join('');
+  document.getElementById('sbNav').innerHTML = html;
+}
+function labelFor(key){
+  if(key==='crm') return CUR_INDUSTRY_OBJ.crmNoun;
+  if(key==='bookings') return CUR_INDUSTRY_OBJ.pipelineNoun;
+  if(key==='pos') return 'Sales / Till';
+  if(key==='inventory') return CUR_INDUSTRY_OBJ.itemNoun;
+  return MODULES.find(m=>m.key===key).name;
+}
+function navTo(page){
+  if(!CFG.modules.includes(page) && page!=='settings') page='today';
+  CUR_PAGE = page;
+  document.querySelectorAll('.sb-item').forEach(el=>el.classList.toggle('active', el.dataset.page===page));
+  document.getElementById('sidebar').classList.remove('open');
+  const m = MODULES.find(x=>x.key===page);
+  document.getElementById('pageTitle').textContent = labelFor(page);
+  document.getElementById('pageSub').textContent = m.desc;
+  renderSidebar();
+  if(page!=='settings' && isLocked(page)){ renderUpgradePrompt(page, m); }
+  else{ RENDERERS[page](); }
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function renderUpgradePrompt(page, m){
+  const plan = currentPlan();
+  const nextPlan = PLANS.find(p=>!p.locked.includes(page)) || PLANS[PLANS.length-1];
+  document.getElementById('pageContent').innerHTML = `
+  <div class="card" style="text-align:center;padding:40px 24px;border-color:var(--amber)">
+    <div style="font-size:36px;margin-bottom:10px">🔒</div>
+    <div class="disp" style="font-size:19px;font-weight:700;margin-bottom:8px">${m.name} is part of the ${nextPlan.label} plan</div>
+    <div style="font-size:12.5px;color:var(--ink-dim);max-width:440px;margin:0 auto 18px;line-height:1.7">You're currently on <b>${plan.label}</b>. Upgrade to <b>${nextPlan.label}</b> to unlock ${m.name} — ${nextPlan.desc}</div>
+    <button class="btn btn-primary" onclick="navTo('settings');setSettingsTab('plan');renderSettings();">View Plans →</button>
+  </div>`;
+}
+
+const RENDERERS = {
+  today: renderToday, calendar: renderCalendar, crm: renderCRM, followups: renderFollowups,
+  pos: renderPOS, bookings: renderBookings, inventory: renderInventory, invoicing: renderInvoicing,
+  expenses: renderExpenses, staff: renderStaff, revenue: renderRevenue, messages: renderMessages,
+  referrals: renderReferrals, persona: renderPersona, audit: renderAudit, accountability: renderAccountability, journal: renderJournal,
+  ai: renderAI, guides: renderGuides, archive: renderArchive, system: renderSystem, settings: renderSettings
+};
+
+/* ---------- TODAY ---------- */
+function renderToday(){
+  const t = todayStr();
+  const todaySales = (DATA.transactions||[]).filter(x=>x.date===t).reduce((s,x)=>s+x.amount,0);
+  const dueFollowups = (DATA.followups||[]).filter(f=>!f.done && f.due<=t);
+  const lowStock = (DATA.inventory||[]).filter(i=>i.stock<=i.par);
+  const todayEvents = (DATA.events||[]).filter(e=>e.date===t);
+  const hotLeads = (DATA.contacts||[]).filter(c=>c.temp==='hot').length;
+  const onDuty = (DATA.staff||[]).filter(s=>s.onDuty).length;
+  const tip = dailyTip();
+
+  let html = `<div class="card" style="border-color:var(--teal); background:linear-gradient(135deg, var(--teal-tint), var(--paper))">
+    <div class="card-title">Today's ${toneLabel()} <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change tone →</span></div>
+    <div style="font-size:13.5px; line-height:1.7; color:var(--navy)">${tip}</div>
+  </div>
+  <div class="grid-metrics">
+    <div class="metric navy"><div class="ml">Revenue Today</div><div class="mv">${money(todaySales)}</div><div class="ms">${(DATA.transactions||[]).filter(x=>x.date===t).length} sales logged</div></div>
+    <div class="metric coral"><div class="ml">Follow-ups Due</div><div class="mv">${dueFollowups.length}</div><div class="ms">across all ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase()}</div></div>
+    <div class="metric amber"><div class="ml">Low Stock</div><div class="mv">${lowStock.length}</div><div class="ms">${CFG.modules.includes('inventory')?'items at/under par':'inventory module off'}</div></div>
+    <div class="metric green"><div class="ml">Hot Leads</div><div class="mv">${hotLeads}</div><div class="ms">ready to close</div></div>
+  </div>
+  <div class="two-col">
+    <div>
+      <div class="card">
+        <div class="card-title">Due Today <span class="sub">tap to open</span></div>
+        ${dueFollowups.length ? dueFollowups.slice(0,6).map(f=>`<div class="list-row" style="cursor:pointer" onclick="navTo('followups')"><span>${f.contactName} — ${f.detail}</span><span class="pill pill-hot">${fmtDate(f.due)}</span></div>`).join('') : '<div class="empty">Nothing due today — clean slate.</div>'}
+      </div>
+      <div class="card">
+        <div class="card-title">Today's Calendar</div>
+        ${todayEvents.length ? todayEvents.map(e=>`<div class="list-row"><span>${e.time} — ${e.title}</span></div>`).join('') : '<div class="empty">Nothing scheduled today.</div>'}
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="card-title">Quick Actions</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${CFG.modules.includes('pos')?`<button class="btn btn-primary btn-full" onclick="navTo('pos')">🧾 New Sale</button>`:''}
+          <button class="btn btn-ghost btn-full" onclick="openNewContactModal()">＋ Add ${CUR_INDUSTRY_OBJ.crmNoun.slice(0,-1)}</button>
+          <button class="btn btn-ghost btn-full" onclick="navTo('accountability')">✅ Today's Checklist</button>
+          <button class="btn btn-ghost btn-full" onclick="navTo('ai')">✨ Ask the Assistant</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Staff On Duty</div>
+        ${onDuty ? (DATA.staff||[]).filter(s=>s.onDuty).map(s=>`<div class="list-row"><span>${s.name}</span><span class="pill pill-active">${s.role}</span></div>`).join('') : '<div class="empty">Nobody checked in yet.</div>'}
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('pageContent').innerHTML = html;
+}
+
+/* ---------- DAILY TIP ENGINE (tone-aware) ---------- */
+function toneLabel(){
+  return {motivation:'Motivation', faith:'Reflection', neutral:'Focus'}[CFG.tone] || 'Focus';
+}
+const TIP_LIBRARY = {
+  motivation:[
+    "One sale a day is momentum. Momentum builds a business. Show up today.",
+    "Discipline is the only variable. The system works when you work it — run today's routine before anything else.",
+    "Every contact you follow up with today is money that's already in your phone, waiting to be collected.",
+    "You don't need more customers today. You need to follow up with the ones you already have.",
+    "Consistency beats intensity. A small action done daily outgrows a big action done rarely.",
+    "The fortune is in the follow-up. Don't let a lead go quiet without one more honest attempt.",
+    "Your attitude is part of your product. Walk in today like you're glad to be here — customers feel it."
+  ],
+  faith:[
+    "\"Commit to the LORD whatever you do, and He will establish your plans.\" — Proverbs 16:3. Do the work today, and trust the increase.",
+    "\"She sets about her work vigorously; her arms are strong for her tasks.\" — Proverbs 31:17. Bring that energy into today.",
+    "\"Whatever you do, work at it with all your heart, as working for the Lord.\" — Colossians 3:23. Let that be true of every customer you serve today.",
+    "Faithfulness in small things comes before increase in big things. Be faithful with today's follow-ups.",
+    "\"The plans of the diligent lead surely to abundance.\" — Proverbs 21:5. Plan today, then work the plan.",
+    "Give thanks for the customers already in your phone before you ask for new ones. Gratitude keeps you consistent."
+  ],
+  neutral:[
+    "Focus today on one metric: follow-ups cleared. Everything else follows from that.",
+    "Today's target: reply to every message within the hour. Fast replies win warm leads.",
+    "Review yesterday's numbers before starting today's work. Adjust one thing.",
+    "Pick the single highest-value task today and do it before anything else.",
+    "Consistency compounds. Small daily actions outperform occasional big pushes.",
+    "Today, prioritise the contacts most likely to convert this week."
+  ]
+};
+function dailyTip(){
+  const tone = CFG.tone || 'motivation';
+  const list = TIP_LIBRARY[tone] || TIP_LIBRARY.motivation;
+  const dayIndex = Math.floor(Date.now()/86400000) % list.length;
+  return list[dayIndex];
+}
+
+/* ---------- CALENDAR ---------- */
+function renderCalendar(){
+  document.getElementById('pageContent').innerHTML = `
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">
+        <span id="calLabel">—</span>
+        <span><button class="btn btn-ghost" style="padding:6px 10px" onclick="calNav(-1)">←</button> <button class="btn btn-ghost" style="padding:6px 10px" onclick="calNav(1)">→</button></span>
+      </div>
+      <div class="calendar-grid" id="calGrid"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Add to Calendar</div>
+      <label class="lbl">Title</label><input class="inp" id="evTitle" placeholder="e.g. Client meeting">
+      <label class="lbl">Date</label><input class="inp" id="evDate" type="date" value="${todayStr()}">
+      <label class="lbl">Time</label><input class="inp" id="evTime" type="time" value="09:00">
+      <button class="btn btn-primary btn-full" onclick="addEvent()">＋ Add Event</button>
+    </div>
+  </div>`;
+  drawCalendar();
+}
+function calNav(d){ calMonth+=d; if(calMonth<0){calMonth=11;calYear--;} if(calMonth>11){calMonth=0;calYear++;} drawCalendar(); }
+function drawCalendar(){
+  const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('calLabel').textContent = MN[calMonth]+' '+calYear;
+  const first = new Date(calYear,calMonth,1); const startDow = first.getDay(); const days = new Date(calYear,calMonth+1,0).getDate();
+  const tKey = todayStr();
+  let html = ['S','M','T','W','T','F','S'].map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  for(let i=0;i<startDow;i++) html += '<div class="cal-cell empty2"></div>';
+  for(let d=1; d<=days; d++){
+    const key = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const evs = (DATA.events||[]).filter(e=>e.date===key);
+    html += `<div class="cal-cell ${key===tKey?'today':''}"><div class="cal-daynum">${d}</div>${evs.slice(0,3).map(e=>`<div class="cal-pill" title="${e.title}">${e.time?e.time+' ':''}${e.title}</div>`).join('')}</div>`;
+  }
+  document.getElementById('calGrid').innerHTML = html;
+}
+async function addEvent(){
+  const title = document.getElementById('evTitle').value.trim();
+  if(!title){ showToast('Add a title first'); return; }
+  DATA.events.push({id:uid('EV'), title, date:document.getElementById('evDate').value, time:document.getElementById('evTime').value, type:'manual'});
+  await saveData(); showToast('Added to calendar'); renderCalendar();
+}
+
+/* ---------- CRM ---------- */
+let crmFilter = 'all';
+function renderCRM(){
+  document.getElementById('pageContent').innerHTML = `
+  <div class="tab-row" id="crmTabs"></div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">${CUR_INDUSTRY_OBJ.crmNoun} <span class="sub" id="crmCount"></span></div>
+      <div id="crmList"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">＋ Add ${CUR_INDUSTRY_OBJ.crmNoun.slice(0,-1)}</div>
+      <label class="lbl">Name</label><input class="inp" id="cName" placeholder="Full name">
+      <label class="lbl">Phone</label><input class="inp" id="cPhone" placeholder="e.g. 0241234567">
+      <label class="lbl">Source</label>
+      <select class="inp" id="cSource"><option>Walk-in</option><option>WhatsApp</option><option>Referral</option><option>Instagram</option><option>Google</option><option>Other</option></select>
+      <label class="lbl">Starting temperature</label>
+      <select class="inp" id="cTemp">${TEMPS.map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}</select>
+      <button class="btn btn-primary btn-full" onclick="addContact()">＋ Add</button>
+    </div>
+  </div>`;
+  document.getElementById('crmTabs').innerHTML = ['all',...TEMPS.map(t=>t.key)].map(k=>{
+    const label = k==='all'?'All':TEMPS.find(t=>t.key===k).label;
+    return `<button class="tab-pill ${crmFilter===k?'active':''}" onclick="setCrmFilter('${k}')">${label}</button>`;
+  }).join('');
+  drawCrmList();
+}
+function setCrmFilter(k){ crmFilter=k; renderCRM(); }
+function drawCrmList(){
+  let list = DATA.contacts||[];
+  if(crmFilter!=='all') list = list.filter(c=>c.temp===crmFilter);
+  document.getElementById('crmCount').textContent = `(${list.length})`;
+  document.getElementById('crmList').innerHTML = list.length ? list.map(c=>{
+    const temp = TEMPS.find(t=>t.key===c.temp);
+    return `<div class="list-row" style="cursor:pointer" onclick="openContactModal('${c.id}')">
+      <span><span class="temp-dot" style="background:${temp.color}"></span><b>${c.name}</b> <span style="color:var(--muted);font-size:11px">· ${c.phone}</span></span>
+      <span class="pill ${temp.pillClass}">${c.stage||temp.label}</span>
+    </div>`;
+  }).join('') : '<div class="empty">No matches — add one on the right.</div>';
+}
+async function addContact(){
+  const name = document.getElementById('cName').value.trim();
+  if(!name){ showToast('Name is required'); return; }
+  DATA.contacts.push({id:uid('C'), name, phone:document.getElementById('cPhone').value.trim(), company:'',
+    temp:document.getElementById('cTemp').value, stage:'New', lastContact:todayStr(), nextFollowUp:'', notes:'', value:0, source:document.getElementById('cSource').value});
+  await saveData(); showToast(name+' added'); renderCRM(); renderSidebar();
+}
+function openContactModal(id){
+  const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
+  const temp = TEMPS.find(t=>t.key===c.temp);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-head"><h3>${c.name}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <label class="lbl">Temperature</label>
+    <select class="inp" onchange="updateContact('${id}','temp',this.value)">${TEMPS.map(t=>`<option value="${t.key}" ${t.key===c.temp?'selected':''}>${t.label}</option>`).join('')}</select>
+    <label class="lbl">Stage</label><input class="inp" value="${c.stage||''}" onchange="updateContact('${id}','stage',this.value)">
+    <label class="lbl">Phone</label><input class="inp" value="${c.phone||''}" onchange="updateContact('${id}','phone',this.value)">
+    <label class="lbl">Next follow-up</label><input class="inp" type="date" value="${c.nextFollowUp||''}" onchange="updateContact('${id}','nextFollowUp',this.value)">
+    <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateContact('${id}','notes',this.value)">${c.notes||''}</textarea>
+    <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+      ${c.phone?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" href="https://wa.me/${c.phone.replace(/\\D/g,'')}">💬 WhatsApp</a>`:''}
+      <button class="btn btn-ghost" style="flex:1" onclick="openJournalFor('${id}','${c.name.replace(/'/g,"\\'")}')">📓 Journal Note</button>
+      <button class="btn btn-ghost" style="flex:1" onclick="archiveContact('${id}')">🗄️ Archive</button>
+    </div>
+  </div></div>`;
+}
+async function updateContact(id, field, val){
+  const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
+  c[field]=val; if(field!=='notes') c.lastContact=todayStr();
+  await saveData(); renderCRM(); showToast('Updated');
+}
+async function archiveContact(id){
+  const idx = DATA.contacts.findIndex(x=>x.id===id); if(idx<0) return;
+  const [c] = DATA.contacts.splice(idx,1);
+  DATA.archive.push({...c, archivedFrom:'crm', archivedDate:todayStr()});
+  await saveData(); closeModal(); renderCRM(); showToast('Archived — restorable anytime');
+}
+function openNewContactModal(){ navTo('crm'); setTimeout(()=>document.getElementById('cName')?.focus(),150); }
+function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+
+/* ---------- FOLLOW-UPS ---------- */
+function renderFollowups(){
+  const t = todayStr();
+  const due = (DATA.followups||[]).filter(f=>!f.done).sort((a,b)=>a.due.localeCompare(b.due));
+  document.getElementById('pageContent').innerHTML = `
+  <div class="card"><div class="card-title">Follow-Up Queue <span class="sub">everything due, across every module, in one list</span></div>
+  ${due.length ? due.map(f=>`
+    <div class="list-row" style="align-items:flex-start">
+      <div><b>${f.contactName}</b><br><span style="font-size:11.5px;color:var(--ink-dim)">${f.detail} · due ${fmtDate(f.due)}${f.due<t?' — overdue':''}</span></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-ghost" style="padding:6px 10px" onclick="snoozeFollowup('${f.id}')">Snooze 3d</button>
+        <button class="btn btn-primary" style="padding:6px 10px" onclick="doneFollowup('${f.id}')">✓ Done</button>
+      </div>
+    </div>`).join('') : '<div class="empty">Nothing outstanding — nice work.</div>'}
+  </div>`;
+}
+async function doneFollowup(id){ const f=DATA.followups.find(x=>x.id===id); if(f){f.done=true; logAccountability('followups_cleared');} await saveData(); renderFollowups(); renderSidebar(); showToast('Marked done'); }
+async function snoozeFollowup(id){ const f=DATA.followups.find(x=>x.id===id); if(f){ f.due=new Date(Date.now()+3*86400000).toISOString().slice(0,10); } await saveData(); renderFollowups(); showToast('Snoozed 3 days'); }
+
+/* ---------- POS / QUICK SELL ---------- */
+function renderPOS(){
+  document.getElementById('pageContent').innerHTML = `
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun}</div>
+      <div class="qs-grid" id="qsGrid"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Cart</div>
+      <div id="cartArea"></div>
+      <div style="display:flex;justify-content:space-between;font-weight:700;padding:12px 4px;border-top:1px solid var(--line);margin-top:8px">
+        <span>Total</span><span id="cartTotal" class="mono">${money(0)}</span>
+      </div>
+      <label class="lbl">Customer (optional)</label>
+      <select class="inp" id="posCustomer"><option value="">Walk-in</option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+      <button class="btn btn-primary btn-full" onclick="checkout()">✓ Complete Sale</button>
+    </div>
+  </div>`;
+  document.getElementById('qsGrid').innerHTML = (DATA.items||[]).map(it=>`
+    <button class="qs-item" onclick="addToCart('${it[0].replace(/'/g,"\\'")}',${it[1]})"><div class="qn">${it[0]}</div><div class="qp">${money(it[1])}</div></button>
+  `).join('');
+  drawCart();
+}
+function addToCart(name, price){ cart[name] = cart[name] || {qty:0, price}; cart[name].qty++; drawCart(); }
+function setCartQty(name, q){ if(q<=0){ delete cart[name]; } else { cart[name].qty=q; } drawCart(); }
+function drawCart(){
+  const names = Object.keys(cart);
+  const area = document.getElementById('cartArea'); if(!area) return;
+  area.innerHTML = names.length ? names.map(n=>`
+    <div class="cart-row"><span class="cn">${n}</span>
+      <div class="stepper"><button onclick="setCartQty('${n.replace(/'/g,"\\'")}',${cart[n].qty-1})">−</button><span class="mono">${cart[n].qty}</span><button onclick="setCartQty('${n.replace(/'/g,"\\'")}',${cart[n].qty+1})">+</button></div>
+      <span class="mono">${money(cart[n].qty*cart[n].price)}</span>
+    </div>`).join('') : '<div class="empty">Tap items to add them.</div>';
+  const total = names.reduce((s,n)=>s+cart[n].qty*cart[n].price,0);
+  document.getElementById('cartTotal').textContent = money(total);
+}
+async function checkout(){
+  const names = Object.keys(cart);
+  if(!names.length){ showToast('Cart is empty'); return; }
+  const custId = document.getElementById('posCustomer').value;
+  const custName = custId ? DATA.contacts.find(c=>c.id===custId)?.name : 'Walk-in';
+  names.forEach(n=>{ DATA.transactions.push({id:uid('T'), date:todayStr(), item:n, amount:cart[n].qty*cart[n].price, type:'sale', staff:CFG.ownerName, contact:custName}); });
+  cart = {};
+  logAccountability('sales_made');
+  await saveData(); showToast('Sale completed'); renderPOS();
+}
+
+/* ---------- BOOKINGS / ORDERS / JOBS (pipeline board) ---------- */
+const PIPE_STAGES = ['New','Confirmed','In Progress','Completed'];
+function renderBookings(){
+  document.getElementById('pageContent').innerHTML = `
+  <div class="card">
+    <div class="card-title">${CUR_INDUSTRY_OBJ.pipelineNoun} <span class="sub">click a contact's stage on the ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase()} page to move it</span></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px" id="pipeBoard"></div>
+  </div>`;
+  const board = PIPE_STAGES.map(stage=>{
+    const items = (DATA.contacts||[]).filter(c=>(c.stage||'New')===stage || (stage==='New' && !['Confirmed','In Progress','Completed','Client'].includes(c.stage)));
+    return `<div>
+      <div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim);margin-bottom:8px">${stage} (${items.length})</div>
+      ${items.map(c=>`<div class="card" style="padding:11px 12px;margin-bottom:8px;cursor:pointer" onclick="openContactModal('${c.id}')"><div style="font-size:12.5px;font-weight:700">${c.name}</div><div style="font-size:11px;color:var(--muted)">${c.value?money(c.value):'—'}</div></div>`).join('') || '<div class="empty" style="padding:14px 4px">Empty</div>'}
+    </div>`;
+  }).join('');
+  document.getElementById('pipeBoard').innerHTML = board;
+}
+
+/* ---------- INVENTORY ---------- */
+function renderInventory(){
+  document.getElementById('pageContent').innerHTML = `
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun} — Stock</div>
+      <div class="scroll-tbl"><table><thead><tr><th>Item</th><th>Stock</th><th>Par</th><th>Cost</th><th>Price</th></tr></thead><tbody>
+        ${(DATA.inventory||[]).map(it=>`<tr style="${it.stock<=it.par?'color:var(--coral)':''}"><td>${it.name}</td><td class="mono">${it.stock}</td><td class="mono">${it.par}</td><td class="mono">${money(it.cost)}</td><td class="mono">${money(it.price)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No stock items yet</td></tr>'}
+      </tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Restock an Item</div>
+      <label class="lbl">Item name</label><input class="inp" id="rName" list="invList" placeholder="Must match exactly to update, or creates new">
+      <datalist id="invList">${(DATA.inventory||[]).map(it=>`<option value="${it.name}">`).join('')}</datalist>
+      <label class="lbl">Qty to add</label><input class="inp" id="rQty" type="number" placeholder="e.g. 24">
+      <label class="lbl">Par level (optional)</label><input class="inp" id="rPar" type="number" placeholder="e.g. 10">
+      <button class="btn btn-primary btn-full" onclick="restock()">＋ Add Stock</button>
+    </div>
+  </div>`;
+}
+async function restock(){
+  const name = document.getElementById('rName').value.trim();
+  const qty = parseFloat(document.getElementById('rQty').value)||0;
+  if(!name || !qty){ showToast('Item name and quantity required'); return; }
+  let it = DATA.inventory.find(x=>x.name.toLowerCase()===name.toLowerCase());
+  const par = document.getElementById('rPar').value;
+  if(it){ it.stock += qty; if(par) it.par = parseFloat(par); }
+  else{ DATA.inventory.push({id:uid('I'), name, stock:qty, par: par?parseFloat(par):5, cost:0, price:0}); }
+  await saveData(); showToast('Stock updated'); renderInventory();
+}
+
+/* ---------- INVOICING / DEBTORS ---------- */
+function renderInvoicing(){
+  const owed = (DATA.contacts||[]).filter(c=>c.value>0);
+  const total = owed.reduce((s,c)=>s+c.value,0);
+  const ci = getCountryInfo();
+  document.getElementById('pageContent').innerHTML = `
+  <div class="grid-metrics"><div class="metric coral"><div class="ml">Total Outstanding</div><div class="mv">${money(total)}</div><div class="ms">${owed.length} open balances</div></div></div>
+  <div class="card" style="border-color:var(--teal-tint)"><div class="card-title">Your Tax Setting <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change country →</span></div>
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7"><b style="color:var(--navy)">${ci.tax}</b> — ${ci.taxNote}</div>
+  </div>
+  <div class="card"><div class="card-title">Debtors — Who Owes What</div>
+  ${owed.length ? owed.map(c=>`<div class="list-row"><span><b>${c.name}</b></span><span class="mono" style="color:var(--coral)">${money(c.value)}</span></div>`).join('') : '<div class="empty">Nothing outstanding.</div>'}
+  </div>`;
+}
+
+/* ---------- EXPENSES ---------- */
+function renderExpenses(){
+  const t = todayStr();
+  const thisMonth = t.slice(0,7);
+  const monthTotal = (DATA.expenses||[]).filter(e=>e.date.slice(0,7)===thisMonth).reduce((s,e)=>s+e.amount,0);
+  const ci = getCountryInfo();
+  document.getElementById('pageContent').innerHTML = `
+  <div class="grid-metrics"><div class="metric amber"><div class="ml">Spend This Month</div><div class="mv">${money(monthTotal)}</div><div class="ms">${(DATA.expenses||[]).length} logged all-time</div></div></div>
+  <div class="card" style="border-color:var(--teal-tint)"><div class="card-title">Tax & Payroll — ${CFG.country||'—'} <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change →</span></div>
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7">
+      <b style="color:var(--navy)">Tax:</b> ${ci.tax} — ${ci.taxNote}<br>
+      <b style="color:var(--navy)">Payroll:</b> ${ci.payroll}
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="card"><div class="card-title">Recent Expenses</div>
+      <div class="scroll-tbl"><table><thead><tr><th>Date</th><th>Item</th><th>Category</th><th>Amount</th></tr></thead><tbody>
+      ${(DATA.expenses||[]).slice().reverse().map(e=>`<tr><td>${fmtDate(e.date)}</td><td>${e.item}</td><td style="color:var(--ink-dim)">${e.category}</td><td class="mono">${money(e.amount)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">None yet</td></tr>'}
+      </tbody></table></div>
+    </div>
+    <div class="card"><div class="card-title">Log an Expense</div>
+      <label class="lbl">What</label><input class="inp" id="eItem" placeholder="e.g. Supplier delivery">
+      <label class="lbl">Category</label><select class="inp" id="eCat"><option>Cost of Goods</option><option>Overheads</option><option>Marketing</option><option>Payroll</option><option>Other</option></select>
+      <label class="lbl">Amount</label><input class="inp" id="eAmt" type="number">
+      <button class="btn btn-primary btn-full" onclick="addExpense()">＋ Log Expense</button>
+    </div>
+  </div>`;
+}
+async function addExpense(){
+  const item = document.getElementById('eItem').value.trim();
+  const amount = parseFloat(document.getElementById('eAmt').value)||0;
+  if(!item||!amount){ showToast('Item and amount required'); return; }
+  DATA.expenses.push({id:uid('E'), date:todayStr(), item, category:document.getElementById('eCat').value, amount, paidBy:'Cash'});
+  await saveData(); showToast('Expense logged'); renderExpenses();
+}
+
+/* ---------- STAFF ---------- */
+function renderStaff(){
+  document.getElementById('pageContent').innerHTML = `
+  <div class="two-col">
+    <div class="card"><div class="card-title">Team</div>
+      ${(DATA.staff||[]).map(s=>`<div class="list-row"><span><b>${s.name}</b> <span style="color:var(--muted);font-size:11px">· ${s.role} · ${s.dept}</span></span>
+        <button class="btn ${s.onDuty?'btn-primary':'btn-ghost'}" style="padding:6px 12px" onclick="toggleDuty('${s.id}')">${s.onDuty?'● On Duty':'Check In'}</button></div>`).join('') || '<div class="empty">No staff yet</div>'}
+    </div>
+    <div class="card"><div class="card-title">Add Staff</div>
+      <label class="lbl">Name</label><input class="inp" id="stName">
+      <label class="lbl">Role</label><input class="inp" id="stRole" placeholder="e.g. Sales Associate">
+      <label class="lbl">Department</label><input class="inp" id="stDept" placeholder="e.g. Front of House">
+      <label class="lbl">Pay type</label><select class="inp" id="stPay"><option>Monthly</option><option>Daily</option><option>Weekly</option><option>Commission</option></select>
+      <button class="btn btn-primary btn-full" onclick="addStaff()">＋ Add</button>
+    </div>
+  </div>`;
+}
+async function toggleDuty(id){ const s=DATA.staff.find(x=>x.id===id); if(s) s.onDuty=!s.onDuty; await saveData(); renderStaff(); }
+async function addStaff(){
+  const name=document.getElementById('stName').value.trim();
+  if(!name){ showToast('Name required'); return; }
+  DATA.staff.push({id:uid('S'), name, role:document.getElementById('stRole').value||'Team Member', dept:document.getElementById('stDept').value||'General', onDuty:false, payType:document.getElementById('stPay').value, payRate:0});
+  await saveData(); showToast('Staff added'); renderStaff();
+}
+
+/* ---------- REVENUE / ANALYTICS ---------- */
+function renderRevenue(){
+  const byDay = {};
+  (DATA.transactions||[]).forEach(t=>{ byDay[t.date]=(byDay[t.date]||0)+t.amount; });
+  const days = Object.keys(byDay).sort().slice(-7);
+  const max = Math.max(1,...days.map(d=>byDay[d]));
+  const totalRev = Object.values(byDay).reduce((a,b)=>a+b,0);
+  const totalExp = (DATA.expenses||[]).reduce((s,e)=>s+e.amount,0);
+  document.getElementById('pageContent').innerHTML = `
+  <div class="grid-metrics">
+    <div class="metric navy"><div class="ml">Total Revenue (7d log)</div><div class="mv">${money(totalRev)}</div></div>
+    <div class="metric coral"><div class="ml">Total Expenses</div><div class="mv">${money(totalExp)}</div></div>
+    <div class="metric green"><div class="ml">Net</div><div class="mv">${money(totalRev-totalExp)}</div></div>
+    <div class="metric amber"><div class="ml">Conversion</div><div class="mv">${DATA.contacts.length?Math.round((DATA.contacts.filter(c=>c.temp==='active').length/DATA.contacts.length)*100):0}%</div><div class="ms">contacts → active</div></div>
+  </div>
+  <div class="card"><div class="card-title">Last 7 Days</div>
+    <div style="display:flex;align-items:flex-end;gap:10px;height:150px;padding-top:10px">
+    ${days.map(d=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+      <div class="mono" style="font-size:9.5px;color:var(--ink-dim);margin-bottom:4px">${money(byDay[d]).replace(/\\.00$/,'')}</div>
+      <div style="width:100%;background:var(--teal);border-radius:5px 5px 0 0;height:${Math.max(4,(byDay[d]/max)*110)}px"></div>
+      <div style="font-size:9.5px;color:var(--muted);margin-top:5px">${d.slice(5)}</div>
+    </div>`).join('') || '<div class="empty">No sales logged yet</div>'}
+    </div>
+  </div>`;
+}
+
+/* ---------- MESSAGES ---------- */
+let msgCat = 'cold';
+function renderMessages(){
+  document.getElementById('pageContent').innerHTML = `
+  <div class="tab-row" id="msgTabs"></div>
+  <div class="card" id="msgLib"></div>`;
+  document.getElementById('msgTabs').innerHTML = ['cold','warm','close','objection'].map(k=>
+    `<button class="tab-pill ${msgCat===k?'active':''}" onclick="setMsgCat('${k}')">${{cold:'Cold Outreach',warm:'Warm Re-engage',close:'Closing',objection:'Objections'}[k]}</button>`).join('');
+  const t = getTemplates()[msgCat];
+  document.getElementById('msgLib').innerHTML = t.map((m,i)=>`
+    <div class="list-row" style="align-items:flex-start;flex-direction:column;gap:6px">
+      <div style="font-weight:700;font-size:12.5px">${m.title}</div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-wrap">${m.body}</div>
+      <button class="btn btn-ghost" style="padding:5px 12px" onclick="copyMsg(${i})">Copy</button>
+    </div>`).join('');
+}
+function setMsgCat(k){ msgCat=k; renderMessages(); }
+function copyMsg(i){ const t=getTemplates()[msgCat][i]; navigator.clipboard?.writeText(t.body); showToast('Copied'); }
+
+/* ============================================================
+   REFERRALS & RETENTION
+============================================================ */
+const LOYALTY_TIERS = [
+  {key:'one-time', label:'One-Time Buyer', desc:'Bought once, has not returned yet.'},
+  {key:'repeat', label:'Repeat Buyer', desc:'2–4 purchases, building preference.'},
+  {key:'loyal', label:'Loyal Customer', desc:'Buys consistently, trusts you fully.'},
+  {key:'spotlight', label:'Spotlight Client', desc:'High spend, refers others, your best relationship.'}
+];
+const REFERRAL_SCRIPTS = [
+  {key:'natural', title:'The Natural Ask', when:'After a customer confirms they are happy', body:`I'm so glad to hear that — it means a lot when a customer is genuinely happy. Can I ask you something? Is there anyone in your circle — a friend, family member, colleague — who you think could use what we do? I'd love to help them the same way I helped you. And if they buy, I'll make sure you get something special as a thank you.`},
+  {key:'voice', title:'The Voice Note Ask', when:'For your warmest, most engaged customers', body:`Hi [Name] — just wanted to personally thank you again for your order. Quick question: if you know anyone in your circle who could benefit from what we do, we'd be so grateful if you mentioned us. We take good care of everyone you send our way. Thank you so much.`},
+  {key:'reward', title:'The Reward Ask', when:'When you have a specific reward to offer', body:`[Name], you've been such a great customer. For every person you refer who makes a purchase, I'll give you [reward]. No limit — the more you send, the more you benefit. Would that work for you?`},
+  {key:'community', title:'The Community Post Ask', when:'For customers active on WhatsApp status or Facebook', body:`Would you mind posting a quick status about your experience with us? Even one or two sentences helps so much. I can draft something for you if that's easier. 😊`}
+];
+const REACTIVATION_SCRIPTS = [
+  {key:'newarrival', title:'New Arrival Re-entry', when:'Quiet for 30–60 days', body:`Hi [Name] — hope all is well. We just got something in that made me think of you. [describe item]. I thought you should see it before I announce it. Let me know what you think.`},
+  {key:'resultstory', title:'Result Story Re-entry', when:'Quiet for 60–90 days', body:`Hi [Name] — I was just working with a customer and the result made me think of you. [describe result]. Are you still thinking about [what they were interested in]?`},
+  {key:'season', title:'Season Re-entry', when:'Around a major occasion', body:`Hi [Name] — wishing you a wonderful [occasion]. We have some offers that might be useful for this time of year. Let me know if there's anything we can help with. 😊`},
+  {key:'direct', title:'Direct Check-In', when:'Silent for 90+ days', body:`Hi [Name] — it's been a while and I just wanted to check in. No agenda, just hoping you're doing well. If there's ever anything we can help with, we're here. 🙏`}
+];
+let refTab = 'referrals';
+function renderReferrals(){
+  document.getElementById('pageContent').innerHTML = `
+  <div class="tab-row" id="refTabs"></div>
+  <div id="refBody"></div>`;
+  document.getElementById('refTabs').innerHTML = [
+    ['referrals','Referral Scripts'],['tiers','Loyalty Tiers'],['reactivate','Re-Activation'],['reward','Your Reward Plan']
+  ].map(([k,l])=>`<button class="tab-pill ${refTab===k?'active':''}" onclick="setRefTab('${k}')">${l}</button>`).join('');
+  drawRefBody();
+}
+function setRefTab(k){ refTab=k; renderReferrals(); }
+function drawRefBody(){
+  const b = document.getElementById('refBody');
+  if(refTab==='referrals'){
+    b.innerHTML = `<div class="card"><div class="card-title">The Golden Window <span class="sub">ask 24–72 hours after confirmed satisfaction</span></div>
+      <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7">Ask for the referral once the ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} has confirmed they're happy, while the emotion is still fresh, and only after you've thanked them genuinely. Never re-open a closed conversation just to ask.</div>
+    </div>` +
+    REFERRAL_SCRIPTS.map(s=>`<div class="card"><div class="card-title">${s.title} <span class="sub">${s.when}</span></div>
+      <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7;white-space:pre-wrap">${s.body}</div>
+      <button class="btn btn-ghost" style="margin-top:10px;padding:6px 12px" onclick="copyGeneric('${s.key}-ref')">Copy</button>
+    </div>`).join('');
+  } else if(refTab==='tiers'){
+    const counts = {};
+    LOYALTY_TIERS.forEach(t=>counts[t.key]=0);
+    (DATA.contacts||[]).forEach(c=>{ const tier=c.loyaltyTier||'one-time'; counts[tier]=(counts[tier]||0)+1; });
+    b.innerHTML = `<div class="card"><div class="card-title">Loyalty Tiers <span class="sub">assign a tier from a contact's card</span></div>
+      ${LOYALTY_TIERS.map(t=>`<div class="list-row"><span><b>${t.label}</b><br><span style="font-size:11px;color:var(--muted)">${t.desc}</span></span><span class="pill pill-client">${counts[t.key]||0}</span></div>`).join('')}
+    </div>
+    <div class="card"><div class="card-title">Assign a Tier</div>
+      <select class="inp" id="tierContact">${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+      <select class="inp" id="tierValue">${LOYALTY_TIERS.map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}</select>
+      <button class="btn btn-primary btn-full" onclick="assignTier()">Set Tier</button>
+    </div>`;
+  } else if(refTab==='reactivate'){
+    b.innerHTML = REACTIVATION_SCRIPTS.map(s=>`<div class="card"><div class="card-title">${s.title} <span class="sub">${s.when}</span></div>
+      <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7;white-space:pre-wrap">${s.body}</div>
+      <button class="btn btn-ghost" style="margin-top:10px;padding:6px 12px" onclick="copyGeneric('${s.key}-react')">Copy</button>
+    </div>`).join('');
+  } else if(refTab==='reward'){
+    b.innerHTML = `<div class="card"><div class="card-title">Choose Your Referral Reward</div>
+      <label class="lbl">Reward type</label>
+      <select class="inp" id="rewardType">
+        <option>Fixed bonus per referral (e.g. 20 GHS)</option>
+        <option>Commission % of first purchase</option>
+        <option>Free product on next order</option>
+        <option>Priority / early access</option>
+        <option>Personal thank-you voice note only</option>
+      </select>
+      <label class="lbl">Details</label><textarea class="inp" id="rewardDetails" rows="2" placeholder="e.g. 20 GHS per successful referral, paid via MoMo within 24 hours">${DATA.referralReward||''}</textarea>
+      <button class="btn btn-primary btn-full" onclick="saveRewardPlan()">Save Reward Plan</button>
+    </div>`;
+  }
+}
+function copyGeneric(key){
+  const all = [...REFERRAL_SCRIPTS.map(s=>({...s,k:s.key+'-ref'})),...REACTIVATION_SCRIPTS.map(s=>({...s,k:s.key+'-react'}))];
+  const s = all.find(x=>x.k===key);
+  if(s){ navigator.clipboard?.writeText(s.body); showToast('Copied'); }
+}
+async function assignTier(){
+  const cid = document.getElementById('tierContact').value;
+  const tier = document.getElementById('tierValue').value;
+  const c = DATA.contacts.find(x=>x.id===cid);
+  if(c){ c.loyaltyTier = tier; }
+  await saveData(); showToast('Tier updated'); renderReferrals();
+  if(c) await addKnowledgeFact(`${c.name} moved to loyalty tier: ${LOYALTY_TIERS.find(t=>t.key===tier)?.label||tier}.`);
+}
+async function saveRewardPlan(){
+  DATA.referralReward = document.getElementById('rewardDetails').value.trim();
+  await saveData(); showToast('Reward plan saved');
+  if(DATA.referralReward) await addKnowledgeFact(`Referral reward plan set: ${DATA.referralReward}`);
+}
+
+/* ============================================================
+   IDEAL CLIENT PERSONA
+============================================================ */
+function renderPersona(){
+  const p = DATA.persona || {};
+  document.getElementById('pageContent').innerHTML = `
+  <div class="card"><div class="card-title">Build Your Ideal ${CUR_INDUSTRY_OBJ.crmNoun.slice(0,-1)} Persona <span class="sub">the more specific, the sharper your messaging gets</span></div>
+    <div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px">Answer as specifically as you can. This feeds your AI Assistant and your Messages templates.</div>
+    <label class="lbl">Give them a name (e.g. "Auntie Ama")</label><input class="inp" id="pName" value="${p.name||''}">
+    <div class="wiz-row">
+      <div><label class="lbl">Age range</label><input class="inp" id="pAge" value="${p.age||''}" placeholder="e.g. 28–40"></div>
+      <div><label class="lbl">Income / spend level</label><input class="inp" id="pIncome" value="${p.income||''}" placeholder="e.g. mid-income, spends 100-300/mo"></div>
+    </div>
+    <label class="lbl">Biggest pain point they come to you with</label><textarea class="inp" id="pPain" rows="2">${p.pain||''}</textarea>
+    <label class="lbl">Where do they spend time? (platforms, places)</label><input class="inp" id="pWhere" value="${p.where||''}" placeholder="e.g. WhatsApp Status, local market, Instagram">
+    <label class="lbl">Most common objection they raise</label><textarea class="inp" id="pObjection" rows="2">${p.objection||''}</textarea>
+    <label class="lbl">What makes them finally say yes?</label><textarea class="inp" id="pTrigger" rows="2">${p.trigger||''}</textarea>
+    <button class="btn btn-primary btn-full" onclick="savePersona()">Save Persona</button>
+  </div>
+  ${p.name ? `<div class="card" style="border-color:var(--teal)"><div class="card-title">Your Current Persona</div>
+    <div style="font-size:12.5px;line-height:1.8;color:var(--ink-dim)">
+      <b style="color:var(--navy)">${p.name}</b>, ${p.age||'age not set'}, ${p.income||'spend not set'}.<br>
+      Struggles with: ${p.pain||'—'}<br>
+      Found on: ${p.where||'—'}<br>
+      Usually objects with: "${p.objection||'—'}"<br>
+      Says yes when: ${p.trigger||'—'}
+    </div>
+  </div>` : ''}`;
+}
+async function savePersona(){
+  DATA.persona = {
+    name: document.getElementById('pName').value.trim(),
+    age: document.getElementById('pAge').value.trim(),
+    income: document.getElementById('pIncome').value.trim(),
+    pain: document.getElementById('pPain').value.trim(),
+    where: document.getElementById('pWhere').value.trim(),
+    objection: document.getElementById('pObjection').value.trim(),
+    trigger: document.getElementById('pTrigger').value.trim()
+  };
+  await saveData(); showToast('Persona saved'); renderPersona();
+  await addKnowledgeFact(`Ideal ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} defined: ${DATA.persona.name||'unnamed'} — pain point: ${DATA.persona.pain||'not set'}; buys when: ${DATA.persona.trigger||'not set'}.`);
+}
+
+/* ============================================================
+   BUSINESS AUDIT
+============================================================ */
+const AUDIT_QUESTIONS = [
+  {key:'online', q:'Can a stranger find your business online by searching your name, without you sending them a link first?'},
+  {key:'onelink', q:'Do you have one single link or page you can send anyone, instead of explaining where you are every time?'},
+  {key:'clear5s', q:'If a stranger saw that link today, could they tell in 5 seconds what you sell and where you are?'},
+  {key:'trust', q:'Does your business show something that builds trust (reviews, photos, a verified badge)?'},
+  {key:'onepricelist', q:'Are your prices, location and contact details correct and kept in one place, not scattered?'},
+  {key:'freshphotos', q:'Do your photos and videos look clean and current, not blurry or outdated?'},
+  {key:'fastreply', q:'When someone messages you, do you reply within a few hours, not days?'},
+  {key:'inboundsteady', q:'Do new enquiries come in regularly, even on days you have not posted anything?'},
+  {key:'followupsystem', q:'Do you have a system for following up on leads who go quiet, rather than relying on memory?'},
+  {key:'repeat', q:'Do most of your customers come back more than once?'},
+  {key:'referralask', q:'Do you actively ask satisfied customers to refer others, rather than hoping it happens?'},
+  {key:'numbers', q:'Do you know your revenue and expenses for the current month, right now, without checking?'}
+];
+function renderAudit(){
+  const ans = DATA.auditAnswers || {};
+  document.getElementById('pageContent').innerHTML = `
+  <div class="card"><div class="card-title">Business Foundation Check <span class="sub">answer honestly — this shapes what TecXFRA prioritises for you</span></div>
+    ${AUDIT_QUESTIONS.map(a=>`<div class="list-row" style="align-items:flex-start">
+      <span style="flex:1;font-size:12.5px;line-height:1.6">${a.q}</span>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn ${ans[a.key]===true?'btn-primary':'btn-ghost'}" style="padding:6px 12px" onclick="setAuditAnswer('${a.key}',true)">Yes</button>
+        <button class="btn ${ans[a.key]===false?'btn-primary':'btn-ghost'}" style="padding:6px 12px" onclick="setAuditAnswer('${a.key}',false)">No</button>
+      </div>
+    </div>`).join('')}
+    <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="scoreAudit()">Score My Business</button>
+  </div>
+  ${DATA.auditScore!==null && DATA.auditScore!==undefined ? renderAuditScore() : ''}`;
+}
+async function setAuditAnswer(key, val){
+  if(!DATA.auditAnswers) DATA.auditAnswers = {};
+  DATA.auditAnswers[key] = val;
+  await saveData(); renderAudit();
+}
+function renderAuditScore(){
+  const score = DATA.auditScore;
+  const total = AUDIT_QUESTIONS.length;
+  let tier, advice;
+  if(score <= total*0.33){ tier='Foundation Stage'; advice='Focus first on visibility and being findable — a complete profile, one clear link, and consistent replies. Use the CRM and Messages modules daily before worrying about referrals or retention.'; }
+  else if(score <= total*0.66){ tier='Visibility Stage'; advice='Your foundation is decent — now build consistent follow-up and a simple retention rhythm. Turn on the Follow-Ups and Referrals modules and use them every day.'; }
+  else { tier='Growth Stage'; advice='You have the basics locked in. Focus on referrals, upsells, and systemising what already works — the Referrals, Revenue and Accountability modules will compound from here.'; }
+  return `<div class="card" style="border-color:var(--teal)"><div class="card-title">Your Score: ${score} / ${total}</div>
+    <div class="progress-track" style="margin-bottom:12px"><div class="progress-fill" style="width:${Math.round(score/total*100)}%"></div></div>
+    <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px">${tier}</div>
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7">${advice}</div>
+  </div>`;
+}
+async function scoreAudit(){
+  const ans = DATA.auditAnswers || {};
+  const score = AUDIT_QUESTIONS.filter(a=>ans[a.key]===true).length;
+  DATA.auditScore = score;
+  await saveData(); showToast('Audit scored'); renderAudit();
+  const tier = score<=AUDIT_QUESTIONS.length*0.33?'Foundation':score<=AUDIT_QUESTIONS.length*0.66?'Visibility':'Growth';
+  await addKnowledgeFact(`Business audit scored ${score}/${AUDIT_QUESTIONS.length} — ${tier} stage.`);
+}
+
+/* ============================================================
+   DAILY ACCOUNTABILITY
+============================================================ */
+const ACCOUNTABILITY_TASKS = [
+  {key:'followups_cleared', label:'Cleared today\'s follow-up queue'},
+  {key:'sales_made', label:'Made at least one sale or booking today'},
+  {key:'new_contact', label:'Added or reached out to a new contact'},
+  {key:'status_posted', label:'Posted an update / status about the business'},
+  {key:'reviewed_numbers', label:'Checked today\'s revenue and expenses'}
+];
+function accountabilityKeyToday(){ return todayStr(); }
+function accountabilityTodayScore(){
+  const day = (DATA.accountability?.daily||{})[accountabilityKeyToday()] || {};
+  const done = ACCOUNTABILITY_TASKS.filter(t=>day[t.key]).length;
+  return {done, total: ACCOUNTABILITY_TASKS.length};
+}
+async function logAccountability(taskKey){
+  if(!DATA.accountability) DATA.accountability = {daily:{}, log:[]};
+  const k = accountabilityKeyToday();
+  if(!DATA.accountability.daily[k]) DATA.accountability.daily[k] = {};
+  if(!DATA.accountability.daily[k][taskKey]){
+    DATA.accountability.daily[k][taskKey] = true;
+    await saveData(); renderSidebar();
+  }
+}
+function renderAccountability(){
+  if(!DATA.accountability) DATA.accountability = {daily:{}, log:[]};
+  const k = accountabilityKeyToday();
+  const day = DATA.accountability.daily[k] || {};
+  const days = Object.keys(DATA.accountability.daily).sort().slice(-7);
+  const weekScores = days.map(d=>{
+    const dd = DATA.accountability.daily[d];
+    return ACCOUNTABILITY_TASKS.filter(t=>dd[t.key]).length;
+  });
+  const streak = calcStreak();
+  document.getElementById('pageContent').innerHTML = `
+  <div class="grid-metrics">
+    <div class="metric teal navy"><div class="ml">Today's Score</div><div class="mv">${ACCOUNTABILITY_TASKS.filter(t=>day[t.key]).length}/${ACCOUNTABILITY_TASKS.length}</div></div>
+    <div class="metric green"><div class="ml">Current Streak</div><div class="mv">${streak}d</div><div class="ms">days with at least 1 task done</div></div>
+  </div>
+  <div class="card"><div class="card-title">Today's Checklist</div>
+    ${ACCOUNTABILITY_TASKS.map(t=>`<div class="list-row"><span>${t.label}</span>
+      <input type="checkbox" ${day[t.key]?'checked':''} onchange="toggleAccountability('${t.key}',this.checked)" style="width:18px;height:18px;accent-color:var(--teal)">
+    </div>`).join('')}
+  </div>
+  <div class="card"><div class="card-title">Last 7 Days</div>
+    <div style="display:flex;align-items:flex-end;gap:10px;height:100px;padding-top:10px">
+    ${days.map((d,i)=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+      <div style="width:100%;background:var(--teal);border-radius:5px 5px 0 0;height:${Math.max(4,(weekScores[i]/ACCOUNTABILITY_TASKS.length)*70)}px"></div>
+      <div style="font-size:9.5px;color:var(--muted);margin-top:5px">${d.slice(5)}</div>
+    </div>`).join('') || '<div class="empty">No history yet</div>'}
+    </div>
+  </div>`;
+}
+function calcStreak(){
+  let streak=0; let d = new Date();
+  while(true){
+    const key = d.toISOString().slice(0,10);
+    const day = (DATA.accountability?.daily||{})[key];
+    if(day && Object.values(day).some(v=>v)){ streak++; d.setDate(d.getDate()-1); }
+    else break;
+  }
+  return streak;
+}
+async function toggleAccountability(key, val){
+  const k = accountabilityKeyToday();
+  if(!DATA.accountability.daily[k]) DATA.accountability.daily[k] = {};
+  DATA.accountability.daily[k][key] = val;
+  await saveData(); renderAccountability(); renderSidebar();
+}
+
+/* ============================================================
+   JOURNAL & NOTES
+============================================================ */
+function renderJournal(){
+  const entries = (DATA.journal||[]).slice().reverse();
+  document.getElementById('pageContent').innerHTML = `
+  <div class="two-col">
+    <div class="card"><div class="card-title">Journal & Notes <span class="sub">${entries.length} entries</span></div>
+      ${entries.length ? entries.map(e=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
+        <div style="display:flex;justify-content:space-between;width:100%"><b style="font-size:12px">${e.linkedName?'Re: '+e.linkedName:'General'}</b><span style="font-size:10.5px;color:var(--muted)">${fmtDate(e.date)}</span></div>
+        <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.6;white-space:pre-wrap">${e.text}</div>
+      </div>`).join('') : '<div class="empty">No entries yet — write your first note.</div>'}
+    </div>
+    <div class="card"><div class="card-title">New Entry</div>
+      <label class="lbl">Link to a ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
+      <select class="inp" id="jLink"><option value="">General / business-wide</option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}|${c.name}">${c.name}</option>`).join('')}</select>
+      <label class="lbl">Note</label><textarea class="inp" id="jText" rows="5" placeholder="What happened, what you decided, what to remember..."></textarea>
+      <button class="btn btn-primary btn-full" onclick="addJournal()">＋ Save Entry</button>
+    </div>
+  </div>`;
+}
+function openJournalFor(contactId, name){
+  closeModal(); navTo('journal');
+  setTimeout(()=>{ const sel=document.getElementById('jLink'); if(sel) sel.value = contactId+'|'+name; document.getElementById('jText')?.focus(); },150);
+}
+async function addJournal(){
+  const text = document.getElementById('jText').value.trim();
+  if(!text){ showToast('Write something first'); return; }
+  const linkVal = document.getElementById('jLink').value;
+  const [linkedId, linkedName] = linkVal ? linkVal.split('|') : [null,null];
+  if(!DATA.journal) DATA.journal = [];
+  DATA.journal.push({id:uid('J'), date:todayStr(), text, linkedId, linkedName});
+  await saveData(); showToast('Saved to journal'); renderJournal();
+  await addKnowledgeFact(`Journal note${linkedName?' re: '+linkedName:''}: ${text.slice(0,90)}${text.length>90?'…':''}`);
+}
+
+/* ---------- AI ASSISTANT (local, offline-safe, learns from your data) ---------- */
+let aiHistory = [];
+function renderAI(){
+  const ks = knowledgeStrength();
+  document.getElementById('pageContent').innerHTML = `
+  <div class="card" style="border-color:var(--teal)">
+    <div class="card-title">What TecXFRA has learned <span class="sub">${ks.facts} fact${ks.facts===1?'':'s'} recorded</span></div>
+    <div class="progress-track" style="margin-bottom:8px"><div class="progress-fill" style="width:${ks.pct}%"></div></div>
+    <div style="font-size:11.5px;color:var(--ink-dim)">Every persona detail, audit result, journal note, and loyalty tier you set gets added here — the more you feed it, the sharper the answers below get. A brand-new setup starts at 0%; nothing here is invented.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Ask about your business <span class="sub">answers from your live data — works offline, gets sharper the more you fill in</span></div>
+    <div class="ai-log" id="aiLog"></div>
+    <div style="display:flex;gap:8px">
+      <input class="inp" id="aiInput" style="margin:0" placeholder="e.g. Who should I follow up with today?" onkeydown="if(event.key==='Enter')sendAI()">
+      <button class="btn btn-primary" onclick="sendAI()">Ask</button>
+    </div>
+    <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px">
+      ${['Who should I contact today?','How is revenue this week?','What needs restocking?','Give me a daily summary','Who is my ideal customer?','How is my audit score?','What have you learned about my business?'].map(q=>`<button class="tab-pill" onclick="document.getElementById('aiInput').value='${q}';sendAI()">${q}</button>`).join('')}
+    </div>
+  </div>`;
+  if(aiHistory.length===0) aiHistory.push({role:'bot', text: aiSummary()});
+  drawAiLog();
+}
+function drawAiLog(){ document.getElementById('aiLog').innerHTML = aiHistory.map(m=>`<div class="ai-msg ${m.role==='user'?'user':'bot'}">${m.text}</div>`).join(''); const l=document.getElementById('aiLog'); l.scrollTop=l.scrollHeight; }
+function aiSummary(){
+  const t = todayStr();
+  const rev = (DATA.transactions||[]).filter(x=>x.date===t).reduce((s,x)=>s+x.amount,0);
+  const due = (DATA.followups||[]).filter(f=>!f.done && f.due<=t).length;
+  const low = (DATA.inventory||[]).filter(i=>i.stock<=i.par).length;
+  const acc = accountabilityTodayScore();
+  return `Good day — here's where things stand:\n\n• Revenue today: ${money(rev)}\n• Follow-ups due: ${due}\n• Low stock items: ${low}\n• Hot leads: ${(DATA.contacts||[]).filter(c=>c.temp==='hot').length}\n• Today's accountability: ${acc.done}/${acc.total}\n\nAsk me about who to contact first, revenue trends, your persona, or your audit score.`;
+}
+function aiAnswer(q){
+  const ql = q.toLowerCase();
+  if(ql.includes('learned') || ql.includes('what do you know') || ql.includes('knowledge')){
+    const facts = (DATA.knowledge?.facts||[]).slice(-8).reverse();
+    if(!facts.length) return `Nothing recorded yet — fill in your Persona, run your Audit, or add Journal notes and I'll start remembering specifics about ${CFG.bizName} instead of giving generic answers.`;
+    return `Here's what I've picked up so far, most recent first:\n\n` + facts.map(f=>`• [${fmtDate(f.date)}] ${f.text}`).join('\n');
+  }
+  if(ql.includes('persona') || ql.includes('ideal customer') || ql.includes('ideal client')){
+    const p = DATA.persona;
+    if(!p || !p.name) return `You haven't built your Ideal Client Persona yet — head to the Persona module. Once it's filled in, I'll use it to sharpen every answer I give you.`;
+    return `Your ideal ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} is ${p.name}: ${p.age||'age not set'}, ${p.income||'spend not set'}. Their biggest pain point is "${p.pain||'not set'}". They usually object with "${p.objection||'not set'}" and say yes when: ${p.trigger||'not set'}. Aim your messaging and offers at exactly this person.`;
+  }
+  if(ql.includes('audit') || ql.includes('score my business')){
+    if(DATA.auditScore===null || DATA.auditScore===undefined) return `You haven't run your Business Audit yet — head to the Audit module, it takes about 2 minutes and shapes what I prioritise for you.`;
+    return `Your last audit score was ${DATA.auditScore} out of ${AUDIT_QUESTIONS.length}. ${DATA.auditScore <= AUDIT_QUESTIONS.length*0.33 ? 'You are in the Foundation stage — focus on visibility and fast replies before anything else.' : DATA.auditScore <= AUDIT_QUESTIONS.length*0.66 ? 'You are in the Visibility stage — build consistent follow-up and retention next.' : 'You are in the Growth stage — focus on referrals and systemising what already works.'}`;
+  }
+  if(ql.includes('follow') || ql.includes('contact') || ql.includes('who')){
+    const due = (DATA.followups||[]).filter(f=>!f.done).slice(0,5);
+    if(!due.length) return 'Nothing outstanding right now — good time to reach out to a cold lead instead, or ask a happy customer for a referral.';
+    return 'Priority order:\n' + due.map((f,i)=>`${i+1}. ${f.contactName} — ${f.detail} (due ${fmtDate(f.due)})`).join('\n');
+  }
+  if(ql.includes('revenue') || ql.includes('sales') || ql.includes('income')){
+    const t=todayStr(); const rev=(DATA.transactions||[]).filter(x=>x.date===t).reduce((s,x)=>s+x.amount,0);
+    const week=(DATA.transactions||[]).reduce((s,x)=>s+x.amount,0);
+    return `Today: ${money(rev)}. Logged total this window: ${money(week)}. ${rev>0?'Keep the pace up.':'No sales logged yet today.'}`;
+  }
+  if(ql.includes('stock') || ql.includes('restock') || ql.includes('inventory')){
+    const low=(DATA.inventory||[]).filter(i=>i.stock<=i.par);
+    if(!low.length) return 'Nothing at or below par right now.';
+    return 'Needs restocking:\n'+low.map(i=>`• ${i.name} — ${i.stock} left (par ${i.par})`).join('\n');
+  }
+  if(ql.includes('summary') || ql.includes('brief') || ql.includes('today')) return aiSummary();
+  if(ql.includes('convert') || ql.includes('close')) return `You have ${(DATA.contacts||[]).filter(c=>c.temp==='hot').length} hot lead(s) ready to close. Lead with a direct question, then a clear next step — see the Messages tab for closing scripts.`;
+  if(ql.includes('referral')) return `Once a ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} confirms they're happy, ask within 24–72 hours using one of the scripts in the Referrals module — that window is when a "yes" is most likely.`;
+  return `I can answer from your live data — try asking about follow-ups, revenue, stock levels, your persona, your audit score, or ask for a daily summary.`;
+}
+function sendAI(){
+  const inp = document.getElementById('aiInput'); const q=inp.value.trim(); if(!q) return;
+  aiHistory.push({role:'user', text:q}); inp.value='';
+  aiHistory.push({role:'bot', text:aiAnswer(q)});
+  if(DATA.knowledge){ DATA.knowledge.questionsAsked = (DATA.knowledge.questionsAsked||0)+1; saveData(); }
+  drawAiLog();
+}
+
+/* ---------- GUIDES / GROWTH LIBRARY ---------- */
+const GUIDE_CATEGORIES = ['Customer Growth','Visibility & Digital','Sales','Customer Service','Referrals & Retention','Daily Operating System'];
+const GUIDES = [
+  {cat:'Customer Growth', t:'The 5 Levels of a Customer', b:70, full:`Most owners think a "customer" is someone who buys once and leaves — that's only Level 1. The more people you move up these levels, the less you have to chase new customers every day.\n\nLevel 1 — The Customer: buys once, no loyalty yet. Came because you were close by or the price was right that day.\n\nLevel 2 — The Client: buys again and again, trusts your quality, but hasn't told anyone else yet.\n\nLevel 3 — The Affiliate: a client you've asked to bring you more customers, usually for something small in return. "Bring me two friends, your next one is half price."\n\nLevel 4 — The Ambassador: talks about your business unprompted and unpaid, because using you makes them look good.\n\nLevel 5 — The Partner: another business owner who joins forces with you so you both grow together instead of working alone.\n\nTry this today: think of 3 customers who already buy from you often (Level 2). Pick one and offer a small reward if they bring a new customer (moves them to Level 3). Ask one happy customer to share a photo or review on their own page (can turn them into Level 4).`},
+  {cat:'Customer Growth', t:'Network vs. Net Worth', b:55, full:`Many owners open shop, sit behind the counter, and wait for people to walk past — the Old Way. The problem: you only reach whoever happens to walk by that day.\n\nThe New Way is working as a team: partner with nearby businesses that serve the same kind of customer but sell something different. When you combine audiences, everyone gets more business.\n\nExample: a barber, a shoe seller and a food vendor on the same street. Every guy getting a haircut also cares about his shoes. The barber doesn't sell shoes but meets style-conscious men daily — a small card or QR code at his station sends that traffic to the shoe seller for free.\n\nA weekly food deal ("Friday special") isn't about profit on the food — it's about pulling more people past both shops on the same day.\n\nTry this today: list 3 nearby businesses that serve your kind of customer but don't sell what you sell. Pick one and suggest a simple swap — you display their flyer, they display yours. Agree on one joint offer you can promote together.`},
+  {cat:'Visibility & Digital', t:'The Contact Gold Mine', b:60, full:`Most people use their phone contacts only as a chat list. If you're a business owner, that list — and your status updates — can work like a free shop window.\n\nSort your contacts into 3 groups: Stored Capital (people who've bought from you before), Hidden Capital (people who know you but don't know exactly what you sell), Dead Weight (people with no connection to your business). In most contact lists, Hidden Capital is the largest group and the most overlooked.\n\nAvoid the common mistake: posting product photos with no price and no story — people scroll past with no reason to stop.\n\nUse the 3-part status formula: 1) The Hook — name a problem people have ("Interview this week with scuffed shoes?"). 2) The Transformation — show the fixed result. 3) The Easy Next Step — give a clear price, link or location, not just "DM me."\n\nTry this today: sort 10 saved contacts into the 3 groups. Write one status post using Hook → Transformation → Easy Next Step, ending with a clear price or link.`},
+  {cat:'Sales', t:'The Currency of Value', b:65, full:`Money doesn't chase wishes, it chases value. If you started a business just to "make money," growth gets hard — money moves toward whoever solves the customer's real problem best.\n\nTwo ways to see a customer: the Transaction Trap ("what can I collect from this one sale?") vs the Value Mindset ("what is this person really trying to achieve, and what's at stake for them?").\n\nExample: someone printing a CV doesn't just want paper — they want to look professional because a job may depend on it. The low-value way: print it, collect the fee, done. The high-value way: point out that loose paper can get damaged, offer a clean binding for a little extra — solving the deeper problem earns more from the same visit.\n\nThis applies everywhere: a shoe seller notices a customer buying for a job interview and offers a quick polish and a lacing tip, because the real goal is a strong first impression, not just owning shoes.\n\nTry this today: pick your most common product or service. Ask "what is the customer really trying to achieve when they buy this?" Think of one small add-on that solves that deeper problem, then offer it to your next 3 customers.`},
+  {cat:'Visibility & Digital', t:'The Foundation Check', b:50, full:`Before spending on adverts or promotions, ask one honest question: is your business actually ready to welcome people?\n\nWalk through these — tick what's already true today: found online without you sending a link · one single link/page for anyone · a stranger can tell what you sell and where in 5 seconds · something that shows you can be trusted (reviews, photos, verification) · prices, location and contact details correct and in one place, not scattered · clean, current photos and videos · fast replies, not after several days · new enquiries arrive even on days you haven't posted.\n\nScoring: 0–2 ticks — no address yet, focus on simply existing online and being found. 3–5 ticks — you have a door but it's hard to find, focus on consistent, trustworthy visibility. 6–8 ticks — you're open, now focus on keeping it running without doing everything alone.\n\nThe TecXFRA Business Audit module runs this exact check for you and scores it automatically — use it any time you want a fresh read on where you stand.`},
+  {cat:'Sales', t:'The Sales Playbook — Give Value First', b:80, full:`The one rule everything else depends on: give value before you ask for anything. Trust isn't built by having a good product — it's built by showing you understand the customer's problem better than they do. Lead with insight before price, every time.\n\nSort every contact into 3 groups before messaging: Cold (never spoken — goal is a reply, not a sale, ask one question and wait), Warm (spoken before — reconnect as a person first, business comes in message 2), Re-engage (went cold — never follow up on the old offer, re-enter with something new).\n\nThe 5 hooks to open with: 1) Show them their problem (a specific, real gap). 2) Give a specific tip for their industry. 3) Local proof (what's working for a business near them). 4) The fast win (do something small for free). 5) The competitor reveal (what a rival is doing that they aren't).\n\nSaying your price: state it once, calmly, then stay quiet — the first person to speak after the price loses. Anchor it to a small daily amount and connect it to the outcome, not the product. If they negotiate, offer a smaller entry point rather than a discount.\n\nThe 7 objections and how to answer them: "I'll think about it" → ask what specific part they're unsure about. "I don't use the internet" → their customers do. "Too expensive" → offer the free/smaller option first. "Tried ads before, didn't work" → this is different, it doesn't need an ongoing budget. "No time" → you don't need their time, just their details. "How do I know this is real" → offer a nearby reference they can check. "Send more info" → show them live instead of explaining.\n\nThe 3 client types: Type A (Ready) — close quickly, take payment first. Type B (Interested) — needs patience, one clear next step at a time. Type C (Extractor) — asks for free work before committing, disengage politely.\n\nThe follow-up system: most sales need 5+ contacts. Day 1 first message, Day 2–3 new value, Day 7 different angle, Day 14 short question only, Day 30 final re-entry acknowledging the gap. Every follow-up must bring something new — never just "checking in."`},
+  {cat:'Customer Service', t:'Customer Service — Presence, Greeting & Attitude', b:60, full:`A customer forms an opinion before you say a word. Before greeting, before selling — someone has to actually be present, alert and ready. If you step away, leave a note; a shop that feels empty tells customers "you're not important."\n\nThe greeting matters more than it seems: eye contact, a genuine smile, a verbal welcome, and an offer to help. It costs three seconds and it's the difference between a customer who stays and one who turns around.\n\nKnow your products — what you sell, current prices, what's in stock, basic features. "I don't know" is one of the fastest ways to lose trust; "let me find out for you right now" isn't.\n\nWhatsApp and phone are part of your shopfront: reply to every message, even a holding reply ("I'll get back to you in 30 minutes"). Keep your business account professional — personal content belongs on your personal account. Answer calls with your business name, not a flat "hello."\n\nWhen a customer complains: listen fully without interrupting, acknowledge their frustration, never argue even if you think they're wrong, offer a solution, and thank them — complaints are free feedback.\n\nYour attitude is part of your business. Complaints don't attract customers, solutions do. Compete with who you were yesterday, not with your neighbour's shop.\n\nReputation is built one customer at a time — consistent service, keeping promises, honest pricing, and treating every customer the same whether they spend big or small.`},
+  {cat:'Referrals & Retention', t:'Referral & Retention System', b:75, full:`Referral customers are your highest-value growth channel — it's roughly 5x cheaper to retain an existing customer than acquire a new one, and referred customers tend to spend more and stay longer. Most businesses never activate this simply because they never ask.\n\nWhy businesses don't ask: it feels awkward, they ask at the wrong time, they have no system, or they offer nothing in return. Fix each: frame the ask as a compliment, ask inside the golden window, use a repeatable script, and offer even a small reward.\n\nThe golden window: ask 24–72 hours after the customer has confirmed they're happy — not before (too early, feels pushy) and not weeks later (emotion has faded). Always thank them genuinely first.\n\nThe 6-stage referral system: 1) Deliver exceptionally (over-deliver in some small way). 2) Confirm satisfaction within 48 hours. 3) Ask for the referral in the golden window using one of the scripts. 4) Track every referral immediately — who referred whom, what they need. 5) Acknowledge and reward the referrer the moment the referral buys. 6) Ask the referrer again after 2 weeks — the second ask is always easier.\n\nRewards that work without hurting margin: a fixed bonus per referral, a % commission, a free product on the next order, priority/early access, or simply a warm personal thank-you voice note and public recognition — in many cultures, being acknowledged carries real weight on its own.\n\nThe 4 loyalty tiers: One-Time Buyer (re-activate with a 30-day check-in), Repeat Buyer (personal check-ins, early access), Loyal Customer (priority service, ask for referrals and testimonials), Spotlight Client (treat like a partner, involve them in new ideas).\n\nRetention schedule: 48 hours after purchase — satisfaction check. 7 days — thank you + new arrival. 30 days — re-engagement check-in. 60 days no purchase — re-activation offer with something new. Every touchpoint should add value, never just "checking in."\n\nRe-activating cold contacts: never re-enter a quiet conversation without bringing something new — a new arrival, a result story from someone else, a seasonal note, or (after 90+ days silent) a zero-pressure direct check-in with no sales agenda at all.\n\nRun an annual customer audit: count and categorise every customer by tier, identify your top 10 and thank them personally, run re-activation on anyone who went quiet, and set 3 specific retention goals for the next 12 months.`},
+  {cat:'Daily Operating System', t:'The Daily, Weekly & Monthly Operating System', b:70, full:`Everything in this library works when applied consistently — 30 minutes a day, every day, is what the system actually requires. The question is never whether it works, it's whether you show up for it.\n\nMorning: clear unread messages and follow-ups, post or share your first update of the day, check who engaged with yesterday's content and respond.\n\nMid-morning: work active conversations forward, follow up on anything sent 24+ hours ago with no response.\n\nAfternoon: update your catalogue or offer, reply to everything new within 2 hours.\n\nEvening: check in with your best customers personally, post your final update of the day (this window often gets the most engagement), reset your inbox — archive what's done, label what's active.\n\nWeekly rhythm: Monday — review every stalled lead. Tuesday — plan content for the week. Wednesday — catalogue and broadcast day. Thursday — customer care (check-ins, testimonials, referrals). Friday — outreach to new contacts. Saturday — your strongest offer of the week. Sunday — review the numbers and plan next week.\n\nThe math that matters: one extra sale a day, every day, compounds into meaningful annual revenue — not from luck, but from consistent daily action. Use the Accountability module here in TecXFRA to track exactly this, day by day, and see your streak build.`}
+];
+let guideCatFilter = 'All';
+function renderGuides(){
+  document.getElementById('pageContent').innerHTML = `
+  <div class="tab-row" id="guideTabs"></div>
+  <div class="card" id="guideList"></div>`;
+  document.getElementById('guideTabs').innerHTML = ['All',...GUIDE_CATEGORIES].map(c=>
+    `<button class="tab-pill ${guideCatFilter===c?'active':''}" onclick="setGuideCat('${c.replace(/'/g,"\\'")}')">${c}</button>`).join('');
+  drawGuideList();
+}
+function setGuideCat(c){ guideCatFilter=c; renderGuides(); }
+function drawGuideList(){
+  const list = guideCatFilter==='All' ? GUIDES : GUIDES.filter(g=>g.cat===guideCatFilter);
+  document.getElementById('guideList').innerHTML = `<div class="card-title">Growth Library <span class="sub">${list.length} guides · tap to expand</span></div>` +
+  list.map((g,i)=>`<div class="guide-item" onclick="this.classList.toggle('open')">
+    <h4>${g.t} <span style="font-weight:400;color:var(--muted);font-size:10.5px">· ${g.cat}</span></h4>
+    <p>${g.full.split('\\n')[0].slice(0,110)}...</p>
+    <div class="guide-body">${g.full.split('\\n\\n').map(p=>`<p style="margin-bottom:10px">${p}</p>`).join('')}</div>
+  </div>`).join('');
+}
+
+/* ---------- THE TECXFRA SYSTEM (full explainer page) ---------- */
+const TECXFRA_LETTERS = [
+  {letter:'T', title:'Today View, Tasks & Operational Checklists', analogy:'The Morning Shift Floor', modules:['today'],
+   text:`Before any work begins, the factory floor needs its daily blueprints and specific shift goals — without them, people sit idle and chaos rules. T is the immediate lens for every day in ${CFG?CFG.bizName:'your business'}: it strips away long-term noise and tells you exactly what must be executed today. It forces daily micro-accountability so macro-growth can happen.`},
+  {letter:'e', title:'Expenses, Inventory & Resource Control', analogy:'The Warehouse & Fuel Intake', modules:['expenses','inventory'],
+   text:`A factory can't produce goods without raw materials or run its machines without fuel. e stops profit leaks dead in their tracks — by tightly linking real-time stock levels with spend tracking, the business never over-buys, never runs out, and keeps a fully optimised cash runway.`},
+  {letter:'c', title:'CRM, Calendar & Contacts', analogy:'The Client Reception Desk & Order Book', modules:['crm','calendar','bookings'],
+   text:`This is the front gate where clients place orders, book time, and log how they like to be reached. c unifies your human network — pipelines stay transparent, calendars stay synchronised, and no client history is ever trapped in one person's phone. It centralises the memory of the whole business.`},
+  {letter:'X', title:'Execution, Retention & Growth Analytics', analogy:'The Central Control Tower', modules:['referrals','persona','guides'],
+   text:`The glass room overlooking the whole floor — dashboards tracking pace, bottlenecks, and predictive growth. X is your strategic crystal ball: raw data from daily tasks, inventory and CRM feeds straight into it, calculating retention, building sharp customer personas, mapping referral networks, and turning daily effort into measurable scaling.`},
+  {letter:'F', title:'Follow-Ups & WhatsApp Messaging', analogy:'The Automated Conveyor Belts & Shipping Chutes', modules:['followups','messages'],
+   text:`Once an order is processed, belts package it and notify the buyer instantly. F owns the conversational narrative — automated follow-up sequences and instant messaging keep an aggressive, flawless communication loop running with every lead and client. Human forgetfulness is eliminated.`},
+  {letter:'R', title:'Revenue, POS & Invoicing', analogy:'The Cash Vault & Billing Office', modules:['revenue','pos','invoicing'],
+   text:`Where transactions are taken, invoices are stamped paid, and capital is routed home. R is the lifeblood of the enterprise — combining point-of-sale, billing and instant invoicing to slash the time between a sale happening and the money being counted.`},
+  {letter:'A', title:'Accountability, Audits & AI Guidance', analogy:'The Automated Supervisor & Compliance Inspector', modules:['accountability','audit','ai'],
+   text:`An invisible system walking the floor — flagging errors, alerting when standards slip, suggesting faster ways to run the plant. A is the safety net and the optimiser: it audits actions, checks compliance, and uses AI to guide decisions, cutting fraud and human error while acting as a 24/7 digital consultant.`}
+];
+function renderSystem(){
+  const letters = TECXFRA_LETTERS.map(l=>`
+    <div class="card" style="border-left:4px solid var(--teal)">
+      <div class="card-title"><span><span class="sb-letter" style="width:20px;height:20px;font-size:12px;border-radius:6px">${l.letter}</span> ${l.title}</span> <span class="sub">${l.analogy}</span></div>
+      <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.75">${l.text}</div>
+      <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px">
+        ${l.modules.map(k=>CFG.modules.includes(k)?`<button class="tab-pill" onclick="navTo('${k}')">${labelFor(k)} →</button>`:'').join('')}
+      </div>
+    </div>`).join('');
+  document.getElementById('pageContent').innerHTML = `
+  <div class="card" style="background:linear-gradient(135deg, var(--navy), var(--navy-deep)); border:none; color:#fff">
+    <div style="font-size:10.5px;letter-spacing:2px;text-transform:uppercase;color:var(--teal);font-weight:800;margin-bottom:10px">The Philosophy Behind The Name</div>
+    <div class="disp" style="font-size:26px;font-weight:700;letter-spacing:-.3px;margin-bottom:10px">TecXFRA — Complete Total Control</div>
+    <div style="font-size:13px;line-height:1.8;color:#d9e8ea;max-width:760px">Picture ${CFG.bizName} as a fully automated, high-performance smart factory. A factory can't run on one machine alone — it needs a floor, fuel, conveyor belts, a control tower, shipping docks, a cash vault, and an automated supervisor. TecXFRA is the single software nervous system that locks every one of those moving parts into one unbreakable chain of control.</div>
+  </div>
+
+  <div class="card"><div class="card-title">Where The Letters Come From</div>
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8">
+      <b style="color:var(--navy)">Tec</b> is the operational foundation — the daily floor, the resources, and the people. <b style="color:var(--navy)">X</b> sits at the exact centre as the analytical bridge between operations and outcomes. <b style="color:var(--navy)">FRA</b> closes the loop — the outbound communication, the inbound capital, and the oversight that keeps it all honest.
+    </div>
+  </div>
+
+  ${letters}
+
+  <div class="card" style="border-color:var(--teal)"><div class="card-title">The Synergy — One Domino Effect</div>
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8">In standard setups, a manager checks one app for tasks, another for inventory, a third for client data, a spreadsheet for analytics, a phone for messaging, accounting software for invoicing, and manual logs for audits.<br><br>
+    TecXFRA destroys that fragmentation. When a sale is made at the till <b style="color:var(--navy)">(R)</b>, the system automatically updates the customer profile <b style="color:var(--navy)">(c)</b>, subtracts the goods from inventory <b style="color:var(--navy)">(e)</b>, triggers an automated thank-you message <b style="color:var(--navy)">(F)</b>, logs the audit trail <b style="color:var(--navy)">(A)</b>, updates the growth dashboard <b style="color:var(--navy)">(X)</b>, and adds a follow-up task to today's list <b style="color:var(--navy)">(T)</b>.<br><br>
+    That seamless, automated domino effect — one action, every part of the business updating in step — is the exact definition of <b style="color:var(--navy)">Complete Total Control</b>.</div>
+  </div>`;
+}
+
+/* ---------- ARCHIVE ---------- */
+function renderArchive(){
+  document.getElementById('pageContent').innerHTML = `<div class="card"><div class="card-title">Archive <span class="sub">nothing is ever deleted</span></div>
+  ${(DATA.archive||[]).length ? DATA.archive.map((a,i)=>`<div class="list-row"><span><b>${a.name}</b> <span style="color:var(--muted);font-size:11px">· archived ${fmtDate(a.archivedDate)}</span></span><button class="btn btn-ghost" style="padding:6px 12px" onclick="restoreArchive(${i})">↺ Restore</button></div>`).join('') : '<div class="empty">Nothing archived yet.</div>'}
+  </div>`;
+}
+async function restoreArchive(i){
+  const [a] = DATA.archive.splice(i,1);
+  delete a.archivedFrom; delete a.archivedDate;
+  DATA.contacts.push(a);
+  await saveData(); showToast('Restored'); renderArchive(); renderSidebar();
+}
+
+/* ---------- SETTINGS ---------- */
+let settingsTab = 'business';
+function renderSettings(){
+  document.getElementById('pageContent').innerHTML = `
+  <div class="settings-tabs" id="setTabs"></div>
+  <div id="setBody"></div>`;
+  document.getElementById('setTabs').innerHTML = ['business','plan','branding','industry','modules','team'].map(k=>
+    `<button class="tab-pill ${settingsTab===k?'active':''}" onclick="setSettingsTab('${k}')">${{business:'Business',plan:'Plan',branding:'Branding',industry:'Industry',modules:'Modules',team:'Team & Roles'}[k]}</button>`).join('');
+  drawSettingsBody();
+}
+function setSettingsTab(k){ settingsTab=k; renderSettings(); }
+function drawSettingsBody(){
+  const b = document.getElementById('setBody');
+  if(settingsTab==='business'){
+    const ci = getCountryInfo();
+    b.innerHTML = `<div class="card" style="max-width:480px">
+      <div class="industry-badge" style="margin-bottom:14px">${CUR_INDUSTRY_OBJ.ic} ${CUR_INDUSTRY_OBJ.label}</div>
+      <label class="lbl">Business name</label><input class="inp" id="setBizName" value="${CFG.bizName}">
+      <label class="lbl">Owner name</label><input class="inp" id="setOwnerName" value="${CFG.ownerName}">
+      <label class="lbl">Country</label>
+      <select class="inp" id="setCountry">${COUNTRIES.map(c=>`<option value="${c.country}" ${c.country===CFG.country?'selected':''}>${c.country}</option>`).join('')}</select>
+      <label class="lbl">Currency</label>
+      <select class="inp" id="setCurrency">${['GHS','USD','GBP','EUR','NGN','KES','ZAR','INR','AED','CAD'].map(c=>`<option ${c===CFG.currency?'selected':''}>${c}</option>`).join('')}</select>
+      <label class="lbl">Daily tone</label>
+      <select class="inp" id="setTone">
+        <option value="motivation" ${CFG.tone==='motivation'?'selected':''}>Motivation &amp; Discipline</option>
+        <option value="faith" ${CFG.tone==='faith'?'selected':''}>Faith &amp; Scripture</option>
+        <option value="neutral" ${CFG.tone==='neutral'?'selected':''}>Plain &amp; Neutral</option>
+      </select>
+      <div style="font-size:11.5px;color:var(--ink-dim);margin:4px 0 14px;line-height:1.6">Current tax type: <b style="color:var(--navy)">${ci.tax}</b> · Payroll: <b style="color:var(--navy)">${ci.payroll}</b></div>
+      <button class="btn btn-primary" onclick="saveBusinessSettings()">Save Changes</button>
+    </div>`;
+  } else if(settingsTab==='industry'){
+    b.innerHTML = `<div class="card"><div class="card-title">Change industry <span class="sub">relabels the app instantly — your data is never affected</span></div>
+      <div class="industry-grid" id="setIndustryGrid"></div></div>`;
+    document.getElementById('setIndustryGrid').innerHTML = INDUSTRIES.map(i=>`
+      <div class="industry-pin ${i.key===CFG.industry?'sel':''}" onclick="changeIndustry('${i.key}')"><div class="ic">${i.ic}</div><div class="lb">${i.label}</div></div>`).join('');
+  } else if(settingsTab==='modules'){
+    b.innerHTML = `<div class="card"><div class="card-title">Modules <span class="sub">turn features on as you grow — nothing is lost when off</span></div>
+      <div id="setModList"></div></div>`;
+    function checkHtmlLive(m){
+      const on = CFG.modules.includes(m.key);
+      return `<label class="mod-check ${on?'on':''}" data-k="${m.key}">
+        <input type="checkbox" ${on?'checked':''} ${m.core?'disabled':''} onchange="toggleLiveModule(this,'${m.key}')">
+        <div><div class="mn">${m.ic} ${m.name}${m.core?' <span style=\'color:var(--muted);font-weight:400\'>(always on)</span>':''}</div><div class="md">${m.desc}</div></div>
+      </label>`;
+    }
+    let modHtml = '';
+    TECXFRA_GROUPS.forEach(g=>{
+      const items = MODULES.filter(m=>g.keys.includes(m.key));
+      if(!items.length) return;
+      modHtml += `<div style="font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--teal-dim);margin:10px 0 6px;display:flex;align-items:center;gap:6px">
+        <span class="sb-letter" style="background:var(--navy)">${g.letter}</span> ${g.label}</div>
+        <div class="mod-list" style="max-height:none">${items.map(checkHtmlLive).join('')}</div>`;
+    });
+    const moreItems = MODULES.filter(m=>TECXFRA_MORE_KEYS.includes(m.key));
+    if(moreItems.length) modHtml += `<div style="font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin:10px 0 6px">More</div>
+      <div class="mod-list" style="max-height:none">${moreItems.map(checkHtmlLive).join('')}</div>`;
+    document.getElementById('setModList').innerHTML = modHtml;
+  } else if(settingsTab==='plan'){
+    const cur = currentPlan();
+    b.innerHTML = `<div class="grid-metrics" style="grid-template-columns:repeat(3,1fr)">
+      ${PLANS.map(p=>`<div class="card" style="border-color:${p.key===cur.key?'var(--teal)':'var(--line)'};position:relative">
+        ${p.key===cur.key?'<div class="pill pill-active" style="position:absolute;top:14px;right:14px">Current</div>':''}
+        <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">${p.label}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${p.price}</div>
+        <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.6;margin-bottom:14px">${p.tagline}. ${p.desc}</div>
+        <button class="btn ${p.key===cur.key?'btn-ghost':'btn-primary'} btn-full" ${p.key===cur.key?'disabled':''} onclick="switchPlan('${p.key}')">${p.key===cur.key?'Current Plan':'Switch to '+p.label}</button>
+      </div>`).join('')}
+    </div>
+    <div class="card"><div class="card-title">What changes between plans</div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.8">
+        <b style="color:var(--navy)">AI recall depth:</b> Starter remembers your last ${PLANS[0].aiFacts} learned facts, Growth ${PLANS[1].aiFacts}, Enterprise up to ${PLANS[2].aiFacts}.<br>
+        <b style="color:var(--navy)">White-label branding:</b> logo + brand colour are an Enterprise feature.<br>
+        <b style="color:var(--navy)">CSV import:</b> available on Growth and Enterprise.<br>
+        <b style="color:var(--navy)">Modules:</b> Referrals, Persona, Audit and Accountability need Growth or above; Journal needs Enterprise.
+      </div>
+    </div>
+  } else if(settingsTab==='branding'){
+    const locked = !currentPlan().whiteLabel;
+    b.innerHTML = `<div class="card" style="max-width:480px">
+      <div class="card-title">White-Label Branding ${locked?'<span class=\"pill pill-warm\">Enterprise only</span>':''}</div>
+      ${locked?'<div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px">Upgrade to Enterprise to customise your brand colour and logo across the whole app.</div>':''}
+      <label class="lbl">Brand colour</label><input class="inp" id="setBrandColor" type="color" value="${CFG.brandColor||'#4aa8b8'}" ${locked?'disabled':''} style="height:44px;padding:4px">
+      <label class="lbl">Logo (emoji or initials, e.g. 🏨 or HB)</label><input class="inp" id="setLogoEmoji" value="${CFG.logoEmoji||''}" maxlength="4" ${locked?'disabled':''} placeholder="Leave blank to use the default TecXFRA mark">
+      <button class="btn btn-primary" ${locked?'disabled':''} onclick="saveBranding()">Save Branding</button>
+    </div>`;
+  } else if(settingsTab==='team'){
+    b.innerHTML = `<div class="card"><div class="card-title">Team & Roles <span class="sub">manage on the Staff tab — shown here for reference</span></div>
+      ${(DATA.staff||[]).map(s=>`<div class="list-row"><span><b>${s.name}</b> · ${s.role}</span><span class="pill pill-cold">${s.dept}</span></div>`).join('')}
+      <button class="btn btn-ghost" style="margin-top:10px" onclick="navTo('staff')">Open Staff & Shifts →</button>
+    </div>`;
+  }
+}
+async function saveBusinessSettings(){
+  CFG.bizName = document.getElementById('setBizName').value.trim() || CFG.bizName;
+  CFG.ownerName = document.getElementById('setOwnerName').value.trim() || CFG.ownerName;
+  CFG.country = document.getElementById('setCountry').value;
+  CFG.currency = document.getElementById('setCurrency').value;
+  CFG.tone = document.getElementById('setTone').value;
+  await saveCfg();
+  document.getElementById('sbBizName').textContent = CFG.bizName;
+  document.getElementById('sbOwnerName').textContent = CFG.ownerName;
+  document.getElementById('sbAvatar').textContent = initials(CFG.ownerName);
+  showToast('Saved'); renderSettings();
+}
+async function switchPlan(key){
+  CFG.plan = key;
+  await saveCfg(); renderSidebar(); renderSettings();
+  showToast(`Switched to ${currentPlan().label}`);
+}
+async function saveBranding(){
+  if(!currentPlan().whiteLabel){ showToast('Upgrade to Enterprise first'); return; }
+  CFG.brandColor = document.getElementById('setBrandColor').value;
+  CFG.logoEmoji = document.getElementById('setLogoEmoji').value.trim();
+  await saveCfg(); applyBranding(); showToast('Branding updated');
+}
+function applyBranding(){
+  document.documentElement.style.setProperty('--teal', CFG.brandColor || '#4aa8b8');
+  const marks = document.querySelectorAll('.mark');
+  marks.forEach(el=>{
+    if(CFG.logoEmoji){ el.innerHTML = `<div style="width:100%;height:100%;border-radius:8px;background:${CFG.brandColor||'#4aa8b8'};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff">${CFG.logoEmoji}</div>`; }
+  });
+}
+async function changeIndustry(k){
+  CFG.industry = k; CUR_INDUSTRY_OBJ = INDUSTRIES.find(i=>i.key===k);
+  const defaults = INDUSTRY_DEFAULTS[k];
+  defaults.forEach(m=>{ if(!CFG.modules.includes(m)) CFG.modules.push(m); });
+  await saveCfg();
+  document.getElementById('sbIndustry').textContent = CUR_INDUSTRY_OBJ.label;
+  renderSidebar(); renderSettings(); showToast('Industry updated — labels refreshed across the app');
+}
+async function toggleLiveModule(el, key){
+  if(el.checked){ if(!CFG.modules.includes(key)) CFG.modules.push(key); }
+  else{ CFG.modules = CFG.modules.filter(m=>m!==key); }
+  await saveCfg(); renderSidebar(); renderSettings(); showToast(el.checked?'Module turned on':'Module turned off');
+}
+
+/* ============================================================
+   INIT
+============================================================ */
+(async function init(){
+  renderIndustryGrid();
+  populateWizCountry();
+  await loadAll();
+  if(CFG && DATA){ boot(); }
+  else{
+    document.getElementById('wizard').style.display='flex';
+  }
+  window.addEventListener('resize', ()=>{ document.getElementById('menuToggle').classList.toggle('hidden', window.innerWidth>860); });
+  document.getElementById('menuToggle').classList.toggle('hidden', window.innerWidth>860);
+})();
+</script>
+</body>
+</html>
