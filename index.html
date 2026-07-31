@@ -600,30 +600,42 @@ let CUR_SUBSCRIPTION = null;
 
 async function saveCfg(){
   if(!CUR_VENUE_ID) return;
-  try{ await sb.from('tenant_data').update({ business_name: CFG.bizName, cfg: CFG }).eq('venue_id', CUR_VENUE_ID); }
+  try{ const { error } = await sb.rpc('save_tenant_cfg', { p_cfg: CFG, p_business_name: CFG.bizName }); if(error) throw error; }
   catch(e){ console.error('saveCfg failed', e); showToast('Could not save — check connection'); }
 }
 async function saveData(){
   if(!CUR_VENUE_ID) return;
-  try{ await sb.from('tenant_data').update({ data: DATA }).eq('venue_id', CUR_VENUE_ID); }
+  try{ const { error } = await sb.rpc('save_tenant_data', { p_data: DATA }); if(error) throw error; }
   catch(e){ console.error('saveData failed', e); showToast('Could not save — check connection'); }
 }
 async function loadAll(){
-  CFG = null; DATA = null;
+  CFG = null; DATA = null; CUR_SUBSCRIPTION = null;
   if(!CUR_VENUE_ID) return;
   try{
-    const { data: row, error } = await sb.from('tenant_data').select('cfg,data').eq('venue_id', CUR_VENUE_ID).maybeSingle();
+    const { data: rows, error } = await sb.rpc('get_tenant_bootstrap');
     if(error) throw error;
-    if(row){ CFG = (row.cfg && Object.keys(row.cfg).length) ? row.cfg : null; DATA = (row.data && Object.keys(row.data).length) ? row.data : null; }
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    if(row){
+      CFG = (row.cfg && Object.keys(row.cfg).length) ? row.cfg : null;
+      DATA = (row.data && Object.keys(row.data).length) ? row.data : null;
+      CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, current_period_end: row.current_period_end };
+      if(CFG){ CFG.plan = (row.status === 'active') ? row.plan : 'starter'; }
+    }
   }catch(e){ console.error('loadAll failed', e); CFG = null; DATA = null; }
-  await syncSubscription();
 }
 async function syncSubscription(){
+  // Bootstrap already brought subscription state back with cfg/data in
+  // one round trip — this just re-fetches it standalone (e.g. right
+  // after a Paystack payment, before a full reload is worth doing).
   if(!CUR_VENUE_ID) return;
   try{
-    const { data: sub } = await sb.from('subscriptions').select('*').eq('venue_id', CUR_VENUE_ID).maybeSingle();
-    CUR_SUBSCRIPTION = sub || null;
-    if(CFG){ const active = sub && sub.status === 'active'; CFG.plan = active ? sub.plan : 'starter'; }
+    const { data: rows, error } = await sb.rpc('get_tenant_bootstrap');
+    if(error) throw error;
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    if(row){
+      CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, current_period_end: row.current_period_end };
+      if(CFG){ const active = row.status === 'active'; CFG.plan = active ? row.plan : 'starter'; }
+    }
   }catch(e){ console.error('syncSubscription failed', e); }
 }
 
@@ -1070,10 +1082,21 @@ function drawCrmList(){
     </div>`;
   }).join('') : '<div class="empty">No matches — add one on the right.</div>';
 }
+function normalizePhone(p){ return (p||'').replace(/\D/g,''); }
 async function addContact(){
   const name = document.getElementById('cName').value.trim();
   if(!name){ showToast('Name is required'); return; }
-  DATA.contacts.push({id:uid('C'), name, phone:document.getElementById('cPhone').value.trim(), company:'',
+  const phoneRaw = document.getElementById('cPhone').value.trim();
+  const phoneNorm = normalizePhone(phoneRaw);
+  if(phoneNorm.length >= 7){
+    const existing = (DATA.contacts||[]).find(c=>c.phone && normalizePhone(c.phone)===phoneNorm);
+    if(existing){
+      showToast(`${existing.name} already has this number — opening their record instead of duplicating`);
+      openContactModal(existing.id);
+      return;
+    }
+  }
+  DATA.contacts.push({id:uid('C'), name, phone:phoneRaw, company:'',
     temp:document.getElementById('cTemp').value, stage:'New', lastContact:todayStr(), nextFollowUp:'', notes:'', value:0, source:document.getElementById('cSource').value});
   await saveData(); showToast(name+' added'); renderCRM(); renderSidebar();
 }
@@ -1673,13 +1696,21 @@ function renderAI(){
   drawAiLog();
 }
 function drawAiLog(){ document.getElementById('aiLog').innerHTML = aiHistory.map(m=>`<div class="ai-msg ${m.role==='user'?'user':'bot'}">${m.text}</div>`).join(''); const l=document.getElementById('aiLog'); l.scrollTop=l.scrollHeight; }
+function toneSignoff(){
+  const lines = {
+    motivation: "One more follow-up done today is one more sale that didn't slip away. Go clear the list.",
+    faith: "\"Commit to the LORD whatever you do, and He will establish your plans.\" — Proverbs 16:3. Do the work today, and trust the increase.",
+    neutral: "Highest-leverage move right now: clear today's follow-ups before anything else."
+  };
+  return lines[CFG.tone] || lines.motivation;
+}
 function aiSummary(){
   const t = todayStr();
   const rev = (DATA.transactions||[]).filter(x=>x.date===t).reduce((s,x)=>s+x.amount,0);
   const due = (DATA.followups||[]).filter(f=>!f.done && f.due<=t).length;
   const low = (DATA.inventory||[]).filter(i=>i.stock<=i.par).length;
   const acc = accountabilityTodayScore();
-  return `Good day — here's where things stand:\n\n• Revenue today: ${money(rev)}\n• Follow-ups due: ${due}\n• Low stock items: ${low}\n• Hot leads: ${(DATA.contacts||[]).filter(c=>c.temp==='hot').length}\n• Today's accountability: ${acc.done}/${acc.total}\n\nAsk me about who to contact first, revenue trends, your persona, or your audit score.`;
+  return `Good day — here's where things stand:\n\n• Revenue today: ${money(rev)}\n• Follow-ups due: ${due}\n• Low stock items: ${low}\n• Hot leads: ${(DATA.contacts||[]).filter(c=>c.temp==='hot').length}\n• Today's accountability: ${acc.done}/${acc.total}\n\n${toneSignoff()}\n\nAsk me about who to contact first, revenue trends, your persona, or your audit score.`;
 }
 function aiAnswer(q){
   const ql = q.toLowerCase();
@@ -1791,6 +1822,22 @@ function renderSystem(){
     <div style="font-size:13px;line-height:1.8;color:#d9e8ea;max-width:760px">Picture ${CFG.bizName} as a fully automated, high-performance smart factory. A factory can't run on one machine alone — it needs a floor, fuel, conveyor belts, a control tower, shipping docks, a cash vault, and an automated supervisor. TecXFRA is the single software nervous system that locks every one of those moving parts into one unbreakable chain of control.</div>
   </div>
 
+  <div class="card"><div class="card-title">Not a CRM. Not a Dashboard. Not an ERP.</div>
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8">
+      A CRM is just a contact list. A dashboard is graphs you glance at once a week. An ERP is bloated, expensive, and a nightmare to set up. TecXFRA is a <b style="color:var(--navy)">Business Operating System</b> — the thing that actually boots up and runs ${CFG.bizName||'your business'} every morning, the way an engine runs a car rather than just showing a speedometer.<br><br>
+      Every business wakes up asking the same questions: What do I need to do today? Who owes me money? Who's coming in? Who's working? What's low in stock? Which customer do I need to follow up? What's today's revenue? What broke yesterday? What should happen next? TecXFRA is built to answer exactly that list, every single day.
+    </div>
+  </div>
+
+  <div class="card" style="border-color:var(--teal)"><div class="card-title">The Acronym Follows The Actual Business Day</div>
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;margin-bottom:12px">
+      <b style="color:var(--navy)">T</b>oday → <b style="color:var(--navy)">e</b>xpenses (resources) → <b style="color:var(--navy)">c</b>RM (customers) → <b style="color:var(--navy)">X</b>ecution → <b style="color:var(--navy)">F</b>ollow-ups (communicate) → <b style="color:var(--navy)">R</b>evenue (money) → <b style="color:var(--navy)">A</b>ccountability (review). Morning orientation, a resource check, knowing who you're serving, doing the actual work, closing the loop with people, recording what came in, and reviewing the day — in that order, because that's the order a real business day runs in.
+    </div>
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;background:var(--cream);border-radius:10px;padding:14px">
+      <b style="color:var(--navy)">Why X sits in the middle:</b> everything before X (Tec) is planning. Everything after X (FRA) is measuring. X is the execution itself — without it, planning is just daydreaming, and measuring is just counting losses. That's why Execution & Growth Analytics sits at the exact centre of the name, not the edge.
+    </div>
+  </div>
+
   <div class="card"><div class="card-title">Where The Letters Come From</div>
     <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8">
       <b style="color:var(--navy)">Tec</b> is the operational foundation — the daily floor, the resources, and the people. <b style="color:var(--navy)">X</b> sits at the exact centre as the analytical bridge between operations and outcomes. <b style="color:var(--navy)">FRA</b> closes the loop — the outbound communication, the inbound capital, and the oversight that keeps it all honest.
@@ -1896,7 +1943,7 @@ function drawSettingsBody(){
         <b style="color:var(--navy)">CSV import:</b> available on Growth and Enterprise.<br>
         <b style="color:var(--navy)">Modules:</b> Referrals, Persona, Audit and Accountability need Growth or above; Journal needs Enterprise.
       </div>
-    </div>
+    </div>`;
   } else if(settingsTab==='branding'){
     const locked = !currentPlan().whiteLabel;
     b.innerHTML = `<div class="card" style="max-width:480px">
@@ -1984,7 +2031,8 @@ async function payWithPaystack(planKey){
 async function requestMomoInvoice(planKey, method){
   await addKnowledgeFact(`Requested ${method==='momo'?'Mobile Money':'an invoice'} upgrade to ${PLANS.find(p=>p.key===planKey).label} plan.`);
   try{
-    await sb.from('payment_events').insert({ venue_id: CUR_VENUE_ID, provider: method, event_type: 'manual_request', currency:'GHS', raw_payload: { plan: planKey, business_name: CFG.bizName, requested_at: new Date().toISOString() } });
+    const { error } = await sb.rpc('request_manual_payment', { p_plan: planKey, p_method: method, p_business_name: CFG.bizName });
+    if(error) throw error;
   }catch(e){ console.error(e); }
   closeModal();
   showToast(`Request sent — our team will confirm your ${method==='momo'?'MoMo payment':'invoice'} and activate ${PLANS.find(p=>p.key===planKey).label} within one business day.`);
