@@ -350,9 +350,10 @@ const SUPABASE_URL = 'https://bnbcozkrvqforiunwzrz.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_KwKhcg8loLN4Ai0WH7s7PQ_0WPFhcsB';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Paystack: replace with the LIVE public key before go-live. Using a
-// blank/test key here on purpose so nothing can accidentally charge
-// a real card until you drop the real key in.
+// ⚠️ TODO(business, BEFORE GO-LIVE): replace with your real Paystack
+// LIVE public key (starts pk_live_...). Left as a placeholder on
+// purpose — checkout will visibly fail with this test string rather
+// than silently charging a real card to the wrong account.
 const PAYSTACK_PUBLIC_KEY = 'pk_test_REPLACE_ME';
 
 let AUTH_CHANNEL = 'email';
@@ -849,6 +850,25 @@ const PLANS = [
     desc:'Everything in Growth, plus Journal, full AI knowledge recall, white-label branding, and CSV import.',
     locked:[], aiFacts:200, whiteLabel:true, csvImport:true}
 ];
+/* ---------- PER-COUNTRY PRICING ----------
+   TODO(business): these amounts are PLACEHOLDERS — replace with real
+   prices per market before go-live. Amounts are in each currency's
+   MINOR unit (pesewas/kobo/cents), same convention Paystack expects.
+   Paystack itself only settles in a fixed set of currencies — any
+   country not in PAYSTACK_SUPPORTED_CURRENCIES falls back to USD so
+   checkout never silently mis-charges someone in the wrong currency. */
+const PLAN_PRICING = {
+  GHS: { growth: 15000,  enterprise: 45000  }, // GH₵150 / GH₵450
+  NGN: { growth: 2500000, enterprise: 7500000 }, // ₦25,000 / ₦75,000 — CONFIRM
+  ZAR: { growth: 30000,  enterprise: 90000  }, // R300 / R900 — CONFIRM
+  KES: { growth: 200000, enterprise: 600000 }, // KSh2,000 / KSh6,000 — CONFIRM
+  USD: { growth: 1500,   enterprise: 4500   }  // $15 / $45 — fallback for every other country
+};
+const PAYSTACK_SUPPORTED_CURRENCIES = ['GHS','NGN','ZAR','USD','KES'];
+function getPaystackCurrency(){
+  const cur = getCountryInfo()?.currency;
+  return PAYSTACK_SUPPORTED_CURRENCIES.includes(cur) ? cur : 'USD';
+}
 function currentPlan(){ return PLANS.find(p=>p.key===(CFG.plan||'enterprise')) || PLANS[2]; }
 function isLocked(moduleKey){ return currentPlan().locked.includes(moduleKey); }
 function renderSidebar(){
@@ -2007,7 +2027,9 @@ function openUpgradeModal(key){
 }
 async function payWithPaystack(planKey){
   const plan = PLANS.find(p=>p.key===planKey);
-  const amountGHS = planKey==='growth' ? 15000 : 45000; // pesewas — GH₵150 / GH₵450, adjust to real pricing
+  const currency = getPaystackCurrency();
+  const pricing = PLAN_PRICING[currency] || PLAN_PRICING.USD;
+  const amountMinor = planKey==='growth' ? pricing.growth : pricing.enterprise;
   const { data:{ session } } = await sb.auth.getSession();
   let email = session?.user?.email;
   if(!email){ email = prompt('Paystack needs an email receipt address (your login can stay phone-based):'); }
@@ -2015,9 +2037,9 @@ async function payWithPaystack(planKey){
   const handler = PaystackPop.setup({
     key: PAYSTACK_PUBLIC_KEY,
     email: email,
-    amount: amountGHS,
-    currency: getCountryInfo()?.currency==='GHS' ? 'GHS' : 'GHS',
-    metadata: { venue_id: CUR_VENUE_ID, plan: planKey, business_name: CFG.bizName },
+    amount: amountMinor,
+    currency: currency,
+    metadata: { venue_id: CUR_VENUE_ID, plan: planKey, business_name: CFG.bizName, billed_currency: currency },
     callback: function(response){
       showToast('Payment received — activating your plan…');
       closeModal();
