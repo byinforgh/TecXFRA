@@ -62,16 +62,44 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.45.4/supabase.min.js"></script>
 <script>
 const SUPABASE_URL = 'https://bnbcozkrvqforiunwzrz.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_KwKhcg8loLN4Ai0WH7s7PQ_0WPFhcsB';
-let sb = null, SUPABASE_READY = false;
-try{
-  if(!window.supabase) throw new Error('Supabase library did not load');
-  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  SUPABASE_READY = true;
-}catch(e){ console.error('Supabase init failed', e); }
+let sb = null, SUPABASE_READY = false, SUPABASE_LOAD_FAILED = false;
+
+// The Supabase library used to load from a single CDN. If that one CDN was
+// blocked (corporate network, browser extension, regional filtering) the
+// whole page silently died with "Could not connect". This loader tries a
+// second CDN before giving up, and tells the user plainly if both fail.
+function loadScript(src){
+  return new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function initSupabase(){
+  const sources = [
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.45.4/supabase.min.js'
+  ];
+  for(const src of sources){
+    try{
+      if(!window.supabase) await loadScript(src);
+      if(window.supabase){
+        sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        SUPABASE_READY = true;
+        return;
+      }
+    }catch(e){ console.error('Supabase init failed from', src, e); }
+  }
+  SUPABASE_LOAD_FAILED = true;
+  console.error('Supabase library could not be loaded from any source');
+}
+const supabaseReadyPromise = initSupabase();
 
 function loginErr(msg){
   const el = document.getElementById('loginErr');
@@ -79,7 +107,11 @@ function loginErr(msg){
 }
 
 async function doLogin(){
-  if(!SUPABASE_READY){ loginErr('Could not connect — check your internet and reload.'); return; }
+  if(!SUPABASE_READY && !SUPABASE_LOAD_FAILED){ await supabaseReadyPromise; }
+  if(!SUPABASE_READY){
+    loginErr('Could not load the login service. This is usually a browser extension (ad blocker / privacy tool) blocking the connection — try disabling extensions or opening this page in a private/incognito window, then reload.');
+    return;
+  }
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
   if(!email || !password){ loginErr('Enter your email and password.'); return; }
@@ -161,6 +193,7 @@ async function signOutAdmin(){
 }
 
 (async function init(){
+  await supabaseReadyPromise;
   if(!SUPABASE_READY) return;
   const { data:{ session } } = await sb.auth.getSession();
   if(session) await afterLogin();
