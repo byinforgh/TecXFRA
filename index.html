@@ -348,7 +348,22 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 ============================================================ */
 const SUPABASE_URL = 'https://bnbcozkrvqforiunwzrz.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_KwKhcg8loLN4Ai0WH7s7PQ_0WPFhcsB';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// The Supabase JS library loads from a CDN (see <script> tag above).
+// On a slow, blocked, or briefly-flaky connection that script can fail
+// to load, which used to crash this entire block and leave the wizard's
+// Country/Currency/Industry pickers permanently empty with no error
+// shown. Guard it so a CDN hiccup degrades gracefully instead of
+// silently breaking the whole app.
+let SUPABASE_READY = false;
+let sb = null;
+try{
+  if(!window.supabase) throw new Error('Supabase library did not load from CDN');
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  SUPABASE_READY = true;
+}catch(e){
+  console.error('Supabase failed to initialise:', e);
+}
 
 // ⚠️ TODO(business, BEFORE GO-LIVE): replace with your real Paystack
 // LIVE public key (starts pk_live_...). Left as a placeholder on
@@ -418,7 +433,15 @@ function authErr(msg){
   const el = document.getElementById('authError');
   el.textContent = msg; el.style.display = 'block';
 }
+function requireSupabase(){
+  if(!SUPABASE_READY || !sb){
+    authErr('Still connecting to TecXFRA — check your internet connection and reload the page.');
+    return false;
+  }
+  return true;
+}
 async function doSignUp(){
+  if(!requireSupabase()) return;
   const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
   if(!email || password.length<6){ authErr('Enter an email and a password of at least 6 characters.'); return; }
@@ -428,6 +451,7 @@ async function doSignUp(){
   else { authErr('Account created — check your email to confirm, then use "Log in instead" above.'); }
 }
 async function doSignIn(){
+  if(!requireSupabase()) return;
   const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
   if(!email || !password){ authErr('Enter your email and password.'); return; }
@@ -436,6 +460,7 @@ async function doSignIn(){
   await afterAuth(data.session);
 }
 async function doPhoneSendOtp(){
+  if(!requireSupabase()) return;
   const phone = document.getElementById('authPhone').value.trim();
   if(!phone.startsWith('+') || phone.length<8){ authErr('Enter your full phone number with country code, e.g. +233...'); return; }
   const { error } = await sb.auth.signInWithOtp({ phone });
@@ -446,6 +471,7 @@ async function doPhoneSendOtp(){
   authErr('Code sent by SMS — enter it below.');
 }
 async function doPhoneVerifyOtp(){
+  if(!requireSupabase()) return;
   const phone = document.getElementById('authPhone').value.trim();
   const token = document.getElementById('authOtp').value.trim();
   if(!token){ authErr('Enter the code you received.'); return; }
@@ -2090,7 +2116,21 @@ async function toggleLiveModule(el, key){
    INIT
 ============================================================ */
 (async function init(){
-  await initAuthGate();
+  // These two are pure client-side UI (no network needed) — render them
+  // first and unconditionally so the wizard is always usable even if
+  // Supabase never connects.
+  try{ renderIndustryGrid(); populateWizCountry(); }
+  catch(e){ console.error('wizard render error', e); }
+
+  if(!SUPABASE_READY){
+    showToast("Connection problem loading TecXFRA — check your internet and reload the page.");
+  } else {
+    try{ await initAuthGate(); }
+    catch(e){
+      console.error('initAuthGate failed', e);
+      showToast('Could not connect to TecXFRA — check your internet and reload.');
+    }
+  }
   window.addEventListener('resize', ()=>{ document.getElementById('menuToggle').classList.toggle('hidden', window.innerWidth>860); });
   document.getElementById('menuToggle').classList.toggle('hidden', window.innerWidth>860);
 })();
