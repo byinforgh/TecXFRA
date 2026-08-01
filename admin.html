@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TecXFRA — Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root{ --teal:#4aa8b8; --navy:#123642; --cream:#faf8f3; --ink:#0c262f; --line:#e4ded2; --danger:#c0584a; --ok:#3f8f5f; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--cream);color:var(--ink)}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 20px}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:28px}
+  .brand .name{font-weight:700;font-size:18px}
+  .brand .tag{font-size:12px;color:var(--teal);font-weight:600;letter-spacing:.02em}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:#5b6b6d;font-size:14px;margin-bottom:24px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:14px}
+  .field label{display:block;font-size:12px;font-weight:600;color:#5b6b6d;margin-bottom:6px}
+  input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px;margin-bottom:14px}
+  button{cursor:pointer;border:none;border-radius:9px;padding:10px 16px;font-size:13px;font-weight:600}
+  .btn-primary{background:var(--navy);color:#fff}
+  .btn-ok{background:var(--ok);color:#fff}
+  .btn-danger{background:var(--danger);color:#fff}
+  .btn-ghost{background:transparent;color:var(--navy);border:1px solid var(--line)}
+  .err{color:var(--danger);font-size:13px;margin:-6px 0 12px;display:none}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .pending{border-left:4px solid var(--teal)}
+  .biz{font-weight:700;font-size:15px}
+  .meta{font-size:12px;color:#5b6b6d;margin:4px 0 12px}
+  .empty{text-align:center;color:#8a9394;padding:40px 0;font-size:14px}
+  select{padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px}
+  #topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="name">TecXFRA</div><div class="tag">· Admin</div>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="loginCard" class="card">
+    <h1>Admin sign-in</h1>
+    <div class="sub">Owner/admin access only — sign in with your existing TecXFRA login.</div>
+    <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="you@example.com"></div>
+    <div class="field"><label>Password</label><input id="loginPassword" type="password" placeholder="••••••••"></div>
+    <div class="err" id="loginErr"></div>
+    <button class="btn-primary" onclick="doLogin()">Sign in</button>
+  </div>
+
+  <!-- ADMIN PANEL -->
+  <div id="panel" style="display:none">
+    <div id="topbar">
+      <div>
+        <h1 style="margin-bottom:0">Pending payment requests</h1>
+        <div class="sub" style="margin-bottom:0">MoMo &amp; invoice requests waiting on manual approval</div>
+      </div>
+      <button class="btn-ghost" onclick="signOutAdmin()">Sign out</button>
+    </div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.45.4/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://bnbcozkrvqforiunwzrz.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_KwKhcg8loLN4Ai0WH7s7PQ_0WPFhcsB';
+let sb = null, SUPABASE_READY = false;
+try{
+  if(!window.supabase) throw new Error('Supabase library did not load');
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  SUPABASE_READY = true;
+}catch(e){ console.error('Supabase init failed', e); }
+
+function loginErr(msg){
+  const el = document.getElementById('loginErr');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+async function doLogin(){
+  if(!SUPABASE_READY){ loginErr('Could not connect — check your internet and reload.'); return; }
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if(!email || !password){ loginErr('Enter your email and password.'); return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ loginErr(error.message); return; }
+  await afterLogin();
+}
+
+async function afterLogin(){
+  // Any authenticated user can call admin_list_pending_payments — it
+  // internally checks is_admin() and throws 'not authorized' for
+  // anyone who isn't in the admins table, so a non-admin login just
+  // gets a clear error here, never the actual payment data.
+  const { data, error } = await sb.rpc('admin_list_pending_payments');
+  if(error){
+    loginErr(error.message.includes('not authorized')
+      ? 'Signed in, but this account is not an admin.'
+      : error.message);
+    await sb.auth.signOut();
+    return;
+  }
+  document.getElementById('loginCard').style.display = 'none';
+  document.getElementById('panel').style.display = 'block';
+  renderList(data || []);
+}
+
+function renderList(rows){
+  const list = document.getElementById('list');
+  if(!rows.length){
+    list.innerHTML = '<div class="card empty">No pending requests right now.</div>';
+    return;
+  }
+  list.innerHTML = rows.map(r=>{
+    const p = r.raw_payload || {};
+    return `
+    <div class="card pending" data-id="${r.id}">
+      <div class="biz">${(r.business_name||'Unknown business')}</div>
+      <div class="meta">
+        ${r.provider.toUpperCase()} · requested plan: <b>${p.plan||'—'}</b> ·
+        ${new Date(r.created_at).toLocaleString()}
+      </div>
+      <div class="row">
+        <select id="plan-${r.id}">
+          <option value="growth" ${p.plan==='growth'?'selected':''}>Growth</option>
+          <option value="enterprise" ${p.plan==='enterprise'?'selected':''}>Enterprise</option>
+        </select>
+        <button class="btn-ok" onclick="approve(${r.id})">Approve &amp; activate</button>
+        <button class="btn-danger" onclick="reject(${r.id})">Reject</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function refresh(){
+  const { data, error } = await sb.rpc('admin_list_pending_payments');
+  if(!error) renderList(data || []);
+}
+
+async function approve(id){
+  const plan = document.getElementById(`plan-${id}`).value;
+  const note = prompt('Optional note for this approval (e.g. MoMo ref number):') || null;
+  const { error } = await sb.rpc('admin_approve_payment', { p_event_id:id, p_plan:plan, p_note:note });
+  if(error){ alert('Could not approve: '+error.message); return; }
+  await refresh();
+}
+
+async function reject(id){
+  const note = prompt('Reason for rejecting (optional):') || null;
+  const { error } = await sb.rpc('admin_reject_payment', { p_event_id:id, p_note:note });
+  if(error){ alert('Could not reject: '+error.message); return; }
+  await refresh();
+}
+
+async function signOutAdmin(){
+  await sb.auth.signOut();
+  document.getElementById('panel').style.display = 'none';
+  document.getElementById('loginCard').style.display = 'block';
+  document.getElementById('loginPassword').value = '';
+}
+
+(async function init(){
+  if(!SUPABASE_READY) return;
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session) await afterLogin();
+})();
+</script>
+</body>
+</html>
