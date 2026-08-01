@@ -1088,6 +1088,87 @@ async function addEvent(){
   await saveData(); showToast('Added to calendar'); renderCalendar();
 }
 
+/* ---------- CSV IMPORT (Growth/Enterprise) ----------
+   Small hand-rolled parser (handles quoted fields with commas) so we
+   don't pull in an external CSV library dependency. */
+function parseCSV(text){
+  const rows = []; let i=0, field='', row=[], inQuotes=false;
+  while(i<text.length){
+    const c = text[i];
+    if(inQuotes){
+      if(c==='"'){ if(text[i+1]==='"'){ field+='"'; i+=2; continue; } inQuotes=false; i++; continue; }
+      field+=c; i++; continue;
+    }
+    if(c==='"'){ inQuotes=true; i++; continue; }
+    if(c===','){ row.push(field); field=''; i++; continue; }
+    if(c==='\r'){ i++; continue; }
+    if(c==='\n'){ row.push(field); rows.push(row); field=''; row=[]; i++; continue; }
+    field+=c; i++;
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  if(!rows.length) return [];
+  const headers = rows[0].map(h=>h.trim().toLowerCase());
+  return rows.slice(1).filter(r=>r.some(v=>(v||'').trim()!=='')).map(r=>{
+    const obj={}; headers.forEach((h,idx)=>obj[h]=(r[idx]||'').trim()); return obj;
+  });
+}
+function readFileAsText(file){
+  return new Promise((res,rej)=>{ const rd=new FileReader(); rd.onload=()=>res(rd.result); rd.onerror=rej; rd.readAsText(file); });
+}
+async function importContactsCSV(input){
+  if(!currentPlan().csvImport){ showToast('CSV import is a Growth/Enterprise feature — upgrade to use it'); input.value=''; return; }
+  const file = input.files[0]; if(!file) return;
+  let rows;
+  try{ rows = parseCSV(await readFileAsText(file)); }
+  catch(e){ showToast('Could not read that file'); input.value=''; return; }
+  if(!rows.length){ showToast('No rows found in that CSV'); input.value=''; return; }
+  let added=0, skipped=0;
+  rows.forEach(r=>{
+    const name = r.name || r['full name'] || r.contact || '';
+    if(!name){ skipped++; return; }
+    const phoneRaw = r.phone || r['phone number'] || r.mobile || '';
+    const phoneNorm = normalizePhone(phoneRaw);
+    if(phoneNorm.length>=7 && (DATA.contacts||[]).some(c=>c.phone && normalizePhone(c.phone)===phoneNorm)){ skipped++; return; }
+    const tempKey = (r.temp||'').toLowerCase();
+    DATA.contacts.push({id:uid('C'), name, phone:phoneRaw, company:r.company||'',
+      temp: TEMPS.some(t=>t.key===tempKey) ? tempKey : 'cold',
+      stage:'New', lastContact:todayStr(), nextFollowUp:'', notes:r.notes||'',
+      value:parseFloat(r.value)||0, source:r.source||'Import'});
+    added++;
+  });
+  await saveData();
+  showToast(`${added} contact${added===1?'':'s'} imported${skipped?`, ${skipped} skipped`:''}`);
+  renderCRM(); renderSidebar(); input.value='';
+}
+async function importInventoryCSV(input){
+  if(!currentPlan().csvImport){ showToast('CSV import is a Growth/Enterprise feature — upgrade to use it'); input.value=''; return; }
+  const file = input.files[0]; if(!file) return;
+  let rows;
+  try{ rows = parseCSV(await readFileAsText(file)); }
+  catch(e){ showToast('Could not read that file'); input.value=''; return; }
+  if(!rows.length){ showToast('No rows found in that CSV'); input.value=''; return; }
+  let added=0, updated=0;
+  rows.forEach(r=>{
+    const name = r.name || r.item || r.product || '';
+    if(!name) return;
+    const stock = parseFloat(r.stock||r.qty||r.quantity)||0;
+    const it = DATA.inventory.find(x=>x.name.toLowerCase()===name.toLowerCase());
+    if(it){
+      it.stock += stock;
+      if(r.par) it.par = parseFloat(r.par);
+      if(r.cost) it.cost = parseFloat(r.cost);
+      if(r.price) it.price = parseFloat(r.price);
+      updated++;
+    } else {
+      DATA.inventory.push({id:uid('I'), name, stock, par: parseFloat(r.par)||5, cost: parseFloat(r.cost)||0, price: parseFloat(r.price)||0});
+      added++;
+    }
+  });
+  await saveData();
+  showToast(`${added} new item${added===1?'':'s'}, ${updated} updated`);
+  renderInventory(); input.value='';
+}
+
 /* ---------- CRM ---------- */
 let crmFilter = 'all';
 function renderCRM(){
@@ -1107,6 +1188,11 @@ function renderCRM(){
       <label class="lbl">Starting temperature</label>
       <select class="inp" id="cTemp">${TEMPS.map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}</select>
       <button class="btn btn-primary btn-full" onclick="addContact()">＋ Add</button>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+        <label class="lbl">Import from CSV ${currentPlan().csvImport?'':'<span style=\"color:var(--muted)\">(Growth/Enterprise)</span>'}</label>
+        <input class="inp" type="file" accept=".csv" onchange="importContactsCSV(this)" ${currentPlan().csvImport?'':'disabled title=\"Upgrade to Growth or Enterprise to import contacts from CSV\"'}>
+        <div class="sub" style="margin-top:4px">Columns: name, phone, company, source, temp, notes, value</div>
+      </div>
     </div>
   </div>`;
   document.getElementById('crmTabs').innerHTML = ['all',...TEMPS.map(t=>t.key)].map(k=>{
@@ -1280,6 +1366,11 @@ function renderInventory(){
       <label class="lbl">Qty to add</label><input class="inp" id="rQty" type="number" placeholder="e.g. 24">
       <label class="lbl">Par level (optional)</label><input class="inp" id="rPar" type="number" placeholder="e.g. 10">
       <button class="btn btn-primary btn-full" onclick="restock()">＋ Add Stock</button>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+        <label class="lbl">Import from CSV ${currentPlan().csvImport?'':'<span style=\"color:var(--muted)\">(Growth/Enterprise)</span>'}</label>
+        <input class="inp" type="file" accept=".csv" onchange="importInventoryCSV(this)" ${currentPlan().csvImport?'':'disabled title=\"Upgrade to Growth or Enterprise to import inventory from CSV\"'}>
+        <div class="sub" style="margin-top:4px">Columns: name, stock, par, cost, price — matches existing items by name</div>
+      </div>
     </div>
   </div>`;
 }
