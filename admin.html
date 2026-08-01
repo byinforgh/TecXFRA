@@ -82,7 +82,29 @@
   .meta{font-size:12px;color:#5b6b6d;margin:4px 0 12px}
   .empty{text-align:center;color:#8a9394;padding:40px 0;font-size:14px}
   select{padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px}
-  #topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  #topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+
+  /* ============ DASHBOARD ADD-ONS ============ */
+  .tabs{display:flex;gap:6px;margin-bottom:20px;border-bottom:1px solid var(--line);padding-bottom:0}
+  .tab{background:transparent;border:none;padding:10px 14px;font-size:13px;font-weight:700;color:#8a9394;border-bottom:2px solid transparent;border-radius:0}
+  .tab.on{color:var(--navy);border-bottom:2px solid var(--teal)}
+  .tab-panel{display:none}
+  .tab-panel.on{display:block}
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:6px}
+  .stat-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+  .stat-card .n{font-size:26px;font-weight:800;color:var(--navy);line-height:1.1}
+  .stat-card .l{font-size:11px;color:#8a9394;text-transform:uppercase;letter-spacing:.5px;margin-top:4px;font-weight:700}
+  table.biz-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  table.biz-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#8a9394;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--cream)}
+  table.biz-table td{padding:12px 14px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
+  table.biz-table tr:last-child td{border-bottom:none}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
+  .pill-starter{background:#eef0ef;color:#5b6b6d}
+  .pill-growth{background:#eaf5f6;color:var(--teal-dim)}
+  .pill-enterprise{background:#fbf1e2;color:var(--amber)}
+  .pill-active{background:#eaf5ee;color:var(--ok)}
+  .pill-inactive{background:#f8ebe8;color:var(--danger)}
+  .refresh-link{font-size:12px;color:var(--teal-dim);font-weight:700;background:none;border:none;cursor:pointer;padding:0}
 </style>
 </head>
 <body class="pre-auth">
@@ -105,12 +127,40 @@
   <div id="panel" style="display:none">
     <div id="topbar">
       <div>
-        <h1 style="margin-bottom:0">Pending payment requests</h1>
-        <div class="sub" style="margin-bottom:0">MoMo &amp; invoice requests waiting on manual approval</div>
+        <h1 style="margin-bottom:0">Admin dashboard</h1>
+        <div class="sub" style="margin-bottom:0">Platform overview, businesses, and payment approvals</div>
       </div>
       <button class="btn-ghost" onclick="signOutAdmin()">Sign out</button>
     </div>
-    <div id="list"></div>
+
+    <div class="tabs">
+      <button class="tab on" data-tab="overview" onclick="switchTab('overview')">Overview</button>
+      <button class="tab" data-tab="businesses" onclick="switchTab('businesses')">Businesses</button>
+      <button class="tab" data-tab="payments" onclick="switchTab('payments')">Payments</button>
+      <button class="tab" data-tab="admins" onclick="switchTab('admins')">Admins</button>
+    </div>
+
+    <div id="tab-overview" class="tab-panel on">
+      <div id="statGrid" class="stat-grid"></div>
+    </div>
+
+    <div id="tab-businesses" class="tab-panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <div class="sub" style="margin-bottom:0">Every business signed up on TecXFRA</div>
+        <button class="refresh-link" onclick="loadBusinesses()">Refresh</button>
+      </div>
+      <div id="bizTableWrap"></div>
+    </div>
+
+    <div id="tab-payments" class="tab-panel">
+      <div class="sub" style="margin-bottom:12px">MoMo &amp; invoice requests waiting on manual approval</div>
+      <div id="list"></div>
+    </div>
+
+    <div id="tab-admins" class="tab-panel">
+      <div class="sub" style="margin-bottom:12px">Accounts with admin access to this dashboard</div>
+      <div id="adminsTableWrap"></div>
+    </div>
   </div>
 </div>
 
@@ -176,10 +226,10 @@ async function doLogin(){
 }
 
 async function afterLogin(){
-  // Any authenticated user can call admin_list_pending_payments — it
-  // internally checks is_admin() and throws 'not authorized' for
-  // anyone who isn't in the admins table, so a non-admin login just
-  // gets a clear error here, never the actual payment data.
+  // Any authenticated user can call these admin_* RPCs — they internally
+  // check is_admin() and throw 'not authorized' for anyone who isn't in
+  // the admins table, so a non-admin login just gets a clear error here,
+  // never any real data.
   const { data, error } = await sb.rpc('admin_list_pending_payments');
   if(error){
     const em = error.message || error.error_description || '';
@@ -193,6 +243,73 @@ async function afterLogin(){
   document.getElementById('loginCard').style.display = 'none';
   document.getElementById('panel').style.display = 'block';
   renderList(data || []);
+  loadStats();
+  loadBusinesses();
+  loadAdmins();
+}
+
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.tab===name));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('on', p.id==='tab-'+name));
+}
+
+function fmtDate(d){ return d ? new Date(d).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}) : '—'; }
+
+async function loadStats(){
+  const wrap = document.getElementById('statGrid');
+  const { data, error } = await sb.rpc('admin_platform_stats');
+  if(error || !data || !data.length){ wrap.innerHTML = '<div class="card empty">Could not load stats.</div>'; return; }
+  const s = data[0];
+  const cards = [
+    ['Total businesses', s.total_businesses],
+    ['Starter plan', s.starter_count],
+    ['Growth plan', s.growth_count],
+    ['Enterprise plan', s.enterprise_count],
+    ['Active paid subs', s.active_paid_count],
+    ['Pending payments', s.pending_payment_count],
+    ['Signups (7d)', s.signups_last_7d],
+    ['Signups (30d)', s.signups_last_30d],
+  ];
+  wrap.innerHTML = cards.map(([l,n])=>`<div class="stat-card"><div class="n">${n ?? 0}</div><div class="l">${l}</div></div>`).join('');
+}
+
+function planPill(plan){
+  const cls = plan==='enterprise'?'pill-enterprise':plan==='growth'?'pill-growth':'pill-starter';
+  return `<span class="pill ${cls}">${(plan||'starter')}</span>`;
+}
+function statusPill(status){
+  const cls = status==='active'?'pill-active':'pill-inactive';
+  return `<span class="pill ${cls}">${status||'inactive'}</span>`;
+}
+
+async function loadBusinesses(){
+  const wrap = document.getElementById('bizTableWrap');
+  wrap.innerHTML = '<div class="card empty">Loading…</div>';
+  const { data, error } = await sb.rpc('admin_list_businesses');
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load businesses: ${error.message||error}</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No businesses signed up yet.</div>'; return; }
+  wrap.innerHTML = `<table class="biz-table"><thead><tr>
+      <th>Business</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Status</th><th>Signed up</th>
+    </tr></thead><tbody>${data.map(b=>`
+      <tr>
+        <td><b>${b.business_name||'Unnamed business'}</b></td>
+        <td>${b.owner_email||'—'}</td>
+        <td>${b.industry||'—'}</td>
+        <td>${b.country||'—'}</td>
+        <td>${planPill(b.plan)}</td>
+        <td>${statusPill(b.status)}</td>
+        <td>${fmtDate(b.created_at)}</td>
+      </tr>`).join('')}</tbody></table>`;
+}
+
+async function loadAdmins(){
+  const wrap = document.getElementById('adminsTableWrap');
+  wrap.innerHTML = '<div class="card empty">Loading…</div>';
+  const { data, error } = await sb.rpc('admin_list_admins');
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load admins: ${error.message||error}</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No admins found.</div>'; return; }
+  wrap.innerHTML = `<table class="biz-table"><thead><tr><th>Email</th><th>Added</th></tr></thead><tbody>${data.map(a=>`
+      <tr><td>${a.email||a.user_id}</td><td>${fmtDate(a.added_at)}</td></tr>`).join('')}</tbody></table>`;
 }
 
 function renderList(rows){
@@ -225,6 +342,8 @@ function renderList(rows){
 async function refresh(){
   const { data, error } = await sb.rpc('admin_list_pending_payments');
   if(!error) renderList(data || []);
+  loadStats();
+  loadBusinesses();
 }
 
 async function approve(id){
