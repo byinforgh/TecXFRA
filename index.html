@@ -212,7 +212,11 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 
     <div class="wiz-row" style="margin-bottom:14px">
       <button class="btn btn-ghost" id="authTabEmail" onclick="setAuthChannel('email')">Email</button>
-      <button class="btn btn-ghost" id="authTabPhone" onclick="setAuthChannel('phone')">Phone number</button>
+      <!-- Phone/SMS sign-up is hidden until a Twilio account is connected in
+           Supabase Auth — otherwise this button leads to a dead end (OTP
+           request fails silently). Re-add display:inline-block (or remove
+           the inline style) once SMS is live. -->
+      <button class="btn btn-ghost" id="authTabPhone" onclick="setAuthChannel('phone')" style="display:none">Phone number</button>
     </div>
 
     <!-- EMAIL + PASSWORD -->
@@ -339,7 +343,6 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 <div class="toast" id="toast"></div>
 <div class="modal-overlay" id="modalRoot"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.45.4/supabase.min.js"></script>
 <script src="https://js.paystack.co/v1/inline.js"></script>
 <script>
 /* ============================================================
@@ -349,21 +352,44 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 const SUPABASE_URL = 'https://bnbcozkrvqforiunwzrz.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_KwKhcg8loLN4Ai0WH7s7PQ_0WPFhcsB';
 
-// The Supabase JS library loads from a CDN (see <script> tag above).
-// On a slow, blocked, or briefly-flaky connection that script can fail
-// to load, which used to crash this entire block and leave the wizard's
-// Country/Currency/Industry pickers permanently empty with no error
-// shown. Guard it so a CDN hiccup degrades gracefully instead of
-// silently breaking the whole app.
+// The Supabase JS library loads from a CDN. On a slow, blocked, or
+// briefly-flaky connection (or a browser extension blocking one specific
+// CDN host) that script can fail to load, which used to crash this whole
+// block with no real explanation. This loader tries a second CDN before
+// giving up, so a single blocked host doesn't take down signup/login.
 let SUPABASE_READY = false;
+let SUPABASE_LOAD_FAILED = false;
 let sb = null;
-try{
-  if(!window.supabase) throw new Error('Supabase library did not load from CDN');
-  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  SUPABASE_READY = true;
-}catch(e){
-  console.error('Supabase failed to initialise:', e);
+
+function loadScript(src){
+  return new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
 }
+
+async function initSupabase(){
+  const sources = [
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.45.4/supabase.min.js'
+  ];
+  for(const src of sources){
+    try{
+      if(!window.supabase) await loadScript(src);
+      if(window.supabase){
+        sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        SUPABASE_READY = true;
+        return;
+      }
+    }catch(e){ console.error('Supabase init failed from', src, e); }
+  }
+  SUPABASE_LOAD_FAILED = true;
+  console.error('Supabase library could not be loaded from any source');
+}
+const supabaseReadyPromise = initSupabase();
 
 // ⚠️ TODO(business, BEFORE GO-LIVE): replace with your real Paystack
 // LIVE public key (starts pk_live_...). Left as a placeholder on
@@ -433,15 +459,18 @@ function authErr(msg){
   const el = document.getElementById('authError');
   el.textContent = msg; el.style.display = 'block';
 }
-function requireSupabase(){
+async function requireSupabase(){
+  if(!SUPABASE_READY && !SUPABASE_LOAD_FAILED){ await supabaseReadyPromise; }
   if(!SUPABASE_READY || !sb){
-    authErr('Still connecting to TecXFRA — check your internet connection and reload the page.');
+    authErr(SUPABASE_LOAD_FAILED
+      ? 'Could not load the login service — this is usually a browser extension (ad blocker / privacy tool) blocking the connection. Try disabling extensions or a private/incognito window, then reload.'
+      : 'Still connecting to TecXFRA — check your internet connection and reload the page.');
     return false;
   }
   return true;
 }
 async function doSignUp(){
-  if(!requireSupabase()) return;
+  if(!(await requireSupabase())) return;
   const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
   if(!email || password.length<6){ authErr('Enter an email and a password of at least 6 characters.'); return; }
@@ -451,7 +480,7 @@ async function doSignUp(){
   else { authErr('Account created — check your email to confirm, then use "Log in instead" above.'); }
 }
 async function doSignIn(){
-  if(!requireSupabase()) return;
+  if(!(await requireSupabase())) return;
   const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
   if(!email || !password){ authErr('Enter your email and password.'); return; }
@@ -460,7 +489,7 @@ async function doSignIn(){
   await afterAuth(data.session);
 }
 async function doPhoneSendOtp(){
-  if(!requireSupabase()) return;
+  if(!(await requireSupabase())) return;
   const phone = document.getElementById('authPhone').value.trim();
   if(!phone.startsWith('+') || phone.length<8){ authErr('Enter your full phone number with country code, e.g. +233...'); return; }
   const { error } = await sb.auth.signInWithOtp({ phone });
@@ -471,7 +500,7 @@ async function doPhoneSendOtp(){
   authErr('Code sent by SMS — enter it below.');
 }
 async function doPhoneVerifyOtp(){
-  if(!requireSupabase()) return;
+  if(!(await requireSupabase())) return;
   const phone = document.getElementById('authPhone').value.trim();
   const token = document.getElementById('authOtp').value.trim();
   if(!token){ authErr('Enter the code you received.'); return; }
@@ -2101,6 +2130,7 @@ function drawSettingsBody(){
         ${sub && sub.provider ? `Last paid via: <b style="color:var(--navy)">${sub.provider}</b>` : ''}
       </div>
       <button class="btn btn-ghost" onclick="syncSubscription().then(()=>{renderSettings();showToast('Refreshed')})">Refresh status</button>
+      ${sub && sub.status==='active' ? `<button class="btn btn-ghost" style="margin-left:8px;color:var(--danger,#c0584a)" onclick="cancelSubscriptionFlow()">Cancel plan</button>` : ''}
     </div>
     <div class="card" style="max-width:480px">
       <div class="card-title">Account</div>
@@ -2129,6 +2159,28 @@ async function saveBusinessSettings(){
 function switchPlan(key){
   if(key==='starter'){ showToast('To move to Starter, cancel your active plan below — no need to switch manually.'); return; }
   openUpgradeModal(key);
+}
+async function cancelSubscriptionFlow(){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">Cancel your plan?</div>
+    <div style="font-size:12px;color:var(--ink-dim);margin-bottom:16px;line-height:1.6">You'll drop to Starter immediately. Your data stays exactly as it is — nothing is deleted, and you can upgrade again any time.</div>
+    <button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="confirmCancelSubscription()">Yes, cancel and drop to Starter</button>
+    <button class="btn btn-ghost btn-full" onclick="closeModal()">Keep my plan</button>
+  </div></div>`;
+}
+async function confirmCancelSubscription(){
+  if(!(await requireSupabase())){ closeModal(); return; }
+  try{
+    const { error } = await sb.rpc('cancel_subscription');
+    if(error) throw error;
+    closeModal();
+    await syncSubscription();
+    renderSidebar(); renderSettings();
+    showToast('Plan canceled — you are back on Starter.');
+  }catch(e){
+    console.error('cancel_subscription failed', e);
+    showToast('Could not cancel — check connection and try again.');
+  }
 }
 function openUpgradeModal(key){
   const plan = PLANS.find(p=>p.key===key);
@@ -2213,6 +2265,7 @@ async function toggleLiveModule(el, key){
   try{ renderIndustryGrid(); populateWizCountry(); }
   catch(e){ console.error('wizard render error', e); }
 
+  await supabaseReadyPromise;
   if(!SUPABASE_READY){
     showToast("Connection problem loading TecXFRA — check your internet and reload the page.");
   } else {
