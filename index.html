@@ -582,16 +582,16 @@ const INDUSTRY_DEFAULTS = {
 };
 
 const COUNTRIES = [
-  {country:'Ghana', currency:'GHS', sym:'GHS ', tax:'VAT + NHIL + GETFund', taxNote:'Standard VAT/NHIL/GETFund flat rate applies to most goods & services — check current GRA rates.', payroll:'SSNIT (13% employer / 5.5% employee) + PAYE'},
-  {country:'Nigeria', currency:'NGN', sym:'₦', tax:'VAT', taxNote:'Standard VAT rate applies on most goods & services — verify current FIRS rate.', payroll:'PAYE + Pension (employer/employee contributions)'},
-  {country:'Kenya', currency:'KES', sym:'KSh ', tax:'VAT', taxNote:'Standard VAT rate applies — verify current KRA rate.', payroll:'NSSF + NHIF/SHIF + PAYE'},
-  {country:'South Africa', currency:'ZAR', sym:'R', tax:'VAT', taxNote:'Standard VAT rate applies — verify current SARS rate.', payroll:'UIF + PAYE'},
-  {country:'United Kingdom', currency:'GBP', sym:'£', tax:'VAT', taxNote:'Standard VAT rate applies to most goods & services — check current HMRC rate and thresholds.', payroll:'PAYE + National Insurance'},
+  {country:'Ghana', currency:'GHS', sym:'GHS ', tax:'VAT + NHIL + GETFund', taxNote:'From 1 Jan 2026: VAT 15% + NHIL 2.5% + GETFund 2.5%, all on the same base — 20% effective total (the old cascading COVID Levy was scrapped). Verify current GRA rates before filing.', payroll:'SSNIT (13% employer / 5.5% employee) + PAYE'},
+  {country:'Nigeria', currency:'NGN', sym:'₦', tax:'VAT', taxNote:'Standard VAT rate is 7.5% (held steady in the 2026 reforms despite talk of a rise). Verify current NRS (formerly FIRS) rate.', payroll:'PAYE + Pension (employer/employee contributions)'},
+  {country:'Kenya', currency:'KES', sym:'KSh ', tax:'VAT', taxNote:'Standard VAT rate is 16% (unchanged since 2013). Verify current KRA rate.', payroll:'NSSF + NHIF/SHIF + PAYE'},
+  {country:'South Africa', currency:'ZAR', sym:'R', tax:'VAT', taxNote:'Standard VAT rate is 15% (a planned 2025 rise to 16% was reversed; the 2026 Budget kept it at 15%). Verify current SARS rate.', payroll:'UIF + PAYE'},
+  {country:'United Kingdom', currency:'GBP', sym:'£', tax:'VAT', taxNote:'Standard VAT rate is 20%, with a 5% reduced rate on some goods/services. Verify current HMRC rate and thresholds.', payroll:'PAYE + National Insurance'},
   {country:'United States', currency:'USD', sym:'$', tax:'Sales Tax', taxNote:'Sales tax varies by state — no federal VAT. Check your state and local rates.', payroll:'Federal/State withholding + FICA (Social Security & Medicare)'},
-  {country:'Canada', currency:'CAD', sym:'C$', tax:'GST/HST', taxNote:'GST or combined HST depending on province — verify your provincial rate.', payroll:'CPP + EI + federal/provincial withholding'},
-  {country:'India', currency:'INR', sym:'₹', tax:'GST', taxNote:'GST rate depends on goods/service category (commonly 5/12/18/28%) — verify current slab.', payroll:'EPF + ESI + TDS'},
-  {country:'United Arab Emirates', currency:'AED', sym:'AED ', tax:'VAT', taxNote:'Standard VAT rate applies on most goods & services — verify current FTA rate.', payroll:'No personal income tax; check End of Service Gratuity rules'},
-  {country:'Germany / Eurozone', currency:'EUR', sym:'€', tax:'VAT (MwSt/TVA)', taxNote:'Standard VAT rate applies, reduced rate for some goods — verify your country\'s rate within the Eurozone.', payroll:'Social security contributions + income tax withholding'},
+  {country:'Canada', currency:'CAD', sym:'C$', tax:'GST/HST', taxNote:'Federal GST is 5%; combined HST (e.g. Ontario/Atlantic provinces) runs 13–15% — verify your specific province.', payroll:'CPP + EI + federal/provincial withholding'},
+  {country:'India', currency:'INR', sym:'₹', tax:'GST', taxNote:'GST rate depends on goods/service category — common slabs are 5/12/18/28%. Verify the current slab for your goods/services.', payroll:'EPF + ESI + TDS'},
+  {country:'United Arab Emirates', currency:'AED', sym:'AED ', tax:'VAT', taxNote:'Standard VAT rate is 5%. Verify current FTA rate.', payroll:'No personal income tax; check End of Service Gratuity rules'},
+  {country:'Germany / Eurozone', currency:'EUR', sym:'€', tax:'VAT (MwSt/TVA)', taxNote:'Germany\'s standard VAT (MwSt) is 19%, reduced rate 7% for some goods — verify your country\'s rate within the Eurozone.', payroll:'Social security contributions + income tax withholding'},
   {country:'Other / Not listed', currency:'USD', sym:'$', tax:'Local Tax', taxNote:'Set your own tax terminology and rate in Settings once you know your local requirements.', payroll:'Check your local labour & payroll authority'}
 ];
 function populateWizCountry(){
