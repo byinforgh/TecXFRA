@@ -83,7 +83,7 @@ function loadScript(src){
 
 async function initSupabase(){
   const sources = [
-    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.45.4/supabase.min.js'
   ];
   for(const src of sources){
@@ -103,6 +103,9 @@ const supabaseReadyPromise = initSupabase();
 
 function loginErr(msg){
   const el = document.getElementById('loginErr');
+  if(msg && typeof msg === 'object'){
+    msg = msg.message || msg.error_description || msg.error || msg.hint || 'Something went wrong signing in. Please try again.';
+  }
   el.textContent = msg; el.style.display = 'block';
 }
 
@@ -116,7 +119,7 @@ async function doLogin(){
   const password = document.getElementById('loginPassword').value;
   if(!email || !password){ loginErr('Enter your email and password.'); return; }
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if(error){ loginErr(error.message); return; }
+  if(error){ loginErr(error); return; }
   await afterLogin();
 }
 
@@ -127,9 +130,10 @@ async function afterLogin(){
   // gets a clear error here, never the actual payment data.
   const { data, error } = await sb.rpc('admin_list_pending_payments');
   if(error){
-    loginErr(error.message.includes('not authorized')
+    const em = error.message || error.error_description || '';
+    loginErr(em.includes('not authorized')
       ? 'Signed in, but this account is not an admin.'
-      : error.message);
+      : (em || error));
     await sb.auth.signOut();
     return;
   }
