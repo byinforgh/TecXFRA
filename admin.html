@@ -6,16 +6,68 @@
 <title>TecXFRA — Admin</title>
 <meta name="robots" content="noindex, nofollow">
 <style>
-  :root{ --teal:#4aa8b8; --navy:#123642; --cream:#faf8f3; --ink:#0c262f; --line:#e4ded2; --danger:#c0584a; --ok:#3f8f5f; }
+  :root{ --teal:#4aa8b8; --teal-dim:#3a8b99; --navy:#123642; --navy-deep:#0c262f; --cream:#faf8f3; --ink:#0c262f; --line:#e4ded2; --danger:#c0584a; --ok:#3f8f5f; --amber:#c98a2e; }
   *{box-sizing:border-box}
-  body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--cream);color:var(--ink)}
-  .wrap{max-width:900px;margin:0 auto;padding:32px 20px}
+  body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--cream);color:var(--ink);transition:background .4s ease}
+
+  /* ============ FUTURISTIC SIGN-IN BACKDROP ============
+     Only active while body carries .pre-auth (i.e. before a
+     successful login). Removed in afterLogin(), restored in
+     signOutAdmin(), so the panel keeps its plain light look. */
+  body.pre-auth{
+    background:
+      radial-gradient(circle at 18% 22%, rgba(74,168,184,.32), transparent 42%),
+      radial-gradient(circle at 82% 78%, rgba(74,168,184,.22), transparent 46%),
+      radial-gradient(circle at 85% 15%, rgba(201,138,46,.14), transparent 38%),
+      linear-gradient(160deg, var(--navy-deep) 0%, var(--navy) 55%, #0e2f3a 100%);
+    min-height:100vh;
+    position:relative;
+    overflow-x:hidden;
+    animation:bgDrift 18s ease-in-out infinite alternate;
+  }
+  body.pre-auth::before{
+    /* faint circuit / blueprint grid, gives the "systems" feel */
+    content:"";
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      linear-gradient(rgba(234,245,246,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(234,245,246,.05) 1px, transparent 1px);
+    background-size:42px 42px;
+    mask-image:radial-gradient(circle at 50% 30%, #000 0%, transparent 75%);
+  }
+  body.pre-auth::after{
+    /* slow-drifting glow orb for a bit of motion without being distracting */
+    content:"";
+    position:fixed; width:520px; height:520px; border-radius:50%; z-index:0; pointer-events:none;
+    top:-120px; right:-140px;
+    background:radial-gradient(circle, rgba(74,168,184,.28), transparent 68%);
+    filter:blur(6px);
+    animation:orbFloat 14s ease-in-out infinite alternate;
+  }
+  @keyframes bgDrift{
+    0%{background-position:0 0, 0 0, 0 0, 0 0;}
+    100%{background-position:30px -20px, -20px 30px, 15px 15px, 0 0;}
+  }
+  @keyframes orbFloat{
+    0%{transform:translate(0,0) scale(1);}
+    100%{transform:translate(-40px,60px) scale(1.12);}
+  }
+  .wrap{max-width:900px;margin:0 auto;padding:32px 20px;position:relative;z-index:1}
+  body.pre-auth .wrap{min-height:100vh;display:flex;flex-direction:column;justify-content:center}
   .brand{display:flex;align-items:center;gap:10px;margin-bottom:28px}
   .brand .name{font-weight:700;font-size:18px}
+  body.pre-auth .brand .name{color:#fff}
   .brand .tag{font-size:12px;color:var(--teal);font-weight:600;letter-spacing:.02em}
   h1{font-size:22px;margin:0 0 4px}
   .sub{color:#5b6b6d;font-size:14px;margin-bottom:24px}
   .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:14px}
+  body.pre-auth #loginCard{
+    max-width:400px;margin:0 auto;
+    background:rgba(250,248,243,.97);
+    backdrop-filter:blur(6px);
+    border:1px solid rgba(74,168,184,.35);
+    box-shadow:0 0 0 1px rgba(74,168,184,.08), 0 24px 60px -20px rgba(0,0,0,.55), 0 0 40px -10px rgba(74,168,184,.25);
+  }
   .field label{display:block;font-size:12px;font-weight:600;color:#5b6b6d;margin-bottom:6px}
   input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px;margin-bottom:14px}
   button{cursor:pointer;border:none;border-radius:9px;padding:10px 16px;font-size:13px;font-weight:600}
@@ -33,7 +85,7 @@
   #topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
 </style>
 </head>
-<body>
+<body class="pre-auth">
 <div class="wrap">
   <div class="brand">
     <div class="name">TecXFRA</div><div class="tag">· Admin</div>
@@ -137,6 +189,7 @@ async function afterLogin(){
     await sb.auth.signOut();
     return;
   }
+  document.body.classList.remove('pre-auth');
   document.getElementById('loginCard').style.display = 'none';
   document.getElementById('panel').style.display = 'block';
   renderList(data || []);
@@ -191,6 +244,7 @@ async function reject(id){
 
 async function signOutAdmin(){
   await sb.auth.signOut();
+  document.body.classList.add('pre-auth');
   document.getElementById('panel').style.display = 'none';
   document.getElementById('loginCard').style.display = 'block';
   document.getElementById('loginPassword').value = '';
