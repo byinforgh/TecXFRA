@@ -373,7 +373,7 @@ function loadScript(src){
 
 async function initSupabase(){
   const sources = [
-    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.45.4/supabase.min.js'
   ];
   for(const src of sources){
@@ -457,6 +457,9 @@ function authGoBack(){
 }
 function authErr(msg){
   const el = document.getElementById('authError');
+  if(msg && typeof msg === 'object'){
+    msg = msg.message || msg.error_description || msg.error || msg.hint || 'Something went wrong. Please try again.';
+  }
   el.textContent = msg; el.style.display = 'block';
 }
 async function requireSupabase(){
@@ -475,7 +478,7 @@ async function doSignUp(){
   const password = document.getElementById('authPassword').value;
   if(!email || password.length<6){ authErr('Enter an email and a password of at least 6 characters.'); return; }
   const { data, error } = await sb.auth.signUp({ email, password });
-  if(error){ authErr(error.message); return; }
+  if(error){ authErr(error); return; }
   if(data.session){ await afterAuth(data.session); }
   else { authErr('Account created — check your email to confirm, then use "Log in instead" above.'); }
 }
@@ -485,7 +488,7 @@ async function doSignIn(){
   const password = document.getElementById('authPassword').value;
   if(!email || !password){ authErr('Enter your email and password.'); return; }
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if(error){ authErr(error.message); return; }
+  if(error){ authErr(error); return; }
   await afterAuth(data.session);
 }
 async function doPhoneSendOtp(){
@@ -493,7 +496,7 @@ async function doPhoneSendOtp(){
   const phone = document.getElementById('authPhone').value.trim();
   if(!phone.startsWith('+') || phone.length<8){ authErr('Enter your full phone number with country code, e.g. +233...'); return; }
   const { error } = await sb.auth.signInWithOtp({ phone });
-  if(error){ authErr(error.message); return; }
+  if(error){ authErr(error); return; }
   document.getElementById('authOtpField').style.display = 'block';
   document.getElementById('authPhoneSendBtn').style.display = 'none';
   document.getElementById('authPhoneVerifyBtn').style.display = 'inline-block';
@@ -505,7 +508,7 @@ async function doPhoneVerifyOtp(){
   const token = document.getElementById('authOtp').value.trim();
   if(!token){ authErr('Enter the code you received.'); return; }
   const { data, error } = await sb.auth.verifyOtp({ phone, token, type: 'sms' });
-  if(error){ authErr(error.message); return; }
+  if(error){ authErr(error); return; }
   await afterAuth(data.session);
 }
 async function afterAuth(session){
