@@ -415,8 +415,34 @@ async function initSupabase(){
     try{
       if(!window.supabase) await loadScript(src);
       if(window.supabase){
-        sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            storage: window.localStorage,
+            storageKey: 'tecxfra-auth'
+          }
+        });
         SUPABASE_READY = true;
+        // Keep the app in sync with auth state changes that happen
+        // outside a direct doSignUp/doSignIn call — e.g. a background
+        // token refresh, or the session expiring/being revoked while
+        // the tab was open. Without this listener the UI could keep
+        // showing "logged in" after Supabase itself has dropped the
+        // session, which looks like random logouts on the next click.
+        sb.auth.onAuthStateChange((event, session) => {
+          if(event === 'SIGNED_OUT' || (!session && CUR_VENUE_ID)){
+            if(CUR_VENUE_ID){
+              CUR_VENUE_ID = null; CFG = null; DATA = null;
+              document.getElementById('app').classList.remove('active');
+              document.getElementById('authScreen').style.display = 'none';
+              renderIndustryGrid(); populateWizCountry();
+              document.getElementById('wizard').style.display = 'flex';
+              wizGo(1);
+            }
+          }
+        });
         return;
       }
     }catch(e){ console.error('Supabase init failed from', src, e); }
@@ -425,6 +451,18 @@ async function initSupabase(){
   console.error('Supabase library could not be loaded from any source');
 }
 const supabaseReadyPromise = initSupabase();
+
+// iPhone/Android Safari & Chrome aggressively cache the page when you
+// hit the browser's Back button (the "bfcache"). When that happens the
+// page reappears WITHOUT re-running this script — so it can show
+// whatever half-finished state it was in (mid-wizard, stale auth
+// screen, empty module list) instead of correctly re-checking the
+// login session. Forcing a real reload on a bfcache restore is the
+// standard fix, and is exactly what "logs out / breaks when I go back
+// or refresh" looks like from the outside.
+window.addEventListener('pageshow', function(e){
+  if(e.persisted){ window.location.reload(); }
+});
 
 // ⚠️ TODO(business, BEFORE GO-LIVE): replace with your real Paystack
 // LIVE public key (starts pk_live_...). Left as a placeholder on
@@ -465,7 +503,12 @@ function setAuthMode(mode){
 function goToAccountCreation(){
   // Collect everything from the 3-step wizard, but don't save anything yet —
   // there's no venue_id until the account actually exists.
-  const modules = Array.from(document.querySelectorAll('.mod-check input')).filter(i=>i.checked).map(i=>i.closest('.mod-check').dataset.k);
+  let modules = Array.from(document.querySelectorAll('.mod-check input')).filter(i=>i.checked).map(i=>i.closest('.mod-check').dataset.k);
+  // Safety net: if the module checkboxes were never actually rendered
+  // on screen (e.g. a stale/bfcache DOM state), don't let a business
+  // get saved with zero modules and an empty, broken-looking app.
+  // Fall back to the picked industry's normal default set.
+  if(!modules.length){ modules = (INDUSTRY_DEFAULTS[wizIndustry] || INDUSTRY_DEFAULTS.general).slice(); }
   PENDING_SETUP = {
     bizName: document.getElementById('setupBizName').value.trim() || 'My Business',
     ownerName: document.getElementById('setupOwnerName').value.trim() || 'Owner',
@@ -729,6 +772,14 @@ async function loadAll(){
       if(CFG){ CFG.plan = (row.status === 'active') ? row.plan : 'starter'; }
     }
   }catch(e){ console.error('loadAll failed', e); CFG = null; DATA = null; }
+  // Self-heal: a business should never be left with an empty module
+  // list (blank sidebar, blank app — looks completely broken even
+  // though the account and its data are fine). If that ever happens,
+  // repair it from the industry's normal defaults and save it back.
+  if(CFG && (!Array.isArray(CFG.modules) || !CFG.modules.length)){
+    CFG.modules = (INDUSTRY_DEFAULTS[CFG.industry] || INDUSTRY_DEFAULTS.general).slice();
+    await saveCfg();
+  }
 }
 async function syncSubscription(){
   // Bootstrap already brought subscription state back with cfg/data in
