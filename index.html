@@ -22,7 +22,7 @@ body{background:var(--cream); color:var(--ink); font-family:'Inter',sans-serif; 
 .mono{font-family:'IBM Plex Mono',monospace;}
 a{color:inherit;}
 button{font-family:inherit; cursor:pointer;}
-input,select,textarea{font-family:inherit; font-size:14px;}
+input,select,textarea{font-family:inherit; font-size:16px;}
 ::-webkit-scrollbar{width:9px; height:9px;}
 ::-webkit-scrollbar-thumb{background:#d8d0bd; border-radius:10px;}
 .hidden{display:none !important;}
@@ -475,6 +475,7 @@ function goToAccountCreation(){
     industry: wizIndustry,
     modules
   };
+  try{ localStorage.setItem('tecxfra_pending_setup', JSON.stringify(PENDING_SETUP)); }catch(e){}
   document.getElementById('wizard').style.display = 'none';
   document.getElementById('authScreen').style.display = 'flex';
   setAuthMode('signup');
@@ -552,11 +553,22 @@ async function afterAuth(session){
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('wizard').style.display = 'none';
 
+  if(!PENDING_SETUP){
+    // The wizard answers can survive a page reload (e.g. returning after
+    // clicking the email confirmation link) — recover them from storage
+    // before assuming this account has nothing set up.
+    try{
+      const stored = localStorage.getItem('tecxfra_pending_setup');
+      if(stored) PENDING_SETUP = JSON.parse(stored);
+    }catch(e){}
+  }
+
   if(PENDING_SETUP){
     // Brand-new signup straight off the wizard — turn the collected
     // answers into their first real, saved business.
     await finishSetup(PENDING_SETUP);
     PENDING_SETUP = null;
+    try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
     return;
   }
 
@@ -572,6 +584,7 @@ async function afterAuth(session){
 }
 async function signOut(){
   await sb.auth.signOut();
+  try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
   CUR_VENUE_ID = null; CFG = null; DATA = null; PENDING_SETUP = null;
   document.getElementById('app').classList.remove('active');
   document.getElementById('authScreen').style.display = 'none';
