@@ -225,6 +225,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
   .sidebar{position:fixed; left:-236px; z-index:100; transition:.2s; height:100vh; height:100dvh;} .sidebar.open{left:0;}
   html, body{overflow-x:hidden;}
   .content{padding:18px 14px 50px;}
+  .plan-grid{grid-template-columns:1fr !important;}
 }
 </style>
 </head>
@@ -461,8 +462,16 @@ const supabaseReadyPromise = initSupabase();
 // login session. Forcing a real reload on a bfcache restore is the
 // standard fix, and is exactly what "logs out / breaks when I go back
 // or refresh" looks like from the outside.
+let SAVES_PENDING = 0;
 window.addEventListener('pageshow', function(e){
-  if(e.persisted){ window.location.reload(); }
+  if(!e.persisted) return;
+  // Never nuke an edit that's mid-save — wait for outstanding saves to
+  // land first, then do the reload that fixes the stale-bfcache state.
+  const tryReload = () => {
+    if(SAVES_PENDING > 0){ setTimeout(tryReload, 200); return; }
+    window.location.reload();
+  };
+  tryReload();
 });
 
 // ⚠️ TODO(business, BEFORE GO-LIVE): replace with your real Paystack
@@ -751,13 +760,17 @@ let CUR_SUBSCRIPTION = null;
 
 async function saveCfg(){
   if(!CUR_VENUE_ID) return;
+  SAVES_PENDING++;
   try{ const { error } = await sb.rpc('save_tenant_cfg', { p_cfg: CFG, p_business_name: CFG.bizName }); if(error) throw error; }
   catch(e){ console.error('saveCfg failed', e); showToast('Could not save — check connection'); }
+  finally{ SAVES_PENDING--; }
 }
 async function saveData(){
   if(!CUR_VENUE_ID) return;
+  SAVES_PENDING++;
   try{ const { error } = await sb.rpc('save_tenant_data', { p_data: DATA }); if(error) throw error; }
   catch(e){ console.error('saveData failed', e); showToast('Could not save — check connection'); }
+  finally{ SAVES_PENDING--; }
 }
 async function loadAll(){
   CFG = null; DATA = null; CUR_SUBSCRIPTION = null;
@@ -811,7 +824,11 @@ async function syncSubscription(){
 }
 
 function getCountryInfo(){
-  return COUNTRIES.find(c=>c.country===CFG.country) || COUNTRIES.find(c=>c.currency===CFG.currency) || COUNTRIES[COUNTRIES.length-1];
+  const base = COUNTRIES.find(c=>c.country===CFG.country) || COUNTRIES.find(c=>c.currency===CFG.currency) || COUNTRIES[COUNTRIES.length-1];
+  return Object.assign({}, base, {
+    taxNote: (CFG.customTaxNote && CFG.customTaxNote.trim()) ? CFG.customTaxNote : base.taxNote,
+    payroll: (CFG.customPayrollNote && CFG.customPayrollNote.trim()) ? CFG.customPayrollNote : base.payroll
+  });
 }
 function money(n){
   n = parseFloat(n)||0;
@@ -2215,6 +2232,7 @@ function drawSettingsBody(){
   const b = document.getElementById('setBody');
   if(settingsTab==='business'){
     const ci = getCountryInfo();
+    const countryBase = COUNTRIES.find(c=>c.country===CFG.country) || ci;
     b.innerHTML = `<div class="card" style="max-width:480px">
       <div class="industry-badge" style="margin-bottom:14px">${CUR_INDUSTRY_OBJ.ic} ${CUR_INDUSTRY_OBJ.label}</div>
       <label class="lbl">Business name</label><input class="inp" id="setBizName" value="${CFG.bizName}">
@@ -2229,14 +2247,24 @@ function drawSettingsBody(){
         <option value="faith" ${CFG.tone==='faith'?'selected':''}>Faith &amp; Scripture</option>
         <option value="neutral" ${CFG.tone==='neutral'?'selected':''}>Plain &amp; Neutral</option>
       </select>
-      <div style="font-size:11.5px;color:var(--ink-dim);margin:4px 0 14px;line-height:1.6">Current tax type: <b style="color:var(--navy)">${ci.tax}</b> · Payroll: <b style="color:var(--navy)">${ci.payroll}</b></div>
+      <div style="font-size:11.5px;color:var(--ink-dim);margin:4px 0 14px;line-height:1.6">Default for ${CFG.country}: <b style="color:var(--navy)">${countryBase.tax}</b> · Payroll: <b style="color:var(--navy)">${countryBase.payroll}</b> — edit your own details below.</div>
+      <div style="border-top:1px solid var(--line);margin:14px 0 12px;padding-top:14px">
+        <div class="card-title" style="margin-bottom:10px">Tax &amp; Payroll</div>
+        <label class="lbl">Employer / Business Tax ID (TIN)</label><input class="inp" id="setTaxId" value="${CFG.taxId||''}" placeholder="e.g. C0012345678X">
+        <label class="lbl">Employer registration no. (e.g. SSNIT / PAYE employer no.)</label><input class="inp" id="setEmployerRegNo" value="${CFG.employerRegNo||''}" placeholder="e.g. SS123456789">
+        <label class="lbl">Number of employees</label><input class="inp" id="setEmployeeCount" type="number" min="0" value="${CFG.employeeCount!=null?CFG.employeeCount:''}" placeholder="e.g. 3">
+        <label class="lbl">Tax note (your own rate / terms — overrides the default above)</label><textarea class="inp" id="setTaxNote" rows="2" placeholder="${ci.taxNote}">${CFG.customTaxNote||''}</textarea>
+        <label class="lbl">Payroll note (your own scheme — overrides the default above)</label><textarea class="inp" id="setPayrollNote" rows="2" placeholder="${ci.payroll}">${CFG.customPayrollNote||''}</textarea>
+      </div>
       <button class="btn btn-primary" onclick="saveBusinessSettings()">Save Changes</button>
     </div>`;
   } else if(settingsTab==='industry'){
-    b.innerHTML = `<div class="card"><div class="card-title">Change industry <span class="sub">relabels the app instantly — your data is never affected</span></div>
-      <div class="industry-grid" id="setIndustryGrid"></div></div>`;
-    document.getElementById('setIndustryGrid').innerHTML = INDUSTRIES.map(i=>`
-      <div class="industry-pin ${i.key===CFG.industry?'sel':''}" onclick="changeIndustry('${i.key}')"><div class="ic">${i.ic}</div><div class="lb">${i.label}</div></div>`).join('');
+    b.innerHTML = `<div class="card">
+      <div class="card-title">Your industry <span class="sub">this shapes labels and defaults across the whole app</span></div>
+      <div class="industry-badge" style="margin:6px 0 16px;font-size:14px;padding:10px 16px">${CUR_INDUSTRY_OBJ.ic} ${CUR_INDUSTRY_OBJ.label}</div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.7;margin-bottom:14px">Changing industry relabels menus and defaults everywhere — your contacts, revenue and other data are never deleted, but this should only be done if the business genuinely changed what it does, not to test things out.</div>
+      <button class="btn btn-ghost" onclick="openIndustryChangeConfirm()">Change Industry…</button>
+    </div>`;
   } else if(settingsTab==='modules'){
     b.innerHTML = `<div class="card"><div class="card-title">Modules <span class="sub">turn features on as you grow — nothing is lost when off</span></div>
       <div id="setModList"></div></div>`;
@@ -2261,13 +2289,13 @@ function drawSettingsBody(){
     document.getElementById('setModList').innerHTML = modHtml;
   } else if(settingsTab==='plan'){
     const cur = currentPlan();
-    b.innerHTML = `<div class="grid-metrics" style="grid-template-columns:repeat(3,1fr)">
+    b.innerHTML = `<div class="grid-metrics plan-grid" style="grid-template-columns:repeat(3,1fr)">
       ${PLANS.map(p=>`<div class="card" style="border-color:${p.key===cur.key?'var(--teal)':'var(--line)'};position:relative">
         ${p.key===cur.key?'<div class="pill pill-active" style="position:absolute;top:14px;right:14px">Current</div>':''}
         <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">${p.label}</div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${p.price}</div>
         <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.6;margin-bottom:14px">${p.tagline}. ${p.desc}</div>
-        <button class="btn ${p.key===cur.key?'btn-ghost':'btn-primary'} btn-full" ${p.key===cur.key?'disabled':''} onclick="switchPlan('${p.key}')">${p.key===cur.key?'Current Plan':'Switch to '+p.label}</button>
+        <button class="btn ${p.key===cur.key?'btn-ghost':'btn-primary'} btn-full" ${p.key===cur.key?'disabled':''} onclick="switchPlan('${p.key}')">${p.key===cur.key?'Current Plan':(p.key==='starter'?'Switch to Starter':'Switch to '+p.label)}</button>
       </div>`).join('')}
     </div>
     <div class="card"><div class="card-title">What changes between plans</div>
@@ -2293,7 +2321,7 @@ function drawSettingsBody(){
       <div class="card-title">Subscription status</div>
       <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;margin-bottom:14px">
         Plan: <b style="color:var(--navy)">${currentPlan().label}</b><br>
-        Status: <b style="color:var(--navy)">${sub ? sub.status : 'free'}</b><br>
+        Status: <b style="color:var(--navy)">${currentPlan().key==='starter' ? 'Active (Free plan)' : (sub && sub.status==='active' ? 'Active' : 'Inactive — payment needed')}</b><br>
         ${sub && sub.current_period_end ? `Renews: <b style="color:var(--navy)">${new Date(sub.current_period_end).toLocaleDateString()}</b><br>` : ''}
         ${sub && sub.provider ? `Last paid via: <b style="color:var(--navy)">${sub.provider}</b>` : ''}
       </div>
@@ -2318,6 +2346,12 @@ async function saveBusinessSettings(){
   CFG.country = document.getElementById('setCountry').value;
   CFG.currency = document.getElementById('setCurrency').value;
   CFG.tone = document.getElementById('setTone').value;
+  CFG.taxId = document.getElementById('setTaxId').value.trim();
+  CFG.employerRegNo = document.getElementById('setEmployerRegNo').value.trim();
+  const empCount = document.getElementById('setEmployeeCount').value;
+  CFG.employeeCount = empCount==='' ? null : Math.max(0, parseInt(empCount,10)||0);
+  CFG.customTaxNote = document.getElementById('setTaxNote').value.trim();
+  CFG.customPayrollNote = document.getElementById('setPayrollNote').value.trim();
   await saveCfg();
   document.getElementById('sbBizName').textContent = CFG.bizName;
   document.getElementById('sbOwnerName').textContent = CFG.ownerName;
@@ -2325,7 +2359,11 @@ async function saveBusinessSettings(){
   showToast('Saved'); renderSettings();
 }
 function switchPlan(key){
-  if(key==='starter'){ showToast('To move to Starter, cancel your active plan below — no need to switch manually.'); return; }
+  if(key==='starter'){
+    if(!CUR_SUBSCRIPTION || CUR_SUBSCRIPTION.status!=='active'){ showToast('You are already on Starter'); return; }
+    cancelSubscriptionFlow();
+    return;
+  }
   openUpgradeModal(key);
 }
 async function cancelSubscriptionFlow(){
@@ -2408,6 +2446,20 @@ function applyBranding(){
   marks.forEach(el=>{
     if(CFG.logoEmoji){ el.innerHTML = `<div style="width:100%;height:100%;border-radius:8px;background:${CFG.brandColor||'#4aa8b8'};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff">${CFG.logoEmoji}</div>`; }
   });
+}
+function openIndustryChangeConfirm(){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-head"><h3>Change industry</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div style="font-size:12px;color:var(--ink-dim);line-height:1.7;margin-bottom:14px">Currently set to <b style="color:var(--navy)">${CUR_INDUSTRY_OBJ.ic} ${CUR_INDUSTRY_OBJ.label}</b>. Pick the new industry below — this only relabels the app, nothing is deleted.</div>
+    <div class="industry-grid" id="modIndustryGrid"></div>
+  </div></div>`;
+  document.getElementById('modIndustryGrid').innerHTML = INDUSTRIES.map(i=>`
+    <div class="industry-pin ${i.key===CFG.industry?'sel':''}" onclick="confirmChangeIndustry('${i.key}')"><div class="ic">${i.ic}</div><div class="lb">${i.label}</div></div>`).join('');
+}
+function confirmChangeIndustry(k){
+  if(k===CFG.industry){ closeModal(); return; }
+  closeModal();
+  changeIndustry(k);
 }
 async function changeIndustry(k){
   CFG.industry = k; CUR_INDUSTRY_OBJ = INDUSTRIES.find(i=>i.key===k);
