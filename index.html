@@ -1082,14 +1082,71 @@ const TECXFRA_MORE_KEYS = ['staff','journal','archive','system','settings'];
 const PLANS = [
   {key:'starter', label:'Starter', price:'Free', tagline:'Run the daily basics — Tec + F + R',
     desc:'Today, CRM, Calendar, Follow-Ups, Messages, Expenses, Revenue, POS/Bookings, Staff, Guides.',
-    locked:['referrals','persona','audit','accountability','journal'], aiFacts:3, whiteLabel:false, csvImport:false},
+    locked:['referrals','persona','audit','accountability','journal'], aiFacts:3, whiteLabel:false, csvImport:false,
+    limits:{contacts:30, staff:3, monthlyTransactions:60},
+    features:[
+      'Today view, Calendar, CRM & Pipeline',
+      'Follow-ups queue + WhatsApp deep links',
+      'Sales/POS, Bookings, Expenses, Revenue dashboard',
+      'Staff & Shifts (up to 3 team members)',
+      'Up to 30 contacts and 60 sales/transactions a month',
+      'AI Assistant with short-term memory (last 3 facts)',
+      'Growth Library guides',
+      'Everything free, forever — upgrade only when you outgrow it'
+    ]},
   {key:'growth', label:'Growth', price:'Paid', tagline:'Adds the X layer — analytics & retention',
     desc:'Everything in Starter, plus Referrals & Retention, Persona, Business Audit, Accountability.',
-    locked:['journal'], aiFacts:10, whiteLabel:false, csvImport:true},
+    locked:['journal'], aiFacts:10, whiteLabel:false, csvImport:true,
+    limits:{contacts:300, staff:15, monthlyTransactions:1000},
+    features:[
+      'Everything in Starter, no caps at Starter\'s size',
+      'Up to 300 contacts, 15 staff, 1,000 transactions/month',
+      'Referrals & Retention system (loyalty tiers, win-back scripts)',
+      'Ideal Client Persona builder',
+      'Business Audit & Accountability tracking',
+      'CSV import for contacts & inventory',
+      'AI Assistant remembers your last 10 learned facts'
+    ]},
   {key:'enterprise', label:'Enterprise', price:'Custom', tagline:'Everything unlocked, deepest AI recall',
     desc:'Everything in Growth, plus Journal, full AI knowledge recall, white-label branding, and CSV import.',
-    locked:[], aiFacts:200, whiteLabel:true, csvImport:true}
+    locked:[], aiFacts:200, whiteLabel:true, csvImport:true,
+    limits:{contacts:Infinity, staff:Infinity, monthlyTransactions:Infinity},
+    features:[
+      'Everything in Growth, with no contact/staff/transaction caps',
+      'Journal & Notes module',
+      'Deepest AI recall — up to 200 learned facts',
+      'White-label branding (your logo & brand colour app-wide)',
+      'Priority support for setup & data questions'
+    ]}
 ];
+const PLAN_LIMITS = { starter: PLANS[0].limits, growth: PLANS[1].limits, enterprise: PLANS[2].limits };
+function planUsage(){
+  return {
+    contacts: (DATA?.contacts||[]).length,
+    staff: (DATA?.staff||[]).length,
+    monthlyTransactions: (DATA?.transactions||[]).filter(t=>(t.date||'').slice(0,7)===todayStr().slice(0,7)).length
+  };
+}
+// Returns the resource name if the business has hit or passed its
+// current plan's cap on it, otherwise null. Used to gate adding more
+// contacts/staff/sales and to show the "you're outgrowing Starter"
+// nudge — this is the mechanism that makes Starter → Growth a real,
+// enforced growth path instead of just a marketing distinction.
+function capHit(resource){
+  const limit = currentPlan().limits?.[resource];
+  if(limit == null || limit === Infinity) return null;
+  return planUsage()[resource] >= limit ? limit : null;
+}
+function showUpgradeNudge(resource, label){
+  const limit = capHit(resource);
+  const nextPlan = PLANS.find(p=>p.key!==currentPlan().key && (p.limits?.[resource]??Infinity) > (currentPlan().limits?.[resource]??0)) || PLANS[1];
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">You've reached the ${currentPlan().label} limit</div>
+    <div style="font-size:12.5px;color:var(--ink-dim);margin-bottom:16px;line-height:1.7">${currentPlan().label} allows up to <b>${limit}</b> ${label}. Upgrade to <b>${nextPlan.label}</b> for up to <b>${nextPlan.limits[resource]===Infinity?'unlimited':nextPlan.limits[resource]}</b> ${label} and more.</div>
+    <button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="closeModal();setSettingsTab('plan');navTo('settings');">See plans →</button>
+    <button class="btn btn-ghost btn-full" onclick="closeModal()">Not now</button>
+  </div></div>`;
+}
 /* ---------- PER-COUNTRY PRICING ----------
    TODO(business): these amounts are PLACEHOLDERS — replace with real
    prices per market before go-live. Amounts are in each currency's
@@ -1180,8 +1237,14 @@ function renderToday(){
   const hotLeads = (DATA.contacts||[]).filter(c=>c.temp==='hot').length;
   const onDuty = (DATA.staff||[]).filter(s=>s.onDuty).length;
   const tip = dailyTip();
+  const usage = planUsage(); const limits = currentPlan().limits || {};
+  const nearCap = ['contacts','staff','monthlyTransactions'].find(r=>limits[r] && limits[r]!==Infinity && usage[r]/limits[r] >= 0.8);
+  const capLabel = {contacts:'contacts', staff:'team members', monthlyTransactions:'transactions this month'}[nearCap];
 
-  let html = `<div class="card" style="border-color:var(--teal); background:linear-gradient(135deg, var(--teal-tint), var(--paper))">
+  let html = nearCap ? `<div class="card" style="border-color:var(--amber,#c98a2e);margin-bottom:14px">
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.6"><b style="color:var(--navy)">Growing fast</b> — you're at ${usage[nearCap]}/${limits[nearCap]} ${capLabel} on the ${currentPlan().label} plan. <a style="color:var(--teal);cursor:pointer;font-weight:600" onclick="setSettingsTab('plan');navTo('settings')">See what Growth unlocks →</a></div>
+  </div>` : '';
+  html += `<div class="card" style="border-color:var(--teal); background:linear-gradient(135deg, var(--teal-tint), var(--paper))">
     <div class="card-title">Today's ${toneLabel()} <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change tone →</span></div>
     <div style="font-size:13.5px; line-height:1.7; color:var(--navy)">${tip}</div>
   </div>
@@ -1430,6 +1493,7 @@ function drawCrmList(){
 }
 function normalizePhone(p){ return (p||'').replace(/\D/g,''); }
 async function addContact(){
+  if(capHit('contacts')){ showUpgradeNudge('contacts', 'contacts'); return; }
   const name = document.getElementById('cName').value.trim();
   if(!name){ showToast('Name is required'); return; }
   const phoneRaw = document.getElementById('cPhone').value.trim();
@@ -1543,6 +1607,10 @@ async function checkout(){
   cart = {};
   logAccountability('sales_made');
   await saveData(); showToast('Sale completed'); renderPOS();
+  // Never block a sale — but once the plan's monthly transaction cap
+  // is crossed, let the business know so they can upgrade before it
+  // becomes a real limitation, instead of finding out the hard way.
+  if(capHit('monthlyTransactions')) showUpgradeNudge('monthlyTransactions', 'transactions a month');
 }
 
 /* ---------- BOOKINGS / ORDERS / JOBS (pipeline board) ---------- */
@@ -1669,6 +1737,7 @@ function renderStaff(){
 }
 async function toggleDuty(id){ const s=DATA.staff.find(x=>x.id===id); if(s) s.onDuty=!s.onDuty; await saveData(); renderStaff(); }
 async function addStaff(){
+  if(capHit('staff')){ showUpgradeNudge('staff', 'team members'); return; }
   const name=document.getElementById('stName').value.trim();
   if(!name){ showToast('Name required'); return; }
   DATA.staff.push({id:uid('S'), name, role:document.getElementById('stRole').value||'Team Member', dept:document.getElementById('stDept').value||'General', onDuty:false, payType:document.getElementById('stPay').value, payRate:0});
@@ -2289,21 +2358,44 @@ function drawSettingsBody(){
     document.getElementById('setModList').innerHTML = modHtml;
   } else if(settingsTab==='plan'){
     const cur = currentPlan();
-    b.innerHTML = `<div class="grid-metrics plan-grid" style="grid-template-columns:repeat(3,1fr)">
-      ${PLANS.map(p=>`<div class="card" style="border-color:${p.key===cur.key?'var(--teal)':'var(--line)'};position:relative">
+    const usage = planUsage();
+    b.innerHTML = `<div class="card" style="margin-bottom:14px">
+      <div class="card-title">Your usage on ${cur.label}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:8px">
+        ${['contacts','staff','monthlyTransactions'].map(r=>{
+          const limit = cur.limits?.[r]; const used = usage[r];
+          const unlimited = limit==null || limit===Infinity;
+          const pct = unlimited ? 0 : Math.min(100, Math.round((used/limit)*100));
+          const label = r==='monthlyTransactions' ? 'Transactions this month' : (r==='staff'?'Team members':'Contacts');
+          return `<div>
+            <div style="font-size:11px;color:var(--ink-dim);margin-bottom:4px">${label}</div>
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px">${used}${unlimited?'':' / '+limit}</div>
+            ${unlimited?'':`<div style="height:6px;background:var(--line);border-radius:6px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${pct>=100?'var(--danger,#c0584a)':'var(--teal)'}"></div></div>`}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+    <div class="grid-metrics plan-grid" style="grid-template-columns:repeat(3,1fr)">
+      ${PLANS.map(p=>`<div class="card" style="border-color:${p.key===cur.key?'var(--teal)':'var(--line)'};position:relative;display:flex;flex-direction:column">
         ${p.key===cur.key?'<div class="pill pill-active" style="position:absolute;top:14px;right:14px">Current</div>':''}
         <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">${p.label}</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${p.price}</div>
-        <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.6;margin-bottom:14px">${p.tagline}. ${p.desc}</div>
-        <button class="btn ${p.key===cur.key?'btn-ghost':'btn-primary'} btn-full" ${p.key===cur.key?'disabled':''} onclick="switchPlan('${p.key}')">${p.key===cur.key?'Current Plan':(p.key==='starter'?'Switch to Starter':'Switch to '+p.label)}</button>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${p.price}${p.key!=='starter'?' / month':''}</div>
+        <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.5;margin-bottom:10px">${p.tagline}</div>
+        <ul style="font-size:11.5px;color:var(--ink-dim);line-height:1.7;margin:0 0 14px;padding-left:18px;flex:1">
+          ${p.features.map(f=>`<li>${f}</li>`).join('')}
+        </ul>
+        ${p.key!=='starter'?`<div style="font-size:10.5px;color:var(--muted);margin-bottom:8px">Activates the moment payment is confirmed — nothing changes until then.</div>`:''}
+        <button class="btn ${p.key===cur.key?'btn-ghost':'btn-primary'} btn-full" ${p.key===cur.key?'disabled':''} onclick="switchPlan('${p.key}')">${p.key===cur.key?'Current Plan':(p.key==='starter'?'Switch to Starter':'Upgrade to '+p.label)}</button>
       </div>`).join('')}
     </div>
     <div class="card"><div class="card-title">What changes between plans</div>
       <div style="font-size:12px;color:var(--ink-dim);line-height:1.8">
+        <b style="color:var(--navy)">Contacts / Staff / Transactions:</b> Starter ${PLANS[0].limits.contacts} / ${PLANS[0].limits.staff} / ${PLANS[0].limits.monthlyTransactions}·mo — Growth ${PLANS[1].limits.contacts} / ${PLANS[1].limits.staff} / ${PLANS[1].limits.monthlyTransactions}·mo — Enterprise unlimited.<br>
         <b style="color:var(--navy)">AI recall depth:</b> Starter remembers your last ${PLANS[0].aiFacts} learned facts, Growth ${PLANS[1].aiFacts}, Enterprise up to ${PLANS[2].aiFacts}.<br>
         <b style="color:var(--navy)">White-label branding:</b> logo + brand colour are an Enterprise feature.<br>
         <b style="color:var(--navy)">CSV import:</b> available on Growth and Enterprise.<br>
-        <b style="color:var(--navy)">Modules:</b> Referrals, Persona, Audit and Accountability need Growth or above; Journal needs Enterprise.
+        <b style="color:var(--navy)">Modules:</b> Referrals, Persona, Audit and Accountability need Growth or above; Journal needs Enterprise.<br>
+        <b style="color:var(--navy)">Payment:</b> a paid plan only takes effect once payment is confirmed — picking it doesn't change anything by itself.
       </div>
     </div>`;
   } else if(settingsTab==='branding'){
@@ -2390,10 +2482,14 @@ async function confirmCancelSubscription(){
 }
 function openUpgradeModal(key){
   const plan = PLANS.find(p=>p.key===key);
+  const paystackReady = /^pk_(test|live)_/.test(PAYSTACK_PUBLIC_KEY) && PAYSTACK_PUBLIC_KEY.indexOf('REPLACE_ME')===-1;
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
     <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">Upgrade to ${plan.label}</div>
-    <div style="font-size:12px;color:var(--ink-dim);margin-bottom:16px;line-height:1.6">${plan.tagline}. This is a monthly plan — access turns off automatically if a payment is missed, and back on the moment it's paid.</div>
-    <button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="payWithPaystack('${key}')">Pay with Card / Paystack →</button>
+    <div style="font-size:12px;color:var(--ink-dim);margin-bottom:16px;line-height:1.6">${plan.tagline}. This is a monthly plan — access turns off automatically if a payment is missed, and back on the moment it's paid. <b>Nothing changes on your account until a payment is confirmed.</b></div>
+    ${paystackReady
+      ? `<button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="payWithPaystack('${key}')">Pay with Card / Paystack →</button>`
+      : `<div style="font-size:11px;color:var(--muted);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px">Card payments aren't turned on yet — use Mobile Money or Request an Invoice below.</div>`
+    }
     <button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="requestMomoInvoice('${key}','momo')">Pay with Mobile Money</button>
     <button class="btn btn-ghost btn-full" style="margin-bottom:14px" onclick="requestMomoInvoice('${key}','invoice')">Request an Invoice</button>
     <div style="font-size:11px;color:var(--muted);text-align:center">Card payments activate instantly. MoMo and invoice requests are confirmed by our team, usually within one business day.</div>
@@ -2401,6 +2497,14 @@ function openUpgradeModal(key){
   </div></div>`;
 }
 async function payWithPaystack(planKey){
+  if(!/^pk_(test|live)_/.test(PAYSTACK_PUBLIC_KEY) || PAYSTACK_PUBLIC_KEY.indexOf('REPLACE_ME')!==-1){
+    showToast('Card payments are not set up yet — use Mobile Money or Request an Invoice');
+    return;
+  }
+  if(typeof PaystackPop === 'undefined'){
+    showToast('Payment service could not load — check your connection and try again');
+    return;
+  }
   const plan = PLANS.find(p=>p.key===planKey);
   const currency = getPaystackCurrency();
   const pricing = PLAN_PRICING[currency] || PLAN_PRICING.USD;
