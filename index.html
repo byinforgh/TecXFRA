@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>TecXFRA — Complete Total Control</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -117,7 +117,7 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 /* ============ APP SHELL ============ */
 #app{display:none; min-height:100vh;}
 #app.active{display:flex;}
-.sidebar{width:236px; flex-shrink:0; background:var(--navy); color:#eaf3f4; display:flex; flex-direction:column; height:100vh; position:sticky; top:0;}
+.sidebar{width:236px; flex-shrink:0; background:var(--navy); color:#eaf3f4; display:flex; flex-direction:column; height:100vh; height:100dvh; position:sticky; top:0;}
 .sb-brand{display:flex; align-items:center; gap:10px; padding:20px 18px; border-bottom:1px solid rgba(255,255,255,.08);}
 .sb-brand .name{font-weight:700; font-size:15px; letter-spacing:-.2px; color:#fff;}
 .sb-brand .biz{font-size:10.5px; color:#9fc3ca; letter-spacing:.5px;}
@@ -222,7 +222,8 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 .settings-tabs{display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap;}
 .industry-badge{display:inline-flex; align-items:center; gap:6px; background:var(--teal-tint); color:var(--teal-dim); padding:5px 12px; border-radius:20px; font-size:11px; font-weight:700;}
 @media(max-width:860px){
-  .sidebar{position:fixed; left:-236px; z-index:100; transition:.2s;} .sidebar.open{left:0;}
+  .sidebar{position:fixed; left:-236px; z-index:100; transition:.2s; height:100vh; height:100dvh;} .sidebar.open{left:0;}
+  html, body{overflow-x:hidden;}
   .content{padding:18px 14px 50px;}
 }
 </style>
@@ -767,7 +768,7 @@ async function loadAll(){
     const row = Array.isArray(rows) ? rows[0] : rows;
     if(row){
       CFG = (row.cfg && Object.keys(row.cfg).length) ? row.cfg : null;
-      DATA = (row.data && Object.keys(row.data).length) ? row.data : null;
+      DATA = (row.data && Object.keys(row.data).length) ? hydrateData(row.data) : null;
       CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, current_period_end: row.current_period_end };
       if(CFG){ CFG.plan = (row.status === 'active') ? row.plan : 'starter'; }
     }
@@ -779,6 +780,18 @@ async function loadAll(){
   if(CFG && (!Array.isArray(CFG.modules) || !CFG.modules.length)){
     CFG.modules = (INDUSTRY_DEFAULTS[CFG.industry] || INDUSTRY_DEFAULTS.general).slice();
     await saveCfg();
+  }
+  // Self-heal (the real cause of the "logged in, nothing inside" bug):
+  // if DATA never got saved on the original signup (a dropped network
+  // call, a bfcache-restored tab, etc.), every renderer that reads
+  // DATA.contacts / DATA.followups / DATA.items throws on a missing
+  // key — which silently kills the sidebar and page render right
+  // after the header text is drawn. A business should never be stuck
+  // like that; reseed it and save it back so the app always has a
+  // safe, working data shape to render.
+  if(CFG && (!DATA || typeof DATA !== 'object' || !Object.keys(DATA).length)){
+    DATA = seedData(CFG.industry);
+    await saveData();
   }
 }
 async function syncSubscription(){
@@ -888,6 +901,22 @@ function seedData(industryKey){
   };
 }
 
+// Guarantees every key every renderer expects on DATA actually exists,
+// without wiping out any real data that's already there. Protects
+// against exactly the bug found in production: a partially-saved
+// DATA object (missing a key like contacts/followups) silently
+// throwing inside a renderer and leaving the whole app blank.
+function hydrateData(d){
+  const shape = {contacts:[], items:[], inventory:[], staff:[], transactions:[],
+    expenses:[], events:[], followups:[], archive:[], messageLog:[],
+    journal:[], persona:null, auditAnswers:{}, auditScore:null,
+    accountability:{daily:{}, log:[]}, referrals:[],
+    knowledge:{facts:[], questionsAsked:0}};
+  const out = Object.assign({}, shape, d||{});
+  if(!out.accountability || typeof out.accountability !== 'object') out.accountability = {daily:{}, log:[]};
+  if(!out.knowledge || typeof out.knowledge !== 'object') out.knowledge = {facts:[], questionsAsked:0};
+  return out;
+}
 function getTemplates(){
   const noun = (CUR_INDUSTRY_OBJ?.crmNoun || 'contacts').toLowerCase();
   return {
@@ -996,16 +1025,32 @@ async function finishSetup(setup){
 }
 
 async function boot(){
-  await syncSubscription();
-  CUR_INDUSTRY_OBJ = INDUSTRIES.find(i=>i.key===CFG.industry) || INDUSTRIES[INDUSTRIES.length-1];
-  document.getElementById('wizard').style.display = 'none';
-  document.getElementById('app').classList.add('active');
-  document.getElementById('sbBizName').textContent = CFG.bizName;
-  document.getElementById('sbIndustry').textContent = CUR_INDUSTRY_OBJ.label;
-  document.getElementById('sbOwnerName').textContent = CFG.ownerName;
-  document.getElementById('sbAvatar').textContent = initials(CFG.ownerName);
-  renderSidebar();
-  navTo('today');
+  try{
+    await syncSubscription();
+    CUR_INDUSTRY_OBJ = INDUSTRIES.find(i=>i.key===CFG.industry) || INDUSTRIES[INDUSTRIES.length-1];
+    document.getElementById('wizard').style.display = 'none';
+    document.getElementById('app').classList.add('active');
+    document.getElementById('sbBizName').textContent = CFG.bizName;
+    document.getElementById('sbIndustry').textContent = CUR_INDUSTRY_OBJ.label;
+    document.getElementById('sbOwnerName').textContent = CFG.ownerName;
+    document.getElementById('sbAvatar').textContent = initials(CFG.ownerName);
+    DATA = hydrateData(DATA);
+    renderSidebar();
+    navTo('today');
+  }catch(e){
+    console.error('boot failed', e);
+    document.getElementById('app').classList.add('active');
+    document.getElementById('wizard').style.display = 'none';
+    const main = document.getElementById('pageContent') || document.body;
+    if(main){
+      main.innerHTML = `<div style="padding:32px;max-width:480px;margin:60px auto;text-align:center;font-family:inherit">
+        <div style="font-size:32px;margin-bottom:12px">⚠️</div>
+        <div style="font-weight:700;margin-bottom:8px">Something didn't load correctly</div>
+        <div style="color:var(--muted,#6b7a7b);margin-bottom:18px;font-size:14px">Your account and data are safe. Reloading usually fixes this.</div>
+        <button class="btn btn-primary" onclick="window.location.reload()">Reload</button>
+      </div>`;
+    }
+  }
 }
 const TECXFRA_GROUPS = [
   {letter:'T', label:'Today & Tasks', keys:['today']},
