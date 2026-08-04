@@ -1128,6 +1128,7 @@ async function finishSetup(setup){
 async function boot(){
   try{
     await syncSubscription();
+    await syncGuidePurchases();
     CUR_INDUSTRY_OBJ = INDUSTRIES.find(i=>i.key===CFG.industry) || INDUSTRIES[INDUSTRIES.length-1];
     document.getElementById('wizard').style.display = 'none';
     document.getElementById('app').classList.add('active');
@@ -1291,15 +1292,24 @@ function navTo(page){
   else{ RENDERERS[page](); }
   window.scrollTo({top:0,behavior:'smooth'});
 }
+const MODULE_TEASERS = {
+  referrals: ['4-tier loyalty system (One-Time → Spotlight Client) tracked automatically as customers repeat-buy', 'Ready-to-send referral scripts timed to the "golden window" — 24–72 hours after a happy purchase', 'Re-activation scripts for customers who have gone quiet, so no one falls through the cracks'],
+  persona: ['A structured profile of your ideal customer — age, income, pain points, objections, where they hang out', 'Your AI assistant and messaging both get sharper once this is filled in, instead of guessing at "everyone"'],
+  audit: ['A full diagnostic score across Visibility, Trust, Sales and Authority — same method as the printed BYINFORGH checklist', 'Tells you exactly which chapter of the Growth Library to start with, instead of guessing'],
+  accountability: ['Daily/weekly/monthly non-negotiables with a running streak — outreach made, follow-ups cleared, calls done', 'Rolls up to a monthly score so you always know if this month beat last month'],
+  journal: ['A running diary tied to the business or to any individual client — searchable, timestamped', 'Where the AI assistant\'s memory of your business actually grows from — the more you write, the smarter it gets']
+};
 function renderUpgradePrompt(page, m){
   const plan = currentPlan();
   const nextPlan = PLANS.find(p=>!p.locked.includes(page)) || PLANS[PLANS.length-1];
+  const teasers = MODULE_TEASERS[page] || [];
   document.getElementById('pageContent').innerHTML = `
   <div class="card" style="text-align:center;padding:40px 24px;border-color:var(--amber)">
     <div style="font-size:36px;margin-bottom:10px">🔒</div>
     <div class="disp" style="font-size:19px;font-weight:700;margin-bottom:8px">${m.name} is part of the ${nextPlan.label} plan</div>
-    <div style="font-size:12.5px;color:var(--ink-dim);max-width:440px;margin:0 auto 18px;line-height:1.7">You're currently on <b>${plan.label}</b>. Upgrade to <b>${nextPlan.label}</b> to unlock ${m.name} — ${nextPlan.desc}</div>
-    <button class="btn btn-primary" onclick="navTo('settings');setSettingsTab('plan');renderSettings();">View Plans →</button>
+    <div style="font-size:12.5px;color:var(--ink-dim);max-width:440px;margin:0 auto 14px;line-height:1.7">You're currently on <b>${plan.label}</b>. Here's what unlocking ${m.name} actually gets you:</div>
+    ${teasers.length ? `<ul style="text-align:left;max-width:440px;margin:0 auto 18px;padding-left:20px;font-size:12.5px;color:var(--ink-dim);line-height:2">${teasers.map(t=>`<li>${t}</li>`).join('')}</ul>` : ''}
+    <button class="btn btn-primary" onclick="navTo('settings');setSettingsTab('plan');renderSettings();">Upgrade to ${nextPlan.label} →</button>
   </div>`;
 }
 
@@ -2365,14 +2375,21 @@ const GUIDES = [
   {cat:'Daily Operating System', t:'The Daily, Weekly & Monthly Operating System', b:70, full:`Everything in this library works when applied consistently — 30 minutes a day, every day, is what the system actually requires. The question is never whether it works, it's whether you show up for it.\n\nMorning: clear unread messages and follow-ups, post or share your first update of the day, check who engaged with yesterday's content and respond.\n\nMid-morning: work active conversations forward, follow up on anything sent 24+ hours ago with no response.\n\nAfternoon: update your catalogue or offer, reply to everything new within 2 hours.\n\nEvening: check in with your best customers personally, post your final update of the day (this window often gets the most engagement), reset your inbox — archive what's done, label what's active.\n\nWeekly rhythm: Monday — review every stalled lead. Tuesday — plan content for the week. Wednesday — catalogue and broadcast day. Thursday — customer care (check-ins, testimonials, referrals). Friday — outreach to new contacts. Saturday — your strongest offer of the week. Sunday — review the numbers and plan next week.\n\nThe math that matters: one extra sale a day, every day, compounds into meaningful annual revenue — not from luck, but from consistent daily action. Use the Accountability module here in TecXFRA to track exactly this, day by day, and see your streak build.`}
 ];
 let guideCatFilter = 'All';
+let guidesMainTab = 'library';
 function renderGuides(){
   document.getElementById('pageContent').innerHTML = `
-  <div class="tab-row" id="guideTabs"></div>
+  <div class="tab-row" id="guideMainTabs" style="margin-bottom:6px">
+    <button class="tab-pill ${guidesMainTab==='library'?'active':''}" onclick="setGuidesMainTab('library')">Growth Library</button>
+    <button class="tab-pill ${guidesMainTab==='store'?'active':''}" onclick="setGuidesMainTab('store')">Guide Store ${GUIDE_STORE.some(g=>!ownsGuide(g.key))?'✨':''}</button>
+  </div>
+  <div class="tab-row" id="guideTabs" style="${guidesMainTab==='store'?'display:none':''}"></div>
   <div class="card" id="guideList"></div>`;
   document.getElementById('guideTabs').innerHTML = ['All',...GUIDE_CATEGORIES].map(c=>
     `<button class="tab-pill ${guideCatFilter===c?'active':''}" onclick="setGuideCat('${c.replace(/'/g,"\\'")}')">${c}</button>`).join('');
-  drawGuideList();
+  if(guidesMainTab==='store'){ syncGuidePurchases().then(drawGuideStore); drawGuideStore(); }
+  else{ drawGuideList(); }
 }
+function setGuidesMainTab(t){ guidesMainTab=t; renderGuides(); }
 function setGuideCat(c){ guideCatFilter=c; renderGuides(); }
 function drawGuideList(){
   const list = guideCatFilter==='All' ? GUIDES : GUIDES.filter(g=>g.cat===guideCatFilter);
