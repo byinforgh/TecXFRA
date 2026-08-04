@@ -137,6 +137,7 @@
       <button class="tab on" data-tab="overview" onclick="switchTab('overview')">Overview</button>
       <button class="tab" data-tab="businesses" onclick="switchTab('businesses')">Businesses</button>
       <button class="tab" data-tab="payments" onclick="switchTab('payments')">Payments</button>
+      <button class="tab" data-tab="guides" onclick="switchTab('guides')">Guide Purchases</button>
       <button class="tab" data-tab="admins" onclick="switchTab('admins')">Admins</button>
     </div>
 
@@ -153,8 +154,13 @@
     </div>
 
     <div id="tab-payments" class="tab-panel">
-      <div class="sub" style="margin-bottom:12px">MoMo &amp; invoice requests waiting on manual approval</div>
+      <div class="sub" style="margin-bottom:12px">MoMo, invoice &amp; cash requests waiting on manual approval</div>
       <div id="list"></div>
+    </div>
+
+    <div id="tab-guides" class="tab-panel">
+      <div class="sub" style="margin-bottom:12px">Guide Store unlock requests waiting on manual approval</div>
+      <div id="guideList"></div>
     </div>
 
     <div id="tab-admins" class="tab-panel">
@@ -243,6 +249,7 @@ async function afterLogin(){
   document.getElementById('loginCard').style.display = 'none';
   document.getElementById('panel').style.display = 'block';
   renderList(data || []);
+  refreshGuides();
   loadStats();
   loadBusinesses();
   loadAdmins();
@@ -359,6 +366,45 @@ async function reject(id){
   const { error } = await sb.rpc('admin_reject_payment', { p_event_id:id, p_note:note });
   if(error){ alert('Could not reject: '+error.message); return; }
   await refresh();
+}
+
+function renderGuideList(rows){
+  const list = document.getElementById('guideList');
+  if(!rows.length){
+    list.innerHTML = '<div class="card empty">No pending guide unlock requests right now.</div>';
+    return;
+  }
+  list.innerHTML = rows.map(r=>{
+    const p = r.raw_payload || {};
+    return `
+    <div class="card pending" data-id="${r.id}">
+      <div class="biz">${(r.business_name||'Unknown business')}</div>
+      <div class="meta">
+        ${r.provider.toUpperCase()} · guide: <b>${p.guide_key||'—'}</b> ·
+        ${new Date(r.created_at).toLocaleString()}
+      </div>
+      <div class="row">
+        <button class="btn-ok" onclick="approveGuide(${r.id})">Approve &amp; unlock</button>
+        <button class="btn-danger" onclick="rejectGuide(${r.id})">Reject</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function refreshGuides(){
+  const { data, error } = await sb.rpc('admin_list_pending_guide_purchases');
+  if(!error) renderGuideList(data || []);
+}
+async function approveGuide(id){
+  const note = prompt('Optional note for this approval (e.g. MoMo ref number):') || null;
+  const { error } = await sb.rpc('admin_approve_guide_purchase', { p_event_id:id, p_note:note });
+  if(error){ alert('Could not approve: '+error.message); return; }
+  await refreshGuides();
+}
+async function rejectGuide(id){
+  const note = prompt('Reason for rejecting (optional):') || null;
+  const { error } = await sb.rpc('admin_reject_payment', { p_event_id:id, p_note:note });
+  if(error){ alert('Could not reject: '+error.message); return; }
+  await refreshGuides();
 }
 
 async function signOutAdmin(){
