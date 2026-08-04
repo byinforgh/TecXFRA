@@ -267,7 +267,14 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
       <div class="field" id="authOtpField" style="display:none"><label>Code sent by SMS</label><input id="authOtp" inputmode="numeric" placeholder="6-digit code"></div>
     </div>
 
+    <div id="hcaptchaBox" style="display:none;margin-bottom:12px"></div>
+
     <div id="authError" style="color:#c0584a;font-size:12px;margin-bottom:10px;display:none"></div>
+
+    <div id="authPendingConfirm" style="display:none;background:var(--teal-tint,#eaf4f5);border:1px solid var(--teal);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+      <div style="font-size:12.5px;color:var(--navy);line-height:1.6;margin-bottom:8px">Account created — we sent a confirmation link to <b id="authPendingEmail"></b>. Open it on this device to finish setup. Didn't get it? Check spam, or resend below.</div>
+      <button class="btn btn-ghost" id="authResendBtn" style="width:100%;font-size:12.5px" onclick="resendConfirmation()">Resend confirmation email</button>
+    </div>
 
     <div id="authEmailActions" class="wiz-nav">
       <button class="btn btn-ghost" id="authBackBtn" onclick="authGoBack()">← Back</button>
@@ -381,6 +388,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 <div class="modal-overlay" id="modalRoot"></div>
 
 <script src="https://js.paystack.co/v1/inline.js"></script>
+<script src="https://js.hcaptcha.com/1/api.js?render=explicit" async defer></script>
 <script>
 /* ============================================================
    TecXFRA — SUPABASE CLIENT + AUTH GATE
@@ -480,6 +488,35 @@ window.addEventListener('pageshow', function(e){
 // than silently charging a real card to the wrong account.
 const PAYSTACK_PUBLIC_KEY = 'pk_test_REPLACE_ME';
 
+// ⚠️ TODO(business): only needed if you turn on "Enable Captcha protection"
+// in Supabase Dashboard → Authentication → Attack Protection. Get this
+// from https://dashboard.hcaptcha.com (Sites → your site → Sitekey — the
+// PUBLIC key, not the secret). Leave as-is and Captcha protection stays
+// OFF here even if it's toggled on in Supabase, so nothing breaks by
+// accident — the widget only renders once a real key is set below.
+const HCAPTCHA_SITE_KEY = 'HCAPTCHA_SITE_KEY_REPLACE_ME';
+const HCAPTCHA_CONFIGURED = HCAPTCHA_SITE_KEY.indexOf('REPLACE_ME')===-1 && HCAPTCHA_SITE_KEY.length>10;
+let HCAPTCHA_WIDGET_ID = null;
+function renderCaptcha(){
+  if(!HCAPTCHA_CONFIGURED) return;
+  const box = document.getElementById('hcaptchaBox');
+  box.style.display = 'block';
+  if(HCAPTCHA_WIDGET_ID !== null) return; // already rendered once, just reuse it
+  if(typeof hcaptcha === 'undefined'){ setTimeout(renderCaptcha, 300); return; } // script still loading
+  try{
+    HCAPTCHA_WIDGET_ID = hcaptcha.render('hcaptchaBox', { sitekey: HCAPTCHA_SITE_KEY });
+  }catch(e){ console.error('hCaptcha render failed', e); }
+}
+function getCaptchaToken(){
+  if(!HCAPTCHA_CONFIGURED) return undefined;
+  if(HCAPTCHA_WIDGET_ID===null || typeof hcaptcha==='undefined') return '';
+  return hcaptcha.getResponse(HCAPTCHA_WIDGET_ID);
+}
+function resetCaptcha(){
+  if(!HCAPTCHA_CONFIGURED || HCAPTCHA_WIDGET_ID===null || typeof hcaptcha==='undefined') return;
+  try{ hcaptcha.reset(HCAPTCHA_WIDGET_ID); }catch(e){}
+}
+
 let AUTH_CHANNEL = 'email';
 let AUTH_INTENT = 'signup'; // 'signup' (end of wizard) | 'login' (returning user link)
 let PENDING_SETUP = null;   // wizard answers collected before an account exists yet
@@ -493,6 +530,7 @@ function setAuthChannel(mode){
   document.getElementById('authEmailActions').style.display = mode==='email' ? 'flex' : 'none';
   document.getElementById('authPhoneActions').style.display = mode==='phone' ? 'flex' : 'none';
   document.getElementById('authError').style.display = 'none';
+  document.getElementById('authPendingConfirm').style.display = 'none';
 }
 function setAuthMode(mode){
   AUTH_INTENT = mode;
@@ -509,6 +547,7 @@ function setAuthMode(mode){
     ? 'Already using TecXFRA? <a href="#" onclick="showLogin();return false;" style="color:var(--teal-dim);font-weight:600">Log in instead</a>'
     : 'New here? <a href="#" onclick="authGoBack();return false;" style="color:var(--teal-dim);font-weight:600">Set up your business first</a>';
   setAuthChannel('email');
+  renderCaptcha();
 }
 function goToAccountCreation(){
   // Collect everything from the 3-step wizard, but don't save anything yet —
@@ -537,11 +576,13 @@ function showLogin(){
   PENDING_SETUP = null;
   document.getElementById('wizard').style.display = 'none';
   document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('authPendingConfirm').style.display = 'none';
   setAuthMode('login');
 }
 function authGoBack(){
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('wizard').style.display = 'flex';
+  document.getElementById('authPendingConfirm').style.display = 'none';
   if(PENDING_SETUP){ wizGo(3); }
 }
 function authErr(msg){
@@ -566,17 +607,58 @@ async function doSignUp(){
   const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
   if(!email || password.length<6){ authErr('Enter an email and a password of at least 6 characters.'); return; }
-  const { data, error } = await sb.auth.signUp({ email, password });
+  if(HCAPTCHA_CONFIGURED && !getCaptchaToken()){ authErr('Please complete the "I am human" check above.'); return; }
+  const { data, error } = await sb.auth.signUp({ email, password, options: HCAPTCHA_CONFIGURED ? { captchaToken: getCaptchaToken() } : undefined });
+  resetCaptcha();
   if(error){ authErr(error); return; }
   if(data.session){ await afterAuth(data.session); }
-  else { authErr('Account created — check your email to confirm, then use "Log in instead" above.'); }
+  else { showPendingConfirm(email); }
+}
+let RESEND_COOLDOWN_UNTIL = 0;
+function showPendingConfirm(email){
+  document.getElementById('authError').style.display = 'none';
+  document.getElementById('authPendingEmail').textContent = email;
+  document.getElementById('authPendingConfirm').style.display = 'block';
+  RESEND_COOLDOWN_UNTIL = Date.now() + 30000; // first resend allowed after 30s, mirrors typical rate limits
+  updateResendBtn();
+}
+function updateResendBtn(){
+  const btn = document.getElementById('authResendBtn');
+  if(!btn) return;
+  const remaining = Math.ceil((RESEND_COOLDOWN_UNTIL - Date.now())/1000);
+  if(remaining > 0){
+    btn.disabled = true;
+    btn.textContent = `Resend confirmation email (${remaining}s)`;
+    setTimeout(updateResendBtn, 1000);
+  } else {
+    btn.disabled = false;
+    btn.textContent = 'Resend confirmation email';
+  }
+}
+async function resendConfirmation(){
+  if(Date.now() < RESEND_COOLDOWN_UNTIL) return;
+  if(!(await requireSupabase())) return;
+  const email = document.getElementById('authPendingEmail').textContent.trim();
+  if(!email) return;
+  try{
+    const { error } = await sb.auth.resend({ type:'signup', email });
+    if(error) throw error;
+    showToast('Confirmation email sent again — check your inbox and spam folder.');
+  }catch(e){
+    console.error('resend confirmation failed', e);
+    showToast('Could not resend right now — check your connection and try again in a moment.');
+  }
+  RESEND_COOLDOWN_UNTIL = Date.now() + 30000;
+  updateResendBtn();
 }
 async function doSignIn(){
   if(!(await requireSupabase())) return;
   const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
   if(!email || !password){ authErr('Enter your email and password.'); return; }
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(HCAPTCHA_CONFIGURED && !getCaptchaToken()){ authErr('Please complete the "I am human" check above.'); return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password, options: HCAPTCHA_CONFIGURED ? { captchaToken: getCaptchaToken() } : undefined });
+  resetCaptcha();
   if(error){ authErr(error); return; }
   await afterAuth(data.session);
 }
@@ -584,7 +666,9 @@ async function doPhoneSendOtp(){
   if(!(await requireSupabase())) return;
   const phone = document.getElementById('authPhone').value.trim();
   if(!phone.startsWith('+') || phone.length<8){ authErr('Enter your full phone number with country code, e.g. +233...'); return; }
-  const { error } = await sb.auth.signInWithOtp({ phone });
+  if(HCAPTCHA_CONFIGURED && !getCaptchaToken()){ authErr('Please complete the "I am human" check above.'); return; }
+  const { error } = await sb.auth.signInWithOtp({ phone, options: HCAPTCHA_CONFIGURED ? { captchaToken: getCaptchaToken() } : undefined });
+  resetCaptcha();
   if(error){ authErr(error); return; }
   document.getElementById('authOtpField').style.display = 'block';
   document.getElementById('authPhoneSendBtn').style.display = 'none';
@@ -2053,6 +2137,10 @@ async function toggleAccountability(key, val){
   if(!DATA.accountability.daily[k]) DATA.accountability.daily[k] = {};
   DATA.accountability.daily[k][key] = val;
   await saveData(); renderAccountability(); renderSidebar();
+  if(val){
+    const streak = calcStreak();
+    if([7,14,30,60,90].includes(streak)) await addKnowledgeFact(`Hit a ${streak}-day accountability streak.`);
+  }
 }
 
 /* ============================================================
@@ -2164,9 +2252,38 @@ function aiAnswer(q){
     return 'Needs restocking:\n'+low.map(i=>`• ${i.name} — ${i.stock} left (par ${i.par})`).join('\n');
   }
   if(ql.includes('summary') || ql.includes('brief') || ql.includes('today')) return aiSummary();
-  if(ql.includes('convert') || ql.includes('close')) return `You have ${(DATA.contacts||[]).filter(c=>c.temp==='hot').length} hot lead(s) ready to close. Lead with a direct question, then a clear next step — see the Messages tab for closing scripts.`;
-  if(ql.includes('referral')) return `Once a ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} confirms they're happy, ask within 24–72 hours using one of the scripts in the Referrals module — that window is when a "yes" is most likely.`;
-  return `I can answer from your live data — try asking about follow-ups, revenue, stock levels, your persona, your audit score, or ask for a daily summary.`;
+  if(ql.includes('convert') || ql.includes('close')){
+    const p = DATA.persona;
+    let out = `You have ${(DATA.contacts||[]).filter(c=>c.temp==='hot').length} hot lead(s) ready to close. Lead with a direct question, then a clear next step — see the Messages tab for closing scripts.`;
+    if(p && p.objection) out += ` Since your ideal ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} tends to push back with "${p.objection}", have your answer to that ready before you open the conversation.`;
+    return out;
+  }
+  if(ql.includes('referral')){
+    let out = `Once a ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} confirms they're happy, ask within 24–72 hours using one of the scripts in the Referrals module — that window is when a "yes" is most likely.`;
+    if(DATA.referralReward) out += ` Your current reward plan: ${DATA.referralReward}.`;
+    return out;
+  }
+  // Fallback: search accumulated knowledge facts for keyword overlap before
+  // giving up — this is what makes the assistant feel like it's actually
+  // remembering things you told it weeks ago, not just reading live tables.
+  const hits = relevantKnowledge(q, 4);
+  if(hits.length){
+    return `I don't have a built-in answer for that, but here's what I've recorded that might be related:\n\n` + hits.map(f=>`• [${fmtDate(f.date)}] ${f.text}`).join('\n');
+  }
+  return `I can answer from your live data — try asking about follow-ups, revenue, stock levels, your persona, your audit score, or ask for a daily summary. The more you fill in Persona, Audit, Journal and Referrals, the more specific my answers get.`;
+}
+function relevantKnowledge(query, limit){
+  const facts = DATA.knowledge?.facts || [];
+  if(!facts.length) return [];
+  const words = query.toLowerCase().split(/\W+/).filter(w=>w.length>3);
+  if(!words.length) return [];
+  const scored = facts.map(f=>{
+    const t = f.text.toLowerCase();
+    const score = words.reduce((s,w)=>s+(t.includes(w)?1:0),0);
+    return {f, score};
+  }).filter(x=>x.score>0);
+  scored.sort((a,b)=> b.score-a.score || (a.f.date < b.f.date ? 1 : -1));
+  return scored.slice(0, limit).map(x=>x.f);
 }
 function sendAI(){
   const inp = document.getElementById('aiInput'); const q=inp.value.trim(); if(!q) return;
@@ -2174,6 +2291,64 @@ function sendAI(){
   aiHistory.push({role:'bot', text:aiAnswer(q)});
   if(DATA.knowledge){ DATA.knowledge.questionsAsked = (DATA.knowledge.questionsAsked||0)+1; saveData(); }
   drawAiLog();
+}
+
+/* ---------- GUIDE STORE (a-la-carte premium guides, unlocked via MoMo/Invoice/Cash) ----------
+   Separate from plan tiers — any business on any plan can unlock these
+   individually. Purchases go through request_guide_purchase (RPC) →
+   admin approves in admin.html → guide_purchases row appears → full
+   content unlocks here automatically on next sync. */
+const GUIDE_STORE = [
+  {key:'signal', t:'The Signal — Digital Skills System', price:35, teaser:'10 full chapters most Ghanaian business owners never learn in one place: AI & ChatGPT for business, Social Media Marketing, WhatsApp Business Growth, Side Hustles & Online Income, Video Editing for TikTok & Reels, Personal Branding, Digital Sales & Closing, Graphic Design with Canva, a Content Creation System, and Small Business Growth Systems.',
+   full:`CHAPTER 1 — AI & ChatGPT For Business. Work smarter, not harder, starting today. ChatGPT is a free tool that writes for you, thinks with you, and saves hours every week — a very smart assistant that never sleeps. Most businesses aren't using it yet, so starting today is a real advantage. It can write captions, draft customer replies, create product names, write WhatsApp broadcasts, and suggest marketing strategies — it doesn't replace you, it makes you faster and more consistent.\n\nHow to start: create a free account at chat.openai.com. Learn the basics of prompting — tell it who you are, what your business does, and exactly what you need. Weak prompt: "Write something for my business." Strong prompt: "I sell women's fashion in Accra. Write me 3 Instagram captions for a Monday morning post announcing a new Ankara collection. Keep it warm, fun, and end with a WhatsApp call to action." Start with small daily tasks — social captions first, then customer reply templates, then expand.\n\nAction steps: Today — create your free ChatGPT account. This week — write your first strong prompt and generate 5 captions, use the best one. This month — generate 20 content ideas and post from that list every week.\n\nCHAPTER 2 — Social Media Marketing. Your customers are online — are you showing up? Over 9 million people in Ghana are active on Facebook; TikTok is growing fast among young buyers. The question isn't whether your customers are there, it's whether they can find you.\n\nHow to start: choose your main platform first — food or general goods → Facebook & WhatsApp; fashion or beauty → Instagram & TikTok; targeting 18–30 → TikTok. Don't try to be everywhere at once. Set up your business profile properly — professional photo, clear bio explaining what you sell and where, WhatsApp number, consistent business name everywhere. Use a simple weekly content plan: Monday — show a product or service; Wednesday — share a customer review or result; Friday — educate and share something useful; Saturday — promote a special offer. Engage before you expect engagement — reply to every comment and message; the algorithm shows your content to more people when you're active.\n\nAction steps: Today — pick your primary platform, complete your profile 100%. This week — post every day for 7 days and track what gets the most engagement; reply to everything within 2 hours. This month — use ChatGPT to build a content calendar and schedule posts in advance.\n\nCHAPTER 3 — WhatsApp Business Growth. Your most powerful business tool is already on your phone. WhatsApp Business turns your ordinary WhatsApp into a professional tool with a catalog, automated messages, and broadcast lists. Almost every Ghanaian with a smartphone uses WhatsApp daily — most businesses use it like a chat app; the ones who grow treat it like a business system.\n\nHow to start: download WhatsApp Business (free) and set it up with your business number. Complete your profile fully — name, category, 2–3 sentence description, location, hours, email. Set up your catalog — products or services with photos, names and prices, which removes the "how much?" question that kills so many sales conversations. Create Quick Replies — /hi, /price, /location shortcuts that instantly send professional responses. Build a broadcast list — save every customer's number, and once you have 10+, send broadcasts for promotions, new arrivals, and updates.\n\nAction steps: Today — download WhatsApp Business and migrate your number; complete your entire profile. This week — add at least 5 products with photos and prices; set up 3 Quick Replies for common questions. This month — build your broadcast list to 50+ customers and send your first broadcast.\n\nCHAPTER 4 — Side Hustles & Online Income. Your skills are worth money — here's how to start. A side hustle is income earned outside your main business, and the internet has created real, accessible ways to earn with skills you may already have: freelancing (Fiverr/Upwork — writing, design, video editing, social media, paid in dollars), virtual assistant work (managing emails, scheduling, social media for other businesses), selling digital products (create once, sell repeatedly), and affiliate marketing (recommend products, earn commission).\n\nHow to start: identify your sellable skill — design, photography, writing, video editing, cooking, tutoring are all sellable. Choose one path and start — don't try three things at once; earn your first income, then expand. Get your first client from your existing network — tell 10 people what you now offer, and ask 3 to try it at a discounted rate in exchange for a testimonial.\n\nAction steps: Today — write down 3 skills someone might pay you for. This week — post a simple offer on WhatsApp status and one Facebook group; create a free Fiverr or Upwork account. This month — deliver your first paid job, get a testimonial, post it publicly.\n\nCHAPTER 5 — Video Editing For TikTok & Reels. Short videos are the fastest growing business tool in Ghana right now. A single well-made short video — TikTok, Instagram Reels, Facebook Reels — can reach thousands who've never heard of your business. Most people edit with CapCut, a free, easy-to-use app; you don't need a professional camera, just your phone, CapCut, and the willingness to start.\n\nThe structure of a short video that works: the Hook (first 2 seconds) — stop the scroll with something surprising, bold, or useful immediately. The Body (next 15–45 seconds) — deliver the value, show the product, tell the story, keep it moving with no long pauses. The Call to Action (last 3 seconds) — "Comment YES," "WhatsApp me," "Visit our page" — always end with the next step.\n\nHow to start with CapCut: download it free (Android & iPhone), open the templates section first — ready-made styles you fill with your own content. Film what you already have — your product, your process, a before-and-after, introducing yourself, answering a common customer question. Edit — trim clips, add auto-generated subtitles, add music from the built-in library, add a text overlay with your WhatsApp number.\n\nAction steps: Today — download CapCut, watch 3 videos from similar businesses and note what they do in the first 2 seconds. This week — film and edit your first short video and post it; done is better than perfect. This month — post at least 12 short videos, track which get the most views, and replicate that style.\n\nCHAPTER 6 — Personal Branding. People buy from people — become someone they choose. Personal branding means becoming known, trusted and respected not just as a business, but as the person behind it. In Ghana's market people don't just buy products, they buy from people they know and trust. It's not about being famous — it's about being known to the right people.\n\nHow to start: define who you are as a business person — what do you stand for, who do you want to serve, what do you know that your customers would find valuable? Show up as yourself — record a short video talking about your business; people connect with people, not logos. Share your knowledge — teaching builds trust faster than selling. Tell your story — why did you start, what challenges did you overcome; stories are memorable, facts are forgotten. Be consistent — decide on 3 things to be known for and keep returning to them; consistency turns a first impression into a reputation.\n\nAction steps: Today — write 3 words that describe who you are as a business person; these become your brand pillars. This week — record a 30-second introduction video and post it; post one piece of content teaching something useful, no selling, just value. This month — share one honest personal story about your business journey.\n\nCHAPTER 7 — Digital Sales & Closing. Posting gets attention. Closing gets paid. Most businesses post regularly, get views and reactions, but sales don't follow — almost always because of a gap in how conversations are handled.\n\nHow to start: respond to enquiries with warmth — wrong way: someone asks "how much?" and you just send a price with nothing else. Right way: "Hello! Thank you for reaching out. The price is GHS [X] and it includes [benefit 1] and [benefit 2]. Would you like me to send you more details or photos?" Handle hesitation with empathy — "Hi [Name], just checking in — did you get a chance to think about [product]? I'm here if you have questions. No pressure at all." Create urgency honestly — "I only have 3 left in stock," "this price is available until Friday" — urgency must be real to be effective. Ask for the sale — "Shall I go ahead and reserve this for you?" or "Would you like to pay via MoMo now?" — guide them to the next step.\n\nAction steps: Today — write a new warm response script for "how much?" This week — follow up with 5 people who enquired in the last 30 days but didn't buy; set up a Quick Reply for your most common sales conversation. This month — track every enquiry, find where the conversation breaks down, and fix that one point.\n\nCHAPTER 8 — Graphic Design With Canva. Professional-looking visuals, no designer needed. Canva is a free design tool that lets any business owner create professional graphics, flyers and social posts with zero design experience. Before Canva, only businesses that could afford a designer had professional visuals — now anyone can create them in minutes.\n\nHow to start: create a free account at canva.com or download the app. Choose the right template size — Instagram Post (1080×1080) for square posts, WhatsApp Status (1080×1920) for vertical, Flyer (A4) for physical flyers. Customise a template — search for one matching your business type, change the text, colours and photos to your own. Build brand consistency — choose 2–3 colours and 1–2 fonts, use them in every design; this builds a recognisable brand look over time.\n\nAction steps: Today — create a free Canva account and browse templates for your business type. This week — design your first promotional post and a simple "About Our Business" graphic. This month — create 10 reusable design templates for your most common post types; this halves your content creation time.\n\nCHAPTER 9 — Content Creation System. Stop creating randomly — build a system that works while you sleep. What most businesses get wrong: they create content when they feel like it, then go silent for weeks — the algorithm stops showing your content and your audience forgets you. A content system means a plan, a process and a schedule so content goes out consistently, whether you're inspired or not.\n\nHow to start: define your content pillars — 4–5 themes your content rotates between (e.g. for beauty: product showcases, beauty tips, customer results, behind the scenes, promotions). Create a simple weekly schedule — even 3 posts a week consistently beats 7 days in a row then silence for a month. Batch-create your content — set aside one day a week to create content for the whole week; this removes the daily stress of "what do I post today?" Use hooks that stop the scroll — "Are you still doing this wrong?", "This is why your business is not growing," "Last week a customer told me something that surprised me."\n\nAction steps: Today — define your 4–5 content pillars and write them down. This week — create a simple weekly content calendar; batch-create 7 pieces of content in one sitting. This month — study your best-performing post and create 3 more in the same style.\n\nCHAPTER 10 — Small Business Growth Systems. Stop running your business — build one that runs. A business system is a set of processes that let your business run consistently even when you're tired, busy, or not present. Most small businesses in Ghana run on the owner's memory and energy — when the owner is sick, the business stops. In 2026, the most competitive Ghanaian businesses won't be the ones with the most money, they'll be the ones with the best systems.\n\nThe 5 core business systems: System 1 — Visibility System: how people find you (Google Maps, social profiles, your listing, WhatsApp Business profile, referral programme). Action: write down every place a new customer could discover your business and make sure each is complete and up to date. System 2 — Trust System: how people decide to buy from you instead of a competitor (reviews, testimonials, consistent branding, fast response times, professional presentation). Action: ask your 5 best customers for a WhatsApp review this week. System 3 — Sales System: how you turn an interested person into a paying customer (enquiry response process, follow-up schedule, pricing structure, MoMo payment setup). Action: write a simple 5-step script for handling new enquiries. System 4 — Customer Retention System: how you keep customers coming back (follow-up messages, loyalty offers, broadcast lists, appreciation gestures). Action: message every customer 2 weeks after purchase to check in and offer something relevant. System 5 — Growth Review System: how you measure and improve (tracking monthly sales, monitoring which content performs best, setting small monthly goals). Action: set one business goal for next month, write it down, review it in 30 days.\n\nAction steps: Today — identify your weakest system from the five above and commit to fixing it this month. This week — set up Google My Business (business.google.com) as your visibility foundation; send a simple follow-up message to 10 previous customers. This month — define one monthly business goal and track it weekly. No goal means no growth direction.`},
+  {key:'power5', t:'The Power of 5 — Algorithm Hack', price:15, teaser:'A 5-part daily engagement routine — Likes, Comments, Shares, Saves, and 5 Minutes of replies — built to wake up a quiet social account. Small enough to do every morning, consistent enough to actually move the algorithm.',
+   full:`Social media isn't a billboard, it's a conversation. If you don't talk, the algorithm thinks you're dead. Visibility is the fuel, trust is the engine — the Power of 5 is how you wake the machine up. It's five small daily actions, five minutes each, done every single day.\n\nStep 1 — The 5 Likes. Instruction: like 5 posts from your target customers or industry leaders every morning. Goal: this puts your name in their notifications — you're "knocking on their door" without saying a word.\n\nStep 2 — The 5 Comments (the 5-word rule). Instruction: leave 5 comments daily, minimum 5 words each, never emojis only. Goal: meaningful comments get pinned and liked by the poster, which drives people back to your profile to see who left them.\n\nStep 3 — The 5 Shares. Instruction: share 5 pieces of valuable content to your WhatsApp Status or Instagram Stories. Goal: this positions you as a source of information, not just a seller — people follow sources, they scroll past sellers.\n\nStep 4 — The 5 Saves. Instruction: save 5 trending or educational videos in your niche. Goal: this tells the algorithm this specific type of content is valuable to you, and it starts showing you more "winning" ideas you can adapt for your own posts.\n\nStep 5 — The 5 Minutes. Instruction: spend 5 minutes every day responding to every single DM and comment you receive. Goal: speed is a currency — fast replies close sales that slow replies lose.\n\nThe Consistency Calendar: tick these 5 boxes every day. In 7 days you'll see a spark. In 30 days you'll see a fire. Miss a day here and there and the routine still works — the goal is a habit, not perfection — but the more consistent the 5 boxes, the faster the algorithm starts treating your account as active and worth showing to new people.`},
+  {key:'sprint10', t:'The 10-Day Visibility Sprint', price:20, teaser:'A day-by-day, 10-day content sprint designed as a "shock to the system" for a quiet account — from waking up the algorithm on Day 1 through to a high-intensity closing push on Day 9 and a data review on Day 10. Exact daily goal, instruction, and task for each day.',
+   full:`Why 10 days? The algorithm needs a shock to the system. Ten days of perfect, deliberate posting creates a "trend" that forces TikTok and Instagram to start pushing your content to new audiences beyond your existing followers. The one rule: miss a day and the engine stalls — don't break the chain.\n\nDay 1 — Prime the Algorithm. Goal: wake up a sleeping account. Instruction: do not post a video yet — spend 15 minutes engaging with 10 competitors and 10 potential customers first. Task — the "Search Bar Hijack": search for your service in your city/town and comment thoughtfully on the top 3 videos that come up.\n\nDay 2 — The "I'm Here" Hook. Goal: announce your presence without selling. Instruction: post a video using a "Relatable Struggle" hook. Task template: "I used to think [Common Mistake] was the only way to [Result], until I realised..."\n\nDay 3 — Behind the Curtain. Goal: build the trust asset. Instruction: show the boring, unglamorous part of your business — people trust processes, not just finished products. Task: a 15-second clip of you working, packing, or organising, with a voiceover about your standards.\n\nDay 4 — Expert Status. Goal: stop being a seller, become a teacher. Instruction: give away one "secret" for free that your competitors charge for. Task — "The 3-Step Fix": 3 quick tips that solve a common customer problem.\n\nDay 5 — Controversy & Conversation. Goal: explode the comment section. Instruction: state an unpopular opinion about your industry. Task template: "Stop doing [X] if you want to actually achieve [Y]. Here is why..."\n\nDay 6 — Proof of Life. Goal: social proof. Instruction: screenshot a DM, a review, or a MoMo receipt (blur the names). Task: tell the story of the result the customer got, not just the product they bought.\n\nDay 7 — The Human Element. Goal: personal branding. Instruction: show your face, or tell your "why." Task: why did you start this business? People buy from people, not logos.\n\nDay 8 — Demand Engineering. Goal: create FOMO (fear of missing out). Instruction: show that your stock is moving or your time is booking up. Task template: "Only 3 slots left this week" or "Last 5 items in this colour."\n\nDay 9 — The Final Call. Goal: the hard sell. Instruction: use the Direct Response formula — Hook → Problem → Solution → Price → MoMo. Task: a clear, high-energy post telling people exactly how to buy, right now.\n\nDay 10 — Review & Pivot. Goal: data analysis. Instruction: look at which of the last 9 days got the most shares and saves. Task: re-post that "winner" with a different caption and see if it performs again.\n\nTiming & Tech Specs: post during the exact windows that work for the Ghana market — the morning commute, the lunch break, and the 8:00pm wind-down. Use the 3-hashtag rule — 3 well-chosen hashtags outperform a wall of 20 generic ones.`}
+];
+let PURCHASED_GUIDES = [];
+function ownsGuide(key){ return PURCHASED_GUIDES.includes(key); }
+async function syncGuidePurchases(){
+  if(!sb) return;
+  try{
+    const { data, error } = await sb.from('guide_purchases').select('guide_key');
+    if(error) throw error;
+    PURCHASED_GUIDES = (data||[]).map(r=>r.guide_key);
+  }catch(e){ console.error('syncGuidePurchases failed', e); }
+}
+function openGuidePurchaseModal(key){
+  const g = GUIDE_STORE.find(x=>x.key===key);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">Unlock "${g.t}"</div>
+    <div style="font-size:12.5px;color:var(--ink-dim);margin-bottom:16px;line-height:1.6">GHS ${g.price} one-time — yours to keep, no subscription. Confirmed by our team, usually within one business day.</div>
+    <button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="requestGuidePurchase('${key}','momo')">Pay with Mobile Money</button>
+    <button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="requestGuidePurchase('${key}','invoice')">Request an Invoice</button>
+    <button class="btn btn-ghost btn-full" style="margin-bottom:14px" onclick="requestGuidePurchase('${key}','cash')">Pay with Cash</button>
+    <button class="btn btn-ghost btn-full" onclick="closeModal()">Cancel</button>
+  </div></div>`;
+}
+async function requestGuidePurchase(key, method){
+  try{
+    const { error } = await sb.rpc('request_guide_purchase', { p_guide_key: key, p_method: method, p_business_name: CFG.bizName });
+    if(error) throw error;
+  }catch(e){ console.error(e); showToast('Could not send request — check your connection and try again.'); return; }
+  closeModal();
+  await addKnowledgeFact(`Requested to unlock guide "${GUIDE_STORE.find(g=>g.key===key)?.t||key}" via ${method}.`);
+  showToast('Request sent — our team will confirm and unlock it within one business day.');
+}
+function drawGuideStore(){
+  document.getElementById('guideList').innerHTML = `<div class="card-title">Guide Store <span class="sub">one-time unlocks, yours to keep</span></div>
+  <div style="font-size:12px;color:var(--ink-dim);margin-bottom:12px;line-height:1.6">Deeper, standalone guides not included in your plan — bought once via MoMo, Invoice, or Cash instead of a subscription.</div>` +
+  GUIDE_STORE.map(g=>{
+    const owned = ownsGuide(g.key);
+    return `<div class="guide-item" ${owned?`onclick="this.classList.toggle('open')"`:''}>
+      <h4>${g.t} ${owned?'<span style="color:var(--teal);font-size:11px">· unlocked</span>':`<span style="color:var(--muted);font-size:11px">· GHS ${g.price}</span>`}</h4>
+      <p>${g.teaser}</p>
+      ${owned
+        ? `<div class="guide-body">${g.full.split('\\n\\n').map(p=>`<p style="margin-bottom:10px">${p}</p>`).join('')}</div>`
+        : `<button class="btn btn-primary" style="margin-top:8px;padding:8px 16px" onclick="event.stopPropagation();openGuidePurchaseModal('${g.key}')">Unlock for GHS ${g.price} →</button>`}
+    </div>`;
+  }).join('');
 }
 
 /* ---------- GUIDES / GROWTH LIBRARY ---------- */
@@ -2491,8 +2666,9 @@ function openUpgradeModal(key){
       : `<div style="font-size:11px;color:var(--muted);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px">Card payments aren't turned on yet — use Mobile Money or Request an Invoice below.</div>`
     }
     <button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="requestMomoInvoice('${key}','momo')">Pay with Mobile Money</button>
-    <button class="btn btn-ghost btn-full" style="margin-bottom:14px" onclick="requestMomoInvoice('${key}','invoice')">Request an Invoice</button>
-    <div style="font-size:11px;color:var(--muted);text-align:center">Card payments activate instantly. MoMo and invoice requests are confirmed by our team, usually within one business day.</div>
+    <button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="requestMomoInvoice('${key}','invoice')">Request an Invoice</button>
+    <button class="btn btn-ghost btn-full" style="margin-bottom:14px" onclick="requestMomoInvoice('${key}','cash')">Pay with Cash</button>
+    <div style="font-size:11px;color:var(--muted);text-align:center">Card payments activate instantly. MoMo, invoice, and cash requests are confirmed by our team, usually within one business day.</div>
     <button class="btn btn-ghost btn-full" style="margin-top:14px" onclick="closeModal()">Cancel</button>
   </div></div>`;
 }
@@ -2530,13 +2706,15 @@ async function payWithPaystack(planKey){
   handler.openIframe();
 }
 async function requestMomoInvoice(planKey, method){
-  await addKnowledgeFact(`Requested ${method==='momo'?'Mobile Money':'an invoice'} upgrade to ${PLANS.find(p=>p.key===planKey).label} plan.`);
+  const methodLabel = {momo:'Mobile Money', invoice:'an invoice', cash:'a cash'}[method] || method;
+  await addKnowledgeFact(`Requested ${methodLabel} upgrade to ${PLANS.find(p=>p.key===planKey).label} plan.`);
   try{
     const { error } = await sb.rpc('request_manual_payment', { p_plan: planKey, p_method: method, p_business_name: CFG.bizName });
     if(error) throw error;
   }catch(e){ console.error(e); }
   closeModal();
-  showToast(`Request sent — our team will confirm your ${method==='momo'?'MoMo payment':'invoice'} and activate ${PLANS.find(p=>p.key===planKey).label} within one business day.`);
+  const confirmLabel = {momo:'MoMo payment', invoice:'invoice', cash:'cash payment'}[method] || method;
+  showToast(`Request sent — our team will confirm your ${confirmLabel} and activate ${PLANS.find(p=>p.key===planKey).label} within one business day.`);
 }
 async function saveBranding(){
   if(!currentPlan().whiteLabel){ showToast('Upgrade to Enterprise first'); return; }
