@@ -951,6 +951,102 @@ function knowledgeStrength(){
   return {facts:n, pct: Math.min(100, Math.round(n*6))};
 }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+/* ---------- AUTO-ARCHIVE ----------
+   The hot DATA blob (tenant_data.data) is rewritten in full on every
+   save. That's cheap for a new business, but a busy one doing 100+
+   sales a day adds tens of thousands of records a year — every save
+   after that drags the whole history along for no reason. Once a day,
+   this moves transaction/expense/message records older than 12 months
+   out of the hot blob into public.tenant_archive (grouped by month),
+   keeps a tiny rollup so trend reporting still works, and leaves
+   everything fully viewable/exportable on demand. Nothing is deleted.
+   Runs quietly after boot(); never blocks the UI, never shown unless
+   it finds something to do or the person opens Settings → Data. */
+const ARCHIVE_AFTER_MONTHS = 12;
+const ARCHIVABLE_KINDS = ['transactions','expenses','messageLog'];
+function monthKey(dateStr){ return (dateStr||'').slice(0,7); }
+function cutoffMonthKey(){
+  const d = new Date(); d.setMonth(d.getMonth() - ARCHIVE_AFTER_MONTHS);
+  return d.toISOString().slice(0,7);
+}
+async function runAutoArchive(){
+  try{
+    if(!CUR_VENUE_ID || !CFG || !DATA) return;
+    if(CFG.lastArchiveCheck === todayStr()) return; // already checked today
+    const cutoff = cutoffMonthKey();
+    let touched = false;
+    if(!DATA.monthlyRollups) DATA.monthlyRollups = {};
+    for(const kind of ARCHIVABLE_KINDS){
+      const list = DATA[kind];
+      if(!Array.isArray(list) || !list.length) continue;
+      const groups = {};
+      const keep = [];
+      list.forEach(rec=>{
+        const mk = monthKey(rec.date);
+        if(mk && mk < cutoff){ (groups[mk] = groups[mk] || []).push(rec); }
+        else keep.push(rec);
+      });
+      const months = Object.keys(groups);
+      if(!months.length) continue;
+      for(const mk of months){
+        const batch = groups[mk];
+        try{
+          const { error } = await sb.rpc('archive_data_batch', { p_kind: kind, p_period: mk, p_payload: batch });
+          if(error) throw error;
+          // Keep a tiny permanent summary so Revenue/Analytics trend
+          // views don't lose history just because raw rows moved out.
+          if(kind==='transactions'){
+            const key = `tx:${mk}`;
+            const prior = DATA.monthlyRollups[key] || {count:0, total:0};
+            DATA.monthlyRollups[key] = {
+              count: prior.count + batch.length,
+              total: prior.total + batch.reduce((s,t)=>s+(parseFloat(t.amount)||0),0)
+            };
+          } else if(kind==='expenses'){
+            const key = `ex:${mk}`;
+            const prior = DATA.monthlyRollups[key] || {count:0, total:0};
+            DATA.monthlyRollups[key] = {
+              count: prior.count + batch.length,
+              total: prior.total + batch.reduce((s,t)=>s+(parseFloat(t.amount)||0),0)
+            };
+          }
+          touched = true;
+        }catch(e){
+          console.error(`runAutoArchive: failed to archive ${kind} ${mk}`, e);
+          keep.push(...batch); // don't lose data locally if the archive write failed
+        }
+      }
+      DATA[kind] = keep;
+    }
+    CFG.lastArchiveCheck = todayStr();
+    if(touched){ await saveData(); }
+    await saveCfg();
+  }catch(e){ console.error('runAutoArchive failed', e); }
+}
+let ARCHIVE_BROWSE_CACHE = {};
+async function openDataStorageBrowser(kind){
+  try{
+    const { data, error } = await sb.rpc('list_archive_periods', { p_kind: kind });
+    if(error) throw error;
+    ARCHIVE_BROWSE_CACHE[kind] = data || [];
+    renderSettings();
+  }catch(e){ console.error('openDataStorageBrowser failed', e); showToast('Could not load archive'); }
+}
+async function viewArchivePeriod(kind, period){
+  try{
+    const { data, error } = await sb.rpc('get_archive_period', { p_kind: kind, p_period: period });
+    if(error) throw error;
+    const rows = data || [];
+    document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px;max-height:70vh;overflow:auto">
+      <div class="disp" style="font-size:16px;font-weight:700;margin-bottom:10px">${kind} — ${period} <span style="color:var(--muted);font-weight:400;font-size:12px">(${rows.length} records)</span></div>
+      <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.8">
+        ${rows.map(r=>`<div class="list-row"><span>${r.item||r.desc||r.category||r.text||r.id||'—'}</span><span>${r.amount!=null?money(r.amount):(r.date||'')}</span></div>`).join('') || '<div style="color:var(--muted)">No records.</div>'}
+      </div>
+      <button class="btn btn-ghost btn-full" style="margin-top:14px" onclick="closeModal()">Close</button>
+    </div></div>`;
+  }catch(e){ console.error('viewArchivePeriod failed', e); showToast('Could not load that month'); }
+}
 function fmtDate(s){ if(!s) return '—'; const d=new Date(s); if(isNaN(d)) return s; return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
 function initials(name){ return (name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
@@ -1022,7 +1118,7 @@ function hydrateData(d){
   const shape = {contacts:[], items:[], inventory:[], staff:[], transactions:[],
     expenses:[], events:[], followups:[], archive:[], messageLog:[],
     journal:[], persona:null, auditAnswers:{}, auditScore:null,
-    accountability:{daily:{}, log:[]}, referrals:[],
+    accountability:{daily:{}, log:[]}, referrals:[], monthlyRollups:{},
     knowledge:{facts:[], questionsAsked:0}};
   const out = Object.assign({}, shape, d||{});
   if(!out.accountability || typeof out.accountability !== 'object') out.accountability = {daily:{}, log:[]};
@@ -1202,6 +1298,7 @@ async function boot(){
     DATA = hydrateData(DATA);
     renderSidebar();
     navTo('today');
+    runAutoArchive(); // fire-and-forget housekeeping, at most once/day
   }catch(e){
     console.error('boot failed', e);
     document.getElementById('app').classList.add('active');
@@ -2568,8 +2665,8 @@ function renderSettings(){
   document.getElementById('pageContent').innerHTML = `
   <div class="settings-tabs" id="setTabs"></div>
   <div id="setBody"></div>`;
-  document.getElementById('setTabs').innerHTML = ['business','plan','branding','industry','modules','team','account'].map(k=>
-    `<button class="tab-pill ${settingsTab===k?'active':''}" onclick="setSettingsTab('${k}')">${{business:'Business',plan:'Plan',branding:'Branding',industry:'Industry',modules:'Modules',team:'Team & Roles',account:'Account'}[k]}</button>`).join('');
+  document.getElementById('setTabs').innerHTML = ['business','plan','branding','industry','modules','team','data','account'].map(k=>
+    `<button class="tab-pill ${settingsTab===k?'active':''}" onclick="setSettingsTab('${k}')">${{business:'Business',plan:'Plan',branding:'Branding',industry:'Industry',modules:'Modules',team:'Team & Roles',data:'Data & Storage',account:'Account'}[k]}</button>`).join('');
   drawSettingsBody();
 }
 function setSettingsTab(k){ settingsTab=k; renderSettings(); }
@@ -2708,6 +2805,35 @@ function drawSettingsBody(){
       <div class="card-title">Account</div>
       <div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px">Signed in as this business's owner account. Signing out just locks the app on this device — nothing is deleted.</div>
       <button class="btn btn-ghost" onclick="signOut()">Sign out</button>
+    </div>`;
+  } else if(settingsTab==='data'){
+    const counts = {contacts:(DATA.contacts||[]).length, transactions:(DATA.transactions||[]).length,
+      expenses:(DATA.expenses||[]).length, messageLog:(DATA.messageLog||[]).length,
+      inventory:(DATA.inventory||[]).length, staff:(DATA.staff||[]).length};
+    const rollups = DATA.monthlyRollups || {};
+    const rollupCount = Object.keys(rollups).length;
+    b.innerHTML = `<div class="card" style="margin-bottom:14px">
+      <div class="card-title">What's live right now</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:8px;font-size:12px;color:var(--ink-dim)">
+        ${Object.entries(counts).map(([k,v])=>`<div><b style="color:var(--navy);font-size:16px;display:block">${v}</b>${k}</div>`).join('')}
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">Automatic housekeeping</div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.7;margin-bottom:10px">
+        Once a day, TecXFRA quietly moves transactions, expenses, and message-log entries older than ${ARCHIVE_AFTER_MONTHS} months out of your live app into a separate archive — so the app stays fast no matter how long you've used it. <b style="color:var(--navy)">Nothing is ever deleted</b>, and monthly totals stay in your Revenue reports either way. Last checked: <b style="color:var(--navy)">${CFG.lastArchiveCheck || 'not yet'}</b>${rollupCount?` · ${rollupCount} historical month${rollupCount===1?'':'s'} summarised`:''}.
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${ARCHIVABLE_KINDS.map(k=>`<button class="btn btn-ghost" onclick="openDataStorageBrowser('${k}')">Browse archived ${k}</button>`).join('')}
+      </div>
+      ${Object.keys(ARCHIVE_BROWSE_CACHE).map(k=>{
+        const rows = ARCHIVE_BROWSE_CACHE[k];
+        if(!rows) return '';
+        return `<div style="margin-top:14px"><div style="font-weight:700;font-size:12.5px;color:var(--navy);margin-bottom:6px">Archived ${k}</div>
+          ${rows.length ? rows.map(r=>`<div class="list-row"><span>${r.period}</span><span>${r.record_count} records <a style="color:var(--teal);cursor:pointer;font-weight:600;margin-left:8px" onclick="viewArchivePeriod('${k}','${r.period}')">View →</a></span></div>`).join('')
+            : '<div style="font-size:12px;color:var(--muted)">Nothing archived yet for this business — everything is still under 12 months old.</div>'}
+        </div>`;
+      }).join('')}
     </div>`;
   } else if(settingsTab==='team'){
     b.innerHTML = `<div class="card"><div class="card-title">Team & Roles <span class="sub">manage on the Staff tab — shown here for reference</span></div>
