@@ -811,15 +811,15 @@ const INDUSTRY_DEFAULTS = {
 
 const COUNTRIES = [
   {country:'Ghana', currency:'GHS', sym:'GHS ', tax:'VAT + NHIL + GETFund', taxNote:'From 1 Jan 2026: VAT 15% + NHIL 2.5% + GETFund 2.5%, all on the same base — 20% effective total (the old cascading COVID Levy was scrapped). Verify current GRA rates before filing.', payroll:'SSNIT (13% employer / 5.5% employee) + PAYE'},
-  {country:'Nigeria', currency:'NGN', sym:'₦', tax:'VAT', taxNote:'Standard VAT rate is 7.5% (held steady in the 2026 reforms despite talk of a rise). Verify current NRS (formerly FIRS) rate.', payroll:'PAYE + Pension (employer/employee contributions)'},
-  {country:'Kenya', currency:'KES', sym:'KSh ', tax:'VAT', taxNote:'Standard VAT rate is 16% (unchanged since 2013). Verify current KRA rate.', payroll:'NSSF + NHIF/SHIF + PAYE'},
-  {country:'South Africa', currency:'ZAR', sym:'R', tax:'VAT', taxNote:'Standard VAT rate is 15% (a planned 2025 rise to 16% was reversed; the 2026 Budget kept it at 15%). Verify current SARS rate.', payroll:'UIF + PAYE'},
-  {country:'United Kingdom', currency:'GBP', sym:'£', tax:'VAT', taxNote:'Standard VAT rate is 20%, with a 5% reduced rate on some goods/services. Verify current HMRC rate and thresholds.', payroll:'PAYE + National Insurance'},
+  {country:'Nigeria', currency:'NGN', sym:'₦', tax:'VAT', taxNote:'Standard VAT stays at 7.5% through 2026 under the Nigeria Tax Act 2025 — a proposed rise to 12.5% was rejected by lawmakers. Personal income tax now exempts annual income under ₦800,000, and the minimum wage is exempt entirely. Verify current NRS (Nigeria Revenue Service, formerly FIRS) rates.', payroll:'PAYE (new progressive bands, ₦800,000 tax-free threshold) + Pension (employer/employee contributions)', updated:'2026'},
+  {country:'Kenya', currency:'KES', sym:'KSh ', tax:'VAT', taxNote:'Standard VAT rate is 16% (unchanged since 2013). Verify current KRA rate.', payroll:'NSSF (6% employer/6% employee, Tier I+II — upper earnings limit rose to KES 108,000/month from Feb 2026) + SHIF (2.75% of gross, replaced NHIF) + Affordable Housing Levy (1.5% employee, matched by employer) + PAYE', updated:'2026'},
+  {country:'South Africa', currency:'ZAR', sym:'R', tax:'VAT', taxNote:'Standard VAT rate held at 15% in the 2026 Budget (the proposed rise to 16% was withdrawn). VAT registration threshold raised to R2.3m/year (voluntary from R120,000) effective 1 April 2026. Verify current SARS rate.', payroll:'UIF + PAYE (2026/27 brackets adjusted 3.4% for inflation)', updated:'2026'},
+  {country:'United Kingdom', currency:'GBP', sym:'£', tax:'VAT', taxNote:'Standard VAT rate is 20% (unchanged), with a 5% reduced rate on some goods/services. VAT registration threshold stays at £90,000 (deregistration £88,000) from April 2026. Verify current HMRC rate and thresholds.', payroll:'PAYE + National Insurance (employee 8% between £12,570–£50,270, 2% above; employer 15% above £5,000/yr secondary threshold — thresholds frozen until 2031)', updated:'2026'},
   {country:'United States', currency:'USD', sym:'$', tax:'Sales Tax', taxNote:'Sales tax varies by state — no federal VAT. Check your state and local rates.', payroll:'Federal/State withholding + FICA (Social Security & Medicare)'},
-  {country:'Canada', currency:'CAD', sym:'C$', tax:'GST/HST', taxNote:'Federal GST is 5%; combined HST (e.g. Ontario/Atlantic provinces) runs 13–15% — verify your specific province.', payroll:'CPP + EI + federal/provincial withholding'},
-  {country:'India', currency:'INR', sym:'₹', tax:'GST', taxNote:'GST rate depends on goods/service category — common slabs are 5/12/18/28%. Verify the current slab for your goods/services.', payroll:'EPF + ESI + TDS'},
-  {country:'United Arab Emirates', currency:'AED', sym:'AED ', tax:'VAT', taxNote:'Standard VAT rate is 5%. Verify current FTA rate.', payroll:'No personal income tax; check End of Service Gratuity rules'},
-  {country:'Germany / Eurozone', currency:'EUR', sym:'€', tax:'VAT (MwSt/TVA)', taxNote:'Germany\'s standard VAT (MwSt) is 19%, reduced rate 7% for some goods — verify your country\'s rate within the Eurozone.', payroll:'Social security contributions + income tax withholding'},
+  {country:'Canada', currency:'CAD', sym:'C$', tax:'GST/HST', taxNote:'Federal GST is 5% everywhere. HST: Ontario 13%, Nova Scotia 14% (cut from 15% in Apr 2025), New Brunswick/Newfoundland & Labrador/PEI 15%. Separate PST/QST in BC (7%), Saskatchewan (6%), Manitoba (7%), Quebec (QST 9.975%). Alberta/territories: GST only, 5%. Verify your specific province.', payroll:'CPP (5.95% up to $74,600 YMPE, CPP2 4% up to $85,000) + EI (1.63%, Quebec 1.31% + QPIP) + federal/provincial withholding', updated:'2026'},
+  {country:'India', currency:'INR', sym:'₹', tax:'GST', taxNote:'GST 2.0 (effective 22 Sep 2025) simplified the old 5/12/18/28% structure to just two main slabs: 5% (essentials/priority goods) and 18% (standard/default rate), plus a 40% slab for luxury and "sin" goods (tobacco, pan masala, high-end vehicles). Verify the current slab for your specific goods/services.', payroll:'EPF + ESI + TDS', updated:'2026'},
+  {country:'United Arab Emirates', currency:'AED', sym:'AED ', tax:'VAT', taxNote:'Standard VAT rate is 5% (confirmed unchanged for 2026, though invoicing/refund rules tightened from 1 Jan 2026). Federal Corporate Tax is 0% up to AED 375,000 profit, 9% above it — Small Business Relief keeps eligible businesses under AED 3m revenue at 0% through 31 Dec 2026. Verify current FTA rates.', payroll:'No personal income tax; check End of Service Gratuity rules', updated:'2026'},
+  {country:'Germany / Eurozone', currency:'EUR', sym:'€', tax:'VAT (MwSt/TVA)', taxNote:'Germany\'s standard VAT (MwSt) is 19% (unchanged for 2026 — a proposed rise to 21% is under political discussion, not yet decided), reduced rate 7% for food/books/etc. Verify your country\'s rate within the Eurozone.', payroll:'Social security ~19–20% employee-side (pension 18.6% split employer/employee, health 14.6%+~2.9% average add-on, long-term care 3.6%/4.2% childless, unemployment 2.6%) + income tax withholding', updated:'2026'},
   {country:'Other / Not listed', currency:'USD', sym:'$', tax:'Local Tax', taxNote:'Set your own tax terminology and rate in Settings once you know your local requirements.', payroll:'Check your local labour & payroll authority'}
 ];
 function populateWizCountry(){
@@ -933,6 +933,21 @@ function money(n){
 }
 function uid(p){ return p+'-'+Math.random().toString(36).slice(2,8).toUpperCase(); }
 
+/* ---------- SECURITY: OUTPUT ESCAPING (hardening pass) ----------
+   Contact names, notes, journal entries and follow-up details are all
+   free-text fields a business owner (or a CSV import) can fill in, and
+   they get interpolated straight into innerHTML template strings all
+   over this file. Without escaping, a name like <img src=x onerror=...>
+   would execute as real HTML/JS the next time anyone views that record —
+   a classic stored-XSS hole, and CSV import makes it reachable from a
+   file, not just typing. esc() neutralises the 5 characters that matter
+   and should wrap ANY user-entered string before it goes into a template
+   literal that gets assigned to innerHTML. */
+function esc(s){
+  if(s===null || s===undefined) return '';
+  return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
 /* ---------- KNOWLEDGE ACCUMULATION LAYER ----------
    Every time the business tells TecXFRA something durable (persona,
    audit result, journal note, loyalty tier, reward plan), it gets
@@ -951,6 +966,102 @@ function knowledgeStrength(){
   return {facts:n, pct: Math.min(100, Math.round(n*6))};
 }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+/* ---------- PATTERN DETECTION ENGINE ("the brain" — proactive layer) ----------
+   Passive knowledge (addKnowledgeFact) only remembers what a business TELLS
+   TecXFRA. This layer looks at what a business DOES — its own transaction,
+   follow-up, contact and accountability history — and surfaces things the
+   owner likely hasn't noticed themselves: a recurring slow day, leads going
+   cold, a streak about to break, follow-ups piling up. Each insight is
+   recorded once as a knowledge fact (deduped by a stable key so it doesn't
+   spam the same finding every day) so the AI Assistant can reference it too. */
+const WEEKDAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function detectPatterns(){
+  const insights = [];
+  const t = todayStr();
+  const txns = DATA.transactions||[];
+
+  // 1) Recurring slow weekday (needs at least 3 weeks of spread-out data)
+  if(txns.length >= 10){
+    const byDow = [0,0,0,0,0,0,0]; const countDow = [0,0,0,0,0,0,0];
+    txns.forEach(x=>{ const d = new Date(x.date+'T00:00:00'); if(isNaN(d)) return; const dow = d.getDay(); byDow[dow]+=x.amount; countDow[dow]++; });
+    const activeDows = countDow.map((c,i)=>({i,c})).filter(x=>x.c>=3);
+    if(activeDows.length >= 4){
+      const avgs = activeDows.map(x=>({i:x.i, avg: byDow[x.i]/x.c}));
+      const overall = avgs.reduce((s,a)=>s+a.avg,0)/avgs.length;
+      const worst = avgs.reduce((w,a)=> a.avg < w.avg ? a : w, avgs[0]);
+      if(overall>0 && worst.avg <= overall*0.55){
+        insights.push({key:'slowday-'+worst.i, severity:'info',
+          text:`${WEEKDAY_NAMES[worst.i]}s are consistently your slowest day — averaging ${money(worst.avg)} vs a ${money(overall)} daily average. Consider a ${WEEKDAY_NAMES[worst.i]}-specific offer or moving outreach into that day.`,
+          cta:{label:'Open Messages', page:'messages'}});
+      }
+    }
+  }
+
+  // 2) Hot leads going cold (hot temp, no touch in 5+ days)
+  const staleHot = (DATA.contacts||[]).filter(c=>c.temp==='hot' && c.lastContact && (Date.now()-new Date(c.lastContact+'T00:00:00'))/86400000 >= 5);
+  if(staleHot.length){
+    insights.push({key:'stalehot-'+t.slice(0,7), severity:'warn',
+      text:`${staleHot.length} hot lead${staleHot.length>1?"s haven't":" hasn't"} been contacted in 5+ days: ${staleHot.slice(0,3).map(c=>c.name).join(', ')}${staleHot.length>3?'…':''}. Hot leads cool fast — reach out today before they go warm/cold.`,
+      cta:{label:'Open CRM', page:'crm'}});
+  }
+
+  // 3) Follow-up backlog building (more than 10 overdue, not just due-today)
+  const overdue = (DATA.followups||[]).filter(f=>!f.done && f.due < t);
+  if(overdue.length >= 8){
+    insights.push({key:'backlog-'+Math.floor(overdue.length/5),  severity:'warn',
+      text:`${overdue.length} follow-ups are overdue (past their due date, not just due today). A growing backlog is usually the first sign leads are slipping through the cracks — clear the oldest ones first.`,
+      cta:{label:'Open Follow-Ups', page:'followups'}});
+  }
+
+  // 4) Accountability streak about to break
+  const streak = (typeof calcStreak==='function') ? calcStreak() : 0;
+  const todayScore = accountabilityTodayScore();
+  if(streak >= 5 && todayScore.done === 0){
+    insights.push({key:'streak-risk-'+t, severity:'warn',
+      text:`You're on a ${streak}-day accountability streak — and nothing is logged yet today. Don't let today be the day it breaks.`,
+      cta:{label:'Open Checklist', page:'accountability'}});
+  }
+
+  // 5) Knowledge layer still thin after real usage
+  const daysSinceSetup = CFG.createdAt ? Math.floor((Date.now()-new Date(CFG.createdAt))/86400000) : null;
+  const ks = knowledgeStrength();
+  if(daysSinceSetup!==null && daysSinceSetup >= 14 && ks.facts < 5){
+    insights.push({key:'thin-knowledge', severity:'info',
+      text:`It's been ${daysSinceSetup} days and the Assistant still only knows ${ks.facts} thing${ks.facts===1?'':'s'} about ${CFG.bizName}. Fill in your Persona and run your Audit — every fact you add makes the daily tips and Assistant's answers sharper and more specific to your business.`,
+      cta:{label:'Open Persona', page:'persona'}});
+  }
+
+  return insights;
+}
+let PATTERN_FACTS_RECORDED_TODAY = false;
+async function recordPatternsAsKnowledge(insights){
+  if(!insights.length) return;
+  if(!DATA.knowledge) DATA.knowledge = {facts:[], questionsAsked:0};
+  if(!DATA.knowledge.patternKeys) DATA.knowledge.patternKeys = [];
+  let changed = false;
+  for(const ins of insights){
+    if(!DATA.knowledge.patternKeys.includes(ins.key)){
+      DATA.knowledge.patternKeys.push(ins.key);
+      DATA.knowledge.facts.push({date:todayStr(), text:`[Noticed automatically] ${ins.text}`});
+      changed = true;
+    }
+  }
+  if(DATA.knowledge.patternKeys.length>100) DATA.knowledge.patternKeys = DATA.knowledge.patternKeys.slice(-100);
+  if(changed){ if(DATA.knowledge.facts.length>200) DATA.knowledge.facts = DATA.knowledge.facts.slice(-200); await saveData(); }
+}
+function renderInsightsCard(){
+  const insights = detectPatterns();
+  if(!PATTERN_FACTS_RECORDED_TODAY){ PATTERN_FACTS_RECORDED_TODAY = true; recordPatternsAsKnowledge(insights); }
+  if(!insights.length) return '';
+  return `<div class="card" style="border-color:var(--coral,#c9633f)">
+    <div class="card-title">🧠 Noticed This Week <span class="sub">from your own data</span></div>
+    ${insights.slice(0,3).map(ins=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:6px;padding:10px 0">
+      <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.6">${ins.text}</div>
+      ${ins.cta?`<button class="tab-pill" onclick="navTo('${ins.cta.page}')">${ins.cta.label} →</button>`:''}
+    </div>`).join('')}
+  </div>`;
+}
 
 /* ---------- AUTO-ARCHIVE ----------
    The hot DATA blob (tenant_data.data) is rewritten in full on every
@@ -1470,7 +1581,22 @@ function navTo(page){
   document.getElementById('pageSub').textContent = m.desc;
   renderSidebar();
   if(page!=='settings' && isLocked(page)){ renderUpgradePrompt(page, m); }
-  else{ RENDERERS[page](); }
+  else{
+    // Crash containment: a bug in any single module's renderer must never
+    // blank the whole app (dead sidebar, dead everything) — the historical
+    // failure mode noted in earlier builds. Catch it, log it, and show a
+    // recoverable message with a way back to Today instead of a white screen.
+    try{ RENDERERS[page](); }
+    catch(e){
+      console.error('Renderer failed for page:', page, e);
+      const pc = document.getElementById('pageContent');
+      if(pc) pc.innerHTML = `<div class="card" style="border-color:var(--coral,#c9633f)">
+        <div class="card-title">Something went wrong loading this page</div>
+        <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.6;margin-bottom:10px">This module hit an error and stopped safely instead of breaking the rest of the app. Your data is untouched.</div>
+        <button class="btn btn-primary" onclick="navTo('today')">← Back to Today</button>
+      </div>`;
+    }
+  }
   window.scrollTo({top:0,behavior:'smooth'});
 }
 const MODULE_TEASERS = {
@@ -1522,8 +1648,9 @@ function renderToday(){
   html += `<div class="card" style="border-color:var(--teal); background:linear-gradient(135deg, var(--teal-tint), var(--paper))">
     <div class="card-title">Today's ${toneLabel()} <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change tone →</span></div>
     <div style="font-size:13.5px; line-height:1.7; color:var(--navy)">${tip}</div>
-  </div>
-  <div class="grid-metrics">
+  </div>`;
+  html += renderInsightsCard();
+  html += `<div class="grid-metrics">
     <div class="metric navy"><div class="ml">Revenue Today</div><div class="mv">${money(todaySales)}</div><div class="ms">${(DATA.transactions||[]).filter(x=>x.date===t).length} sales logged</div></div>
     <div class="metric coral"><div class="ml">Follow-ups Due</div><div class="mv">${dueFollowups.length}</div><div class="ms">across all ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase()}</div></div>
     <div class="metric amber"><div class="ml">Low Stock</div><div class="mv">${lowStock.length}</div><div class="ms">${CFG.modules.includes('inventory')?'items at/under par':'inventory module off'}</div></div>
@@ -1533,7 +1660,7 @@ function renderToday(){
     <div>
       <div class="card">
         <div class="card-title">Due Today <span class="sub">tap to open</span></div>
-        ${dueFollowups.length ? dueFollowups.slice(0,6).map(f=>`<div class="list-row" style="cursor:pointer" onclick="navTo('followups')"><span>${f.contactName} — ${f.detail}</span><span class="pill pill-hot">${fmtDate(f.due)}</span></div>`).join('') : '<div class="empty">Nothing due today — clean slate.</div>'}
+        ${dueFollowups.length ? dueFollowups.slice(0,6).map(f=>`<div class="list-row" style="cursor:pointer" onclick="navTo('followups')"><span>${esc(f.contactName)} — ${esc(f.detail)}</span><span class="pill pill-hot">${fmtDate(f.due)}</span></div>`).join('') : '<div class="empty">Nothing due today — clean slate.</div>'}
       </div>
       <div class="card">
         <div class="card-title">Today's Calendar</div>
@@ -1571,7 +1698,10 @@ const TIP_LIBRARY = {
     "You don't need more customers today. You need to follow up with the ones you already have.",
     "Consistency beats intensity. A small action done daily outgrows a big action done rarely.",
     "The fortune is in the follow-up. Don't let a lead go quiet without one more honest attempt.",
-    "Your attitude is part of your product. Walk in today like you're glad to be here — customers feel it."
+    "Your attitude is part of your product. Walk in today like you're glad to be here — customers feel it.",
+    "You didn't have time, so you made time. You didn't have knowledge, so you kept learning. Excuses are optional — use today instead.",
+    "Someone waiting for the 'right moment' to follow up, post, or ask for the sale is really just waiting for later to become never. Do the thing now.",
+    "Show up today even though it's tough, even if you don't feel like it, even when nothing seems to be working. Showing up is the whole advantage — most people don't."
   ],
   faith:[
     "\"Commit to the LORD whatever you do, and He will establish your plans.\" — Proverbs 16:3. Do the work today, and trust the increase.",
@@ -1579,7 +1709,8 @@ const TIP_LIBRARY = {
     "\"Whatever you do, work at it with all your heart, as working for the Lord.\" — Colossians 3:23. Let that be true of every customer you serve today.",
     "Faithfulness in small things comes before increase in big things. Be faithful with today's follow-ups.",
     "\"The plans of the diligent lead surely to abundance.\" — Proverbs 21:5. Plan today, then work the plan.",
-    "Give thanks for the customers already in your phone before you ask for new ones. Gratitude keeps you consistent."
+    "Give thanks for the customers already in your phone before you ask for new ones. Gratitude keeps you consistent.",
+    "Some things worth having take longer than we'd choose — a season of waiting isn't a season of nothing. Keep doing the faithful daily work while you wait for the breakthrough."
   ],
   neutral:[
     "Focus today on one metric: follow-ups cleared. Everything else follows from that.",
@@ -1587,7 +1718,8 @@ const TIP_LIBRARY = {
     "Review yesterday's numbers before starting today's work. Adjust one thing.",
     "Pick the single highest-value task today and do it before anything else.",
     "Consistency compounds. Small daily actions outperform occasional big pushes.",
-    "Today, prioritise the contacts most likely to convert this week."
+    "Today, prioritise the contacts most likely to convert this week.",
+    "The gap between what comes in and what goes out is what actually builds a business — check that gap today, not just the revenue number."
   ]
 };
 function dailyTip(){
@@ -1761,7 +1893,7 @@ function drawCrmList(){
   document.getElementById('crmList').innerHTML = list.length ? list.map(c=>{
     const temp = TEMPS.find(t=>t.key===c.temp);
     return `<div class="list-row" style="cursor:pointer" onclick="openContactModal('${c.id}')">
-      <span><span class="temp-dot" style="background:${temp.color}"></span><b>${c.name}</b> <span style="color:var(--muted);font-size:11px">· ${c.phone}</span></span>
+      <span><span class="temp-dot" style="background:${temp.color}"></span><b>${esc(c.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(c.phone)}</span></span>
       <span class="pill ${temp.pillClass}">${c.stage||temp.label}</span>
     </div>`;
   }).join('') : '<div class="empty">No matches — add one on the right.</div>';
@@ -1789,13 +1921,13 @@ function openContactModal(id){
   const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
   const temp = TEMPS.find(t=>t.key===c.temp);
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal">
-    <div class="modal-head"><h3>${c.name}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><h3>${esc(c.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <label class="lbl">Temperature</label>
     <select class="inp" onchange="updateContact('${id}','temp',this.value)">${TEMPS.map(t=>`<option value="${t.key}" ${t.key===c.temp?'selected':''}>${t.label}</option>`).join('')}</select>
     <label class="lbl">Stage</label><input class="inp" value="${c.stage||''}" onchange="updateContact('${id}','stage',this.value)">
     <label class="lbl">Phone</label><input class="inp" value="${c.phone||''}" onchange="updateContact('${id}','phone',this.value)">
     <label class="lbl">Next follow-up</label><input class="inp" type="date" value="${c.nextFollowUp||''}" onchange="updateContact('${id}','nextFollowUp',this.value)">
-    <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateContact('${id}','notes',this.value)">${c.notes||''}</textarea>
+    <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateContact('${id}','notes',this.value)">${esc(c.notes||'')}</textarea>
     <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
       ${c.phone?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" href="https://wa.me/${c.phone.replace(/\\D/g,'')}">💬 WhatsApp</a>`:''}
       <button class="btn btn-ghost" style="flex:1" onclick="openJournalFor('${id}','${c.name.replace(/'/g,"\\'")}')">📓 Journal Note</button>
@@ -1825,7 +1957,7 @@ function renderFollowups(){
   <div class="card"><div class="card-title">Follow-Up Queue <span class="sub">everything due, across every module, in one list</span></div>
   ${due.length ? due.map(f=>`
     <div class="list-row" style="align-items:flex-start">
-      <div><b>${f.contactName}</b><br><span style="font-size:11.5px;color:var(--ink-dim)">${f.detail} · due ${fmtDate(f.due)}${f.due<t?' — overdue':''}</span></div>
+      <div><b>${esc(f.contactName)}</b><br><span style="font-size:11.5px;color:var(--ink-dim)">${esc(f.detail)} · due ${fmtDate(f.due)}${f.due<t?' — overdue':''}</span></div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-ghost" style="padding:6px 10px" onclick="snoozeFollowup('${f.id}')">Snooze 3d</button>
         <button class="btn btn-primary" style="padding:6px 10px" onclick="doneFollowup('${f.id}')">✓ Done</button>
@@ -1900,7 +2032,7 @@ function renderBookings(){
     const items = (DATA.contacts||[]).filter(c=>(c.stage||'New')===stage || (stage==='New' && !['Confirmed','In Progress','Completed','Client'].includes(c.stage)));
     return `<div>
       <div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim);margin-bottom:8px">${stage} (${items.length})</div>
-      ${items.map(c=>`<div class="card" style="padding:11px 12px;margin-bottom:8px;cursor:pointer" onclick="openContactModal('${c.id}')"><div style="font-size:12.5px;font-weight:700">${c.name}</div><div style="font-size:11px;color:var(--muted)">${c.value?money(c.value):'—'}</div></div>`).join('') || '<div class="empty" style="padding:14px 4px">Empty</div>'}
+      ${items.map(c=>`<div class="card" style="padding:11px 12px;margin-bottom:8px;cursor:pointer" onclick="openContactModal('${c.id}')"><div style="font-size:12.5px;font-weight:700">${esc(c.name)}</div><div style="font-size:11px;color:var(--muted)">${c.value?money(c.value):'—'}</div></div>`).join('') || '<div class="empty" style="padding:14px 4px">Empty</div>'}
     </div>`;
   }).join('');
   document.getElementById('pipeBoard').innerHTML = board;
@@ -1953,7 +2085,7 @@ function renderInvoicing(){
     <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7"><b style="color:var(--navy)">${ci.tax}</b> — ${ci.taxNote}</div>
   </div>
   <div class="card"><div class="card-title">Debtors — Who Owes What</div>
-  ${owed.length ? owed.map(c=>`<div class="list-row"><span><b>${c.name}</b></span><span class="mono" style="color:var(--coral)">${money(c.value)}</span></div>`).join('') : '<div class="empty">Nothing outstanding.</div>'}
+  ${owed.length ? owed.map(c=>`<div class="list-row"><span><b>${esc(c.name)}</b></span><span class="mono" style="color:var(--coral)">${money(c.value)}</span></div>`).join('') : '<div class="empty">Nothing outstanding.</div>'}
   </div>`;
 }
 
@@ -1986,9 +2118,9 @@ function renderExpenses(){
   </div>`;
 }
 async function addExpense(){
-  const item = document.getElementById('eItem').value.trim();
-  const amount = parseFloat(document.getElementById('eAmt').value)||0;
-  if(!item||!amount){ showToast('Item and amount required'); return; }
+  const item = document.getElementById('eItem').value.trim().slice(0,200);
+  const amount = parseFloat(document.getElementById('eAmt').value);
+  if(!item || !Number.isFinite(amount) || amount<=0 || amount>1e12){ showToast('Enter an item and a valid positive amount'); return; }
   DATA.expenses.push({id:uid('E'), date:todayStr(), item, category:document.getElementById('eCat').value, amount, paidBy:'Cash'});
   await saveData(); showToast('Expense logged'); renderExpenses();
 }
@@ -2343,13 +2475,13 @@ function renderJournal(){
   <div class="two-col">
     <div class="card"><div class="card-title">Journal & Notes <span class="sub">${entries.length} entries</span></div>
       ${entries.length ? entries.map(e=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
-        <div style="display:flex;justify-content:space-between;width:100%"><b style="font-size:12px">${e.linkedName?'Re: '+e.linkedName:'General'}</b><span style="font-size:10.5px;color:var(--muted)">${fmtDate(e.date)}</span></div>
-        <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.6;white-space:pre-wrap">${e.text}</div>
+        <div style="display:flex;justify-content:space-between;width:100%"><b style="font-size:12px">${e.linkedName?'Re: '+esc(e.linkedName):'General'}</b><span style="font-size:10.5px;color:var(--muted)">${fmtDate(e.date)}</span></div>
+        <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.6;white-space:pre-wrap">${esc(e.text)}</div>
       </div>`).join('') : '<div class="empty">No entries yet — write your first note.</div>'}
     </div>
     <div class="card"><div class="card-title">New Entry</div>
       <label class="lbl">Link to a ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
-      <select class="inp" id="jLink"><option value="">General / business-wide</option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}|${c.name}">${c.name}</option>`).join('')}</select>
+      <select class="inp" id="jLink"><option value="">General / business-wide</option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}|${c.name}">${esc(c.name)}</option>`).join('')}</select>
       <label class="lbl">Note</label><textarea class="inp" id="jText" rows="5" placeholder="What happened, what you decided, what to remember..."></textarea>
       <button class="btn btn-primary btn-full" onclick="addJournal()">＋ Save Entry</button>
     </div>
@@ -2409,7 +2541,7 @@ function aiSummary(){
   const due = (DATA.followups||[]).filter(f=>!f.done && f.due<=t).length;
   const low = (DATA.inventory||[]).filter(i=>i.stock<=i.par).length;
   const acc = accountabilityTodayScore();
-  return `Good day — here's where things stand:\n\n• Revenue today: ${money(rev)}\n• Follow-ups due: ${due}\n• Low stock items: ${low}\n• Hot leads: ${(DATA.contacts||[]).filter(c=>c.temp==='hot').length}\n• Today's accountability: ${acc.done}/${acc.total}\n\n${toneSignoff()}\n\nAsk me about who to contact first, revenue trends, your persona, or your audit score.`;
+  return `Good day — here's where things stand:\n\n• Revenue today: ${money(rev)}\n• Follow-ups due: ${due}\n• Low stock items: ${low}\n• Hot leads: ${(DATA.contacts||[]).filter(c=>c.temp==='hot').length}\n• Today's accountability: ${acc.done}/${acc.total}\n\n${toneSignoff()}\n\nAsk me about who to contact first, revenue trends, your persona, your audit score, or "what have you noticed" for patterns I've spotted in your own numbers.`;
 }
 function aiAnswer(q){
   const ql = q.toLowerCase();
@@ -2417,6 +2549,11 @@ function aiAnswer(q){
     const facts = (DATA.knowledge?.facts||[]).slice(-8).reverse();
     if(!facts.length) return `Nothing recorded yet — fill in your Persona, run your Audit, or add Journal notes and I'll start remembering specifics about ${CFG.bizName} instead of giving generic answers.`;
     return `Here's what I've picked up so far, most recent first:\n\n` + facts.map(f=>`• [${fmtDate(f.date)}] ${f.text}`).join('\n');
+  }
+  if(ql.includes('notice') || ql.includes('pattern') || ql.includes('insight') || ql.includes('what should i watch') || ql.includes('what am i missing')){
+    const insights = detectPatterns();
+    if(!insights.length) return `Nothing stands out from your own numbers right now — no recurring slow day, no stale hot leads, no follow-up backlog, and your streak is healthy. Keep logging daily and I'll flag it the moment a pattern shows up.`;
+    return `Here's what I'm noticing in your own data:\n\n` + insights.map((ins,i)=>`${i+1}. ${ins.text}`).join('\n\n');
   }
   if(ql.includes('persona') || ql.includes('ideal customer') || ql.includes('ideal client')){
     const p = DATA.persona;
@@ -2553,7 +2690,9 @@ const GUIDES = [
   {cat:'Sales', t:'The Sales Playbook — Give Value First', b:80, full:`The one rule everything else depends on: give value before you ask for anything. Trust isn't built by having a good product — it's built by showing you understand the customer's problem better than they do. Lead with insight before price, every time.\n\nSort every contact into 3 groups before messaging: Cold (never spoken — goal is a reply, not a sale, ask one question and wait), Warm (spoken before — reconnect as a person first, business comes in message 2), Re-engage (went cold — never follow up on the old offer, re-enter with something new).\n\nThe 5 hooks to open with: 1) Show them their problem (a specific, real gap). 2) Give a specific tip for their industry. 3) Local proof (what's working for a business near them). 4) The fast win (do something small for free). 5) The competitor reveal (what a rival is doing that they aren't).\n\nSaying your price: state it once, calmly, then stay quiet — the first person to speak after the price loses. Anchor it to a small daily amount and connect it to the outcome, not the product. If they negotiate, offer a smaller entry point rather than a discount.\n\nThe 7 objections and how to answer them: "I'll think about it" → ask what specific part they're unsure about. "I don't use the internet" → their customers do. "Too expensive" → offer the free/smaller option first. "Tried ads before, didn't work" → this is different, it doesn't need an ongoing budget. "No time" → you don't need their time, just their details. "How do I know this is real" → offer a nearby reference they can check. "Send more info" → show them live instead of explaining.\n\nThe 3 client types: Type A (Ready) — close quickly, take payment first. Type B (Interested) — needs patience, one clear next step at a time. Type C (Extractor) — asks for free work before committing, disengage politely.\n\nThe follow-up system: most sales need 5+ contacts. Day 1 first message, Day 2–3 new value, Day 7 different angle, Day 14 short question only, Day 30 final re-entry acknowledging the gap. Every follow-up must bring something new — never just "checking in."`},
   {cat:'Customer Service', t:'Customer Service — Presence, Greeting & Attitude', b:60, full:`A customer forms an opinion before you say a word. Before greeting, before selling — someone has to actually be present, alert and ready. If you step away, leave a note; a shop that feels empty tells customers "you're not important."\n\nThe greeting matters more than it seems: eye contact, a genuine smile, a verbal welcome, and an offer to help. It costs three seconds and it's the difference between a customer who stays and one who turns around.\n\nKnow your products — what you sell, current prices, what's in stock, basic features. "I don't know" is one of the fastest ways to lose trust; "let me find out for you right now" isn't.\n\nWhatsApp and phone are part of your shopfront: reply to every message, even a holding reply ("I'll get back to you in 30 minutes"). Keep your business account professional — personal content belongs on your personal account. Answer calls with your business name, not a flat "hello."\n\nWhen a customer complains: listen fully without interrupting, acknowledge their frustration, never argue even if you think they're wrong, offer a solution, and thank them — complaints are free feedback.\n\nYour attitude is part of your business. Complaints don't attract customers, solutions do. Compete with who you were yesterday, not with your neighbour's shop.\n\nReputation is built one customer at a time — consistent service, keeping promises, honest pricing, and treating every customer the same whether they spend big or small.`},
   {cat:'Referrals & Retention', t:'Referral & Retention System', b:75, full:`Referral customers are your highest-value growth channel — it's roughly 5x cheaper to retain an existing customer than acquire a new one, and referred customers tend to spend more and stay longer. Most businesses never activate this simply because they never ask.\n\nWhy businesses don't ask: it feels awkward, they ask at the wrong time, they have no system, or they offer nothing in return. Fix each: frame the ask as a compliment, ask inside the golden window, use a repeatable script, and offer even a small reward.\n\nThe golden window: ask 24–72 hours after the customer has confirmed they're happy — not before (too early, feels pushy) and not weeks later (emotion has faded). Always thank them genuinely first.\n\nThe 6-stage referral system: 1) Deliver exceptionally (over-deliver in some small way). 2) Confirm satisfaction within 48 hours. 3) Ask for the referral in the golden window using one of the scripts. 4) Track every referral immediately — who referred whom, what they need. 5) Acknowledge and reward the referrer the moment the referral buys. 6) Ask the referrer again after 2 weeks — the second ask is always easier.\n\nRewards that work without hurting margin: a fixed bonus per referral, a % commission, a free product on the next order, priority/early access, or simply a warm personal thank-you voice note and public recognition — in many cultures, being acknowledged carries real weight on its own.\n\nThe 4 loyalty tiers: One-Time Buyer (re-activate with a 30-day check-in), Repeat Buyer (personal check-ins, early access), Loyal Customer (priority service, ask for referrals and testimonials), Spotlight Client (treat like a partner, involve them in new ideas).\n\nRetention schedule: 48 hours after purchase — satisfaction check. 7 days — thank you + new arrival. 30 days — re-engagement check-in. 60 days no purchase — re-activation offer with something new. Every touchpoint should add value, never just "checking in."\n\nRe-activating cold contacts: never re-enter a quiet conversation without bringing something new — a new arrival, a result story from someone else, a seasonal note, or (after 90+ days silent) a zero-pressure direct check-in with no sales agenda at all.\n\nRun an annual customer audit: count and categorise every customer by tier, identify your top 10 and thank them personally, run re-activation on anyone who went quiet, and set 3 specific retention goals for the next 12 months.`},
-  {cat:'Daily Operating System', t:'The Daily, Weekly & Monthly Operating System', b:70, full:`Everything in this library works when applied consistently — 30 minutes a day, every day, is what the system actually requires. The question is never whether it works, it's whether you show up for it.\n\nMorning: clear unread messages and follow-ups, post or share your first update of the day, check who engaged with yesterday's content and respond.\n\nMid-morning: work active conversations forward, follow up on anything sent 24+ hours ago with no response.\n\nAfternoon: update your catalogue or offer, reply to everything new within 2 hours.\n\nEvening: check in with your best customers personally, post your final update of the day (this window often gets the most engagement), reset your inbox — archive what's done, label what's active.\n\nWeekly rhythm: Monday — review every stalled lead. Tuesday — plan content for the week. Wednesday — catalogue and broadcast day. Thursday — customer care (check-ins, testimonials, referrals). Friday — outreach to new contacts. Saturday — your strongest offer of the week. Sunday — review the numbers and plan next week.\n\nThe math that matters: one extra sale a day, every day, compounds into meaningful annual revenue — not from luck, but from consistent daily action. Use the Accountability module here in TecXFRA to track exactly this, day by day, and see your streak build.`}
+  {cat:'Daily Operating System', t:'The Daily, Weekly & Monthly Operating System', b:70, full:`Everything in this library works when applied consistently — 30 minutes a day, every day, is what the system actually requires. The question is never whether it works, it's whether you show up for it.\n\nMorning: clear unread messages and follow-ups, post or share your first update of the day, check who engaged with yesterday's content and respond.\n\nMid-morning: work active conversations forward, follow up on anything sent 24+ hours ago with no response.\n\nAfternoon: update your catalogue or offer, reply to everything new within 2 hours.\n\nEvening: check in with your best customers personally, post your final update of the day (this window often gets the most engagement), reset your inbox — archive what's done, label what's active.\n\nWeekly rhythm: Monday — review every stalled lead. Tuesday — plan content for the week. Wednesday — catalogue and broadcast day. Thursday — customer care (check-ins, testimonials, referrals). Friday — outreach to new contacts. Saturday — your strongest offer of the week. Sunday — review the numbers and plan next week.\n\nThe math that matters: one extra sale a day, every day, compounds into meaningful annual revenue — not from luck, but from consistent daily action. Use the Accountability module here in TecXFRA to track exactly this, day by day, and see your streak build.`},
+  {cat:'Money Mindset', t:'7 Money Habits Wealth Builders Practice', b:55, full:`These aren't secrets — they're habits, repeated so consistently they stop feeling like effort. None of them require a large income to start.\n\n1) Pay yourself first. Before any other expense, move a portion of what comes in toward savings or reinvestment in the business — even a small fixed percentage, moved automatically the moment money arrives, before it has a chance to get spent elsewhere.\n\n2) Live below your means. Let your lifestyle grow slower than your income. The gap between what you earn and what you spend is the only thing that actually builds wealth — not the size of either number alone.\n\n3) Invest with a long horizon. Favour things that compound over years — reinvesting profit into stock, equipment, property, or the business itself — over quick, high-risk plays that rarely repeat.\n\n4) Diversify income streams. One income source is one point of failure. A second stream — even small — buys real security and options the first one alone can't.\n\n5) Understand your tax position. Know what you legally owe and what you can legitimately deduct or shelter. This isn't about avoiding tax, it's about not overpaying out of not knowing — see this business's Tax & Payroll info in Settings for a starting point.\n\n6) Delay gratification. The businesses and people who compound wealth consistently choose long-term position over immediate spending, especially in the early years when it's hardest.\n\n7) Manage debt on purpose. Debt used to buy an asset that grows (stock, equipment, property) is different from debt used to fund a lifestyle. Know which kind you're taking on before you sign.\n\nTry this today: pick one of the 7 you're weakest on right now, and take one concrete action on it before the day ends — move a fixed amount to savings, write down one deductible expense you've been missing, or delay one non-essential purchase by 30 days.`},
+  {cat:'Money Mindset', t:'The Mindset Shift: 9 Steps From Idea to Habit', b:60, full:`Motivation gets someone started. These 9 shifts are what keep a business owner going after the motivation fades — the difference between a business that survives month one and one that's still standing at year one.\n\n1) Own your path. Take full responsibility for every outcome, win or setback. The moment you own the result, you also own the ability to change it next time.\n\n2) Define your vision with real clarity. Vague goals ("do well") produce vague effort. Specific goals ("hit this revenue number by this date, serving this customer") produce a specific daily to-do list.\n\n3) Build genuine self-belief. Confidence isn't a personality trait, it's a habit — built by keeping small promises to yourself before it's ever tested by something big.\n\n4) Set precision goals. Specific, measurable targets — not "grow the business" but "10 new customers this month." TecXFRA's Accountability and Revenue modules exist to make this trackable instead of a feeling.\n\n5) Act as if you've already arrived. Adopt the standards, habits and presentation of the business you're building toward, starting now — not once you "make it." Customers respond to how a business shows up today, not its five-year plan.\n\n6) Move toward your fears, not away from them. Growth lives just past the point that feels uncomfortable — the cold outreach, the price conversation, the ask for a referral. Every one of those gets easier the moment you actually do it once.\n\n7) Ask for what you need. Opportunities, mentorship, referrals, a second chance with a client — most of them go to whoever was willing to ask, not whoever was most deserving in silence.\n\n8) Keep learning, permanently. The plan that worked last year won't automatically work next year. Treat every month as a chance to learn one new thing about the business, the customer, or yourself.\n\n9) Fail forward. Every setback contains one specific, usable lesson if you look for it. The businesses that last aren't the ones that never fail — they're the ones that extract the lesson fast and keep moving.\n\nThe single word that ties all 9 together is simple: show up. Show up on the hard days, the slow days, the days nothing seems to be working — consistency is the only one of these 9 that compounds entirely on its own.`}
 ];
 let guideCatFilter = 'All';
 let guidesMainTab = 'library';
