@@ -346,10 +346,20 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
       <div class="wiz-h">Turn on what you need — organised by the TecXFRA system.</div>
       <div class="wiz-sub">Every module sits under one of the 7 letters — <b>T</b>ec (Today, Expenses, CRM) · <b>X</b> (Execution & Growth) · <b>F</b>RA (Follow-Ups, Revenue, Accountability). We've pre-checked what businesses like yours usually use — leave the rest on too, it costs nothing to have them ready for when you grow into them.</div>
       <div class="mod-scroll" id="moduleList"></div>
-      <div class="wiz-nav"><button class="btn btn-ghost" onclick="wizGo(2)">← Back</button><button class="btn btn-primary" onclick="goToAccountCreation()">Continue — create your login →</button></div>
+      <div class="wiz-nav"><button class="btn btn-ghost" onclick="wizGo(2)">← Back</button><button class="btn btn-primary" onclick="wizGo(4)">Next — choose your plan →</button></div>
     </div>
 
-    <div class="wiz-dots"><span id="dot1" class="on"></span><span id="dot2"></span><span id="dot3"></span></div>
+    <!-- STEP 4: plan -->
+    <div class="wiz-step" data-step="4">
+      <div class="wiz-eyebrow">Step 4 of 4</div>
+      <div class="wiz-h">Choose your plan.</div>
+      <div class="wiz-sub">TecXFRA rewards its first businesses: the very first 10 signups get their chosen plan free, permanently — 2 Enterprise, 3 Growth, 5 Starter spots. After that, every plan is a paid subscription, and Starter is priced to stay within reach of any business, anywhere.</div>
+      <div id="wizPlanGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:6px"></div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">You can change plans anytime after signup in Settings.</div>
+      <div class="wiz-nav"><button class="btn btn-ghost" onclick="wizGo(3)">← Back</button><button class="btn btn-primary" onclick="goToAccountCreation()">Continue — create your login →</button></div>
+    </div>
+
+    <div class="wiz-dots"><span id="dot1" class="on"></span><span id="dot2"></span><span id="dot3"></span><span id="dot4"></span></div>
   </div>
 </div>
 
@@ -565,7 +575,8 @@ function goToAccountCreation(){
     country: document.getElementById('setupCountry').value || 'Other / Not listed',
     tone: document.getElementById('setupTone').value || 'motivation',
     industry: wizIndustry,
-    modules
+    modules,
+    plan: wizPlan || 'growth'
   };
   try{ localStorage.setItem('tecxfra_pending_setup', JSON.stringify(PENDING_SETUP)); }catch(e){}
   document.getElementById('wizard').style.display = 'none';
@@ -1041,6 +1052,39 @@ function getTemplates(){
 }
 
 let wizIndustry = null;
+let wizPlan = 'growth';
+let FOUNDING_SLOTS = null; // {starter:{cap,used,remaining}, growth:{...}, enterprise:{...}}
+async function loadFoundingSlots(){
+  try{
+    if(!(await requireSupabase())) return;
+    const { data, error } = await sb.rpc('get_founding_slots_status');
+    if(error) throw error;
+    FOUNDING_SLOTS = {};
+    (data||[]).forEach(r=>{ FOUNDING_SLOTS[r.tier] = r; });
+  }catch(e){ console.error('loadFoundingSlots failed', e); FOUNDING_SLOTS = null; }
+}
+function foundingBadge(tierKey){
+  const s = FOUNDING_SLOTS && FOUNDING_SLOTS[tierKey];
+  if(!s) return '';
+  if(s.remaining <= 0) return '';
+  return `<div style="font-size:10.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:6px;padding:3px 8px;display:inline-block;margin-top:6px">🎉 ${s.remaining} of ${s.cap} founding free spot${s.remaining===1?'':'s'} left</div>`;
+}
+function pickWizPlan(k){
+  wizPlan = k;
+  document.querySelectorAll('.plan-pick').forEach(el=>el.classList.toggle('sel', el.dataset.k===k));
+}
+function renderWizPlanStep(){
+  const grid = document.getElementById('wizPlanGrid');
+  if(!grid) return;
+  const wizCurrency = (document.getElementById('setupCurrency')||{}).value || 'USD';
+  grid.innerHTML = PLANS.map(p=>`
+    <div class="plan-pick ${wizPlan===p.key?'sel':''}" data-k="${p.key}" onclick="pickWizPlan('${p.key}')" style="border:2px solid ${wizPlan===p.key?'var(--teal)':'var(--line)'};border-radius:12px;padding:14px;cursor:pointer">
+      <div style="font-weight:800;font-size:14.5px;color:var(--navy)">${p.label}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${planPriceDisplay(p.key, wizCurrency)}</div>
+      <div style="font-size:11.5px;color:var(--ink-dim);margin:4px 0 6px;line-height:1.5">${p.tagline}</div>
+      ${foundingBadge(p.key)}
+    </div>`).join('');
+}
 function renderIndustryGrid(){
   document.getElementById('industryGrid').innerHTML = INDUSTRIES.map(i=>`
     <div class="industry-pin" data-k="${i.key}" onclick="pickIndustry('${i.key}')">
@@ -1101,9 +1145,10 @@ function wizGo(step){
   if(step===2 && !document.getElementById('setupBizName').value.trim()){ showToast('Add a business name first'); return; }
   if(step===3 && !wizIndustry){ showToast('Pick an industry first'); return; }
   if(step===3) renderModuleList();
+  if(step===4){ loadFoundingSlots().then(renderWizPlanStep); renderWizPlanStep(); }
   document.querySelectorAll('.wiz-step').forEach(s=>s.classList.remove('active'));
   document.querySelector(`.wiz-step[data-step="${step}"]`).classList.add('active');
-  [1,2,3].forEach(n=>document.getElementById('dot'+n).classList.toggle('on', n===step));
+  [1,2,3,4].forEach(n=>document.getElementById('dot'+n).classList.toggle('on', n===step));
 }
 async function finishSetup(setup){
   CFG = {
@@ -1122,7 +1167,25 @@ async function finishSetup(setup){
   };
   DATA = seedData(setup.industry);
   await saveCfg(); await saveData();
+  await claimFoundingSlotIfChosen(setup.plan);
   boot();
+}
+// Tries to grant one of the 10 permanent founding-member free spots
+// (2 Enterprise / 3 Growth / 5 Starter) for the plan the person picked
+// in the wizard. If the spots for that tier are gone, this quietly does
+// nothing — every business still has full Starter-level access via the
+// normal inactive-subscription fallback regardless, and can pay to
+// unlock or upgrade anytime from Settings → Plan. Nobody is ever
+// left blocked either way.
+async function claimFoundingSlotIfChosen(planKey){
+  if(!planKey || !['starter','growth','enterprise'].includes(planKey)) return;
+  try{
+    const { data, error } = await sb.rpc('claim_founding_slot', { p_tier: planKey });
+    if(error) throw error;
+    if(data && data.success){
+      showToast(`🎉 You're a TecXFRA founding member — ${PLANS.find(p=>p.key===planKey).label} is free, for keeps.`);
+    }
+  }catch(e){ console.error('claimFoundingSlotIfChosen failed', e); }
 }
 
 async function boot(){
@@ -1165,7 +1228,7 @@ const TECXFRA_GROUPS = [
 ];
 const TECXFRA_MORE_KEYS = ['staff','journal','archive','system','settings'];
 const PLANS = [
-  {key:'starter', label:'Starter', price:'Free', tagline:'Run the daily basics — Tec + F + R',
+  {key:'starter', label:'Starter', price:'Entry', tagline:'Run the daily basics — Tec + F + R',
     desc:'Today, CRM, Calendar, Follow-Ups, Messages, Expenses, Revenue, POS/Bookings, Staff, Guides.',
     locked:['referrals','persona','audit','accountability','journal'], aiFacts:3, whiteLabel:false, csvImport:false,
     limits:{contacts:30, staff:3, monthlyTransactions:60},
@@ -1177,7 +1240,7 @@ const PLANS = [
       'Up to 30 contacts and 60 sales/transactions a month',
       'AI Assistant with short-term memory (last 3 facts)',
       'Growth Library guides',
-      'Everything free, forever — upgrade only when you outgrow it'
+      'Priced to be within reach of every business, everywhere — nobody gets turned away here'
     ]},
   {key:'growth', label:'Growth', price:'Paid', tagline:'Adds the X layer — analytics & retention',
     desc:'Everything in Starter, plus Referrals & Retention, Persona, Business Audit, Accountability.',
@@ -1190,7 +1253,8 @@ const PLANS = [
       'Ideal Client Persona builder',
       'Business Audit & Accountability tracking',
       'CSV import for contacts & inventory',
-      'AI Assistant remembers your last 10 learned facts'
+      'AI Assistant remembers your last 10 learned facts',
+      'Built for the normal, steady running of an SME — most businesses live here'
     ]},
   {key:'enterprise', label:'Enterprise', price:'Custom', tagline:'Everything unlocked, deepest AI recall',
     desc:'Everything in Growth, plus Journal, full AI knowledge recall, white-label branding, and CSV import.',
@@ -1201,7 +1265,9 @@ const PLANS = [
       'Journal & Notes module',
       'Deepest AI recall — up to 200 learned facts',
       'White-label branding (your logo & brand colour app-wide)',
-      'Priority support for setup & data questions'
+      'Priority support for setup & data questions',
+      'The full maturity system — audits, knowledge layer, every guide, unlocked',
+      'This is running your whole operation from your phone — priced as the exclusive tier it is'
     ]}
 ];
 const PLAN_LIMITS = { starter: PLANS[0].limits, growth: PLANS[1].limits, enterprise: PLANS[2].limits };
@@ -1240,16 +1306,34 @@ function showUpgradeNudge(resource, label){
    country not in PAYSTACK_SUPPORTED_CURRENCIES falls back to USD so
    checkout never silently mis-charges someone in the wrong currency. */
 const PLAN_PRICING = {
-  GHS: { growth: 15000,  enterprise: 45000  }, // GH₵150 / GH₵450
-  NGN: { growth: 2500000, enterprise: 7500000 }, // ₦25,000 / ₦75,000 — CONFIRM
-  ZAR: { growth: 30000,  enterprise: 90000  }, // R300 / R900 — CONFIRM
-  KES: { growth: 200000, enterprise: 600000 }, // KSh2,000 / KSh6,000 — CONFIRM
-  USD: { growth: 1500,   enterprise: 4500   }  // $15 / $45 — fallback for every other country
+  // Starter: deliberately low — this is the "mama in the market" price
+  // point, priced so no small business is ever priced out.
+  // Growth: the normal, steady SME price — unchanged from before.
+  // Enterprise: a genuinely exclusive price — this runs a whole
+  // operation from a phone, so it is priced like the premium tier it is.
+  GHS: { starter: 5000,   growth: 15000,   enterprise: 150000   }, // GH₵50 / GH₵150 / GH₵1,500 — CONFIRM
+  NGN: { starter: 500000, growth: 2500000, enterprise: 25000000 }, // ₦5,000 / ₦25,000 / ₦250,000 — CONFIRM
+  ZAR: { starter: 6000,   growth: 30000,   enterprise: 300000   }, // R60 / R300 / R3,000 — CONFIRM
+  KES: { starter: 40000,  growth: 200000,  enterprise: 2000000  }, // KSh400 / KSh2,000 / KSh20,000 — CONFIRM
+  USD: { starter: 500,    growth: 1500,    enterprise: 15000    }  // $5 / $15 / $150 — fallback for every other country
 };
 const PAYSTACK_SUPPORTED_CURRENCIES = ['GHS','NGN','ZAR','USD','KES'];
 function getPaystackCurrency(){
   const cur = getCountryInfo()?.currency;
   return PAYSTACK_SUPPORTED_CURRENCIES.includes(cur) ? cur : 'USD';
+}
+function planPriceDisplay(planKey, overrideCurrency){
+  // Works both inside the app (CFG loaded) and in the wizard, before any
+  // business/CFG exists yet — pass overrideCurrency in the wizard.
+  const rawCurrency = overrideCurrency || (typeof CFG!=='undefined' && CFG ? getPaystackCurrency() : 'USD');
+  const currency = PAYSTACK_SUPPORTED_CURRENCIES.includes(rawCurrency) ? rawCurrency : 'USD';
+  const pricing = PLAN_PRICING[currency] || PLAN_PRICING.USD;
+  const minor = pricing[planKey];
+  if(minor == null) return 'Custom';
+  const major = minor/100;
+  const ci = (typeof CFG!=='undefined' && CFG) ? getCountryInfo() : null;
+  const sym = (ci && ci.currency===currency) ? ci.sym : currency+' ';
+  return `${sym}${major.toLocaleString()} / month`;
 }
 function currentPlan(){ return PLANS.find(p=>p.key===(CFG.plan||'enterprise')) || PLANS[2]; }
 function isLocked(moduleKey){ return currentPlan().locked.includes(moduleKey); }
@@ -2551,7 +2635,15 @@ function drawSettingsBody(){
   } else if(settingsTab==='plan'){
     const cur = currentPlan();
     const usage = planUsage();
-    b.innerHTML = `<div class="card" style="margin-bottom:14px">
+    if(!FOUNDING_SLOTS){ loadFoundingSlots().then(()=>{ if(settingsTab==='plan') drawSettingsBody(); }); }
+    const foundingRow = FOUNDING_SLOTS ? `<div class="card" style="margin-bottom:14px">
+      <div class="card-title">Founding member spots <span class="sub">first 10 TecXFRA businesses, ever — free for keeps</span></div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:6px">
+        ${['enterprise','growth','starter'].map(k=>{ const s=FOUNDING_SLOTS[k]; if(!s) return ''; const label=PLANS.find(p=>p.key===k).label;
+          return `<div style="font-size:12px;color:var(--ink-dim)"><b style="color:var(--navy)">${label}:</b> ${s.remaining>0? `${s.remaining} of ${s.cap} left` : 'All claimed'}</div>`; }).join('')}
+      </div>
+    </div>` : '';
+    b.innerHTML = foundingRow + `<div class="card" style="margin-bottom:14px">
       <div class="card-title">Your usage on ${cur.label}</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:8px">
         ${['contacts','staff','monthlyTransactions'].map(r=>{
@@ -2571,7 +2663,7 @@ function drawSettingsBody(){
       ${PLANS.map(p=>`<div class="card" style="border-color:${p.key===cur.key?'var(--teal)':'var(--line)'};position:relative;display:flex;flex-direction:column">
         ${p.key===cur.key?'<div class="pill pill-active" style="position:absolute;top:14px;right:14px">Current</div>':''}
         <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">${p.label}</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${p.price}${p.key!=='starter'?' / month':''}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${planPriceDisplay(p.key)}</div>
         <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.5;margin-bottom:10px">${p.tagline}</div>
         <ul style="font-size:11.5px;color:var(--ink-dim);line-height:1.7;margin:0 0 14px;padding-left:18px;flex:1">
           ${p.features.map(f=>`<li>${f}</li>`).join('')}
@@ -2605,9 +2697,9 @@ function drawSettingsBody(){
       <div class="card-title">Subscription status</div>
       <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;margin-bottom:14px">
         Plan: <b style="color:var(--navy)">${currentPlan().label}</b><br>
-        Status: <b style="color:var(--navy)">${currentPlan().key==='starter' ? 'Active (Free plan)' : (sub && sub.status==='active' ? 'Active' : 'Inactive — payment needed')}</b><br>
+        Status: <b style="color:var(--navy)">${sub && sub.status==='active' ? (sub.provider==='founding_free' ? 'Active — Founding member (free, for keeps)' : 'Active') : (currentPlan().key==='starter' ? 'Active (Starter access — no payment on file)' : 'Inactive — payment needed')}</b><br>
         ${sub && sub.current_period_end ? `Renews: <b style="color:var(--navy)">${new Date(sub.current_period_end).toLocaleDateString()}</b><br>` : ''}
-        ${sub && sub.provider ? `Last paid via: <b style="color:var(--navy)">${sub.provider}</b>` : ''}
+        ${sub && sub.provider && sub.provider!=='founding_free' ? `Last paid via: <b style="color:var(--navy)">${sub.provider}</b>` : ''}
       </div>
       <button class="btn btn-ghost" onclick="syncSubscription().then(()=>{renderSettings();showToast('Refreshed')})">Refresh status</button>
       ${sub && sub.status==='active' ? `<button class="btn btn-ghost" style="margin-left:8px;color:var(--danger,#c0584a)" onclick="cancelSubscriptionFlow()">Cancel plan</button>` : ''}
@@ -2701,7 +2793,7 @@ async function payWithPaystack(planKey){
   const plan = PLANS.find(p=>p.key===planKey);
   const currency = getPaystackCurrency();
   const pricing = PLAN_PRICING[currency] || PLAN_PRICING.USD;
-  const amountMinor = planKey==='growth' ? pricing.growth : pricing.enterprise;
+  const amountMinor = pricing[planKey] ?? pricing.enterprise;
   const { data:{ session } } = await sb.auth.getSession();
   let email = session?.user?.email;
   if(!email){ email = prompt('Paystack needs an email receipt address (your login can stay phone-based):'); }
