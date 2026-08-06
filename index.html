@@ -139,14 +139,23 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 .sb-staff .sn{font-size:12px; font-weight:700; color:#fff;}
 .sb-staff .sr{font-size:10px; color:#9fc3ca;}
 
-.main{flex:1; min-width:0; display:flex; flex-direction:column;}
+/* .main is now its own fixed-height, non-scrolling shell (height:100vh,
+   overflow:hidden) and .content below is the ONLY element that actually
+   scrolls. Previously the whole document/body scrolled, and .topbar
+   relied on position:sticky to stay put — sticky works in most cases,
+   but any ancestor quirk (flex stretch, dynamic mobile viewport resize,
+   etc.) can break it, which is exactly what "top menu disappears on
+   scroll" looks like. Making the topbar structurally outside the
+   scrolling element removes the possibility entirely, it can't scroll
+   away because it was never part of the scroll in the first place. */
+.main{flex:1; min-width:0; display:flex; flex-direction:column; height:100vh; height:100dvh; overflow:hidden;}
 .topbar{background:var(--paper); border-bottom:1px solid var(--line); padding:14px 26px; display:flex; align-items:center; justify-content:space-between; gap:14px; position:sticky; top:0; z-index:40;}
 .topbar .th{font-size:19px; font-weight:700; letter-spacing:-.3px;}
 .topbar .ts{font-size:12px; color:var(--muted); margin-top:1px;}
 .top-actions{display:flex; align-items:center; gap:10px;}
 .icon-btn{width:36px; height:36px; border-radius:9px; border:1.5px solid var(--line); background:var(--paper); display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--ink-dim);}
 .icon-btn:hover{border-color:var(--teal); color:var(--teal-dim);}
-.content{padding:24px 26px 60px; max-width:1400px; width:100%; margin:0 auto;}
+.content{padding:24px 26px 60px; max-width:1400px; width:100%; margin:0 auto; flex:1; overflow-y:auto; min-height:0;}
 
 /* ============ SHARED UI ============ */
 .grid-metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:20px;}
@@ -231,6 +240,21 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 </head>
 <body>
 
+<!-- ================= BOOT LOADER =================
+     Shown instantly on every page load/refresh, BEFORE we know whether
+     there's a valid session. Previously the wizard itself (the "Create
+     your business" screen) was the default visible state, so on every
+     refresh a logged-in user would see a flash of the signup wizard
+     while the session check ran in the background — easy to mistake for
+     "it logged me out". Now that screen is hidden by default and this
+     loader covers it until initAuthGate() has actually decided what to
+     show (dashboard, wizard, or login). -->
+<div id="bootLoading" style="position:fixed;inset:0;z-index:500;background:var(--cream);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;">
+  <div style="width:34px;height:34px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--teal);animation:bootspin .7s linear infinite;"></div>
+  <div style="font-size:12px;font-weight:700;letter-spacing:1px;color:var(--muted);text-transform:uppercase;">Loading TecXFRA</div>
+</div>
+<style>@keyframes bootspin{to{transform:rotate(360deg);}}</style>
+
 <!-- ================= AUTH GATE (shown on demand: "Log in" link, or the final wizard step) ================= -->
 <div id="authScreen" style="display:none">
   <div class="biz-float-layer" id="authFloatLayer"></div>
@@ -293,7 +317,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 </div>
 
 <!-- ================= SETUP WIZARD (the front door, no login required) ================= -->
-<div id="wizard" style="display:flex">
+<div id="wizard" style="display:none">
   <div class="biz-float-layer" id="wizFloatLayer"></div>
   <div class="wiz-card">
     <div class="wiz-brand" style="justify-content:space-between">
@@ -455,6 +479,7 @@ async function initSupabase(){
           if(event === 'SIGNED_OUT' || (!session && CUR_VENUE_ID)){
             if(CUR_VENUE_ID){
               CUR_VENUE_ID = null; CFG = null; DATA = null;
+              hideBootLoading();
               document.getElementById('app').classList.remove('active');
               document.getElementById('authScreen').style.display = 'none';
               renderIndustryGrid(); populateWizCountry();
@@ -734,6 +759,7 @@ async function signOut(){
   await sb.auth.signOut();
   try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
   CUR_VENUE_ID = null; CFG = null; DATA = null; PENDING_SETUP = null;
+  hideBootLoading();
   document.getElementById('app').classList.remove('active');
   document.getElementById('authScreen').style.display = 'none';
   renderIndustryGrid(); populateWizCountry();
@@ -747,7 +773,12 @@ async function initAuthGate(){
   renderIndustryGrid();
   populateWizCountry();
   const { data:{ session } } = await sb.auth.getSession();
-  if(!session) return;
+  if(!session){
+    hideBootLoading();
+    document.getElementById('wizard').style.display = 'flex';
+    wizGo(1);
+    return;
+  }
   CUR_VENUE_ID = session.user.id;
   await loadAll();
   if(CFG){ boot(); return; }
@@ -777,6 +808,7 @@ async function initAuthGate(){
   // different device/browser than the one the wizard was filled in
   // on) — send them into the wizard to set up their business, but
   // make it obvious they ARE logged in rather than looking broken.
+  hideBootLoading();
   document.getElementById('wizard').style.display = 'flex';
   wizGo(1);
   showToast(`You're logged in as ${session.user.email || session.user.phone || 'your account'}, let's finish setting up your business.`);
@@ -1191,6 +1223,7 @@ async function viewArchivePeriod(kind, period){
   }catch(e){ console.error('viewArchivePeriod failed', e); showToast('Could not load that month'); }
 }
 function fmtDate(s){ if(!s) return ', '; const d=new Date(s); if(isNaN(d)) return s; return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+function hideBootLoading(){ const b=document.getElementById('bootLoading'); if(b) b.style.display='none'; }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
 function initials(name){ return (name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
 
@@ -1433,6 +1466,7 @@ async function boot(){
     await syncGuidePurchases();
     CUR_INDUSTRY_OBJ = INDUSTRIES.find(i=>i.key===CFG.industry) || INDUSTRIES[INDUSTRIES.length-1];
     document.getElementById('wizard').style.display = 'none';
+    hideBootLoading();
     document.getElementById('app').classList.add('active');
     document.getElementById('sbBizName').textContent = CFG.bizName;
     document.getElementById('sbIndustry').textContent = CUR_INDUSTRY_OBJ.label;
@@ -1444,6 +1478,7 @@ async function boot(){
     runAutoArchive(); // fire-and-forget housekeeping, at most once/day
   }catch(e){
     console.error('boot failed', e);
+    hideBootLoading();
     document.getElementById('app').classList.add('active');
     document.getElementById('wizard').style.display = 'none';
     const main = document.getElementById('pageContent') || document.body;
@@ -1629,7 +1664,10 @@ function navTo(page){
       </div>`;
     }
   }
-  window.scrollTo({top:0,behavior:'smooth'});
+  // .content is now the real scrolling element (see .main/.content CSS),
+  // not the window, so reset that on every page switch instead.
+  const pc0 = document.getElementById('pageContent');
+  if(pc0) pc0.scrollTo({top:0,behavior:'smooth'});
 }
 const MODULE_TEASERS = {
   referrals: ['4-tier loyalty system (One-Time → Spotlight Client) tracked automatically as customers repeat-buy', 'Ready-to-send referral scripts timed to the "golden window", 24–72 hours after a happy purchase', 'Re-activation scripts for customers who have gone quiet, so no one falls through the cracks'],
@@ -3297,13 +3335,28 @@ async function toggleLiveModule(el, key){
   try{ renderIndustryGrid(); populateWizCountry(); renderBizFloatLayers(); }
   catch(e){ console.error('wizard render error', e); }
 
+  // Belt-and-braces: if anything below hangs (slow network, Supabase
+  // outage) don't leave someone staring at the loading spinner forever.
+  // Drop them into the wizard after a few seconds so the app is at
+  // least usable/explorable, same as the explicit failure paths do.
+  const bootTimeout = setTimeout(()=>{
+    hideBootLoading();
+    document.getElementById('wizard').style.display = 'flex';
+  }, 6000);
+
   await supabaseReadyPromise;
   if(!SUPABASE_READY){
+    clearTimeout(bootTimeout);
+    hideBootLoading();
+    document.getElementById('wizard').style.display = 'flex';
     showToast("Connection problem loading TecXFRA, check your internet and reload the page.");
   } else {
-    try{ await initAuthGate(); }
+    try{ await initAuthGate(); clearTimeout(bootTimeout); }
     catch(e){
+      clearTimeout(bootTimeout);
       console.error('initAuthGate failed', e);
+      hideBootLoading();
+      document.getElementById('wizard').style.display = 'flex';
       showToast('Could not connect to TecXFRA, check your internet and reload.');
     }
   }
