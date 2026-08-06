@@ -747,7 +747,39 @@ async function initAuthGate(){
   renderIndustryGrid();
   populateWizCountry();
   const { data:{ session } } = await sb.auth.getSession();
-  if(session){ CUR_VENUE_ID = session.user.id; await loadAll(); if(CFG) boot(); }
+  if(!session) return;
+  CUR_VENUE_ID = session.user.id;
+  await loadAll();
+  if(CFG){ boot(); return; }
+
+  // Signed in (this is exactly what happens right after someone clicks
+  // the "confirm your email" link and lands back on the site) but no
+  // business saved yet. This used to silently leave the wizard sitting
+  // on step 1 with no explanation, looking exactly like "nothing
+  // happened, back to the home page" even though login worked fine.
+  // Recover the wizard answers they already filled in before signing
+  // up (saved to localStorage in goToAccountCreation) and finish
+  // creating their business automatically, same as a same-tab signup.
+  if(!PENDING_SETUP){
+    try{
+      const stored = localStorage.getItem('tecxfra_pending_setup');
+      if(stored) PENDING_SETUP = JSON.parse(stored);
+    }catch(e){}
+  }
+  if(PENDING_SETUP){
+    await finishSetup(PENDING_SETUP);
+    PENDING_SETUP = null;
+    try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
+    return;
+  }
+
+  // Genuinely no pending setup on this device (e.g. confirmed on a
+  // different device/browser than the one the wizard was filled in
+  // on) — send them into the wizard to set up their business, but
+  // make it obvious they ARE logged in rather than looking broken.
+  document.getElementById('wizard').style.display = 'flex';
+  wizGo(1);
+  showToast(`You're logged in as ${session.user.email || session.user.phone || 'your account'}, let's finish setting up your business.`);
 }
 
 /* ============================================================
