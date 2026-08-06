@@ -91,7 +91,9 @@
   .tab-panel{display:none}
   .tab-panel.on{display:block}
   .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:6px}
-  .stat-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+  .stat-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;transition:box-shadow .15s ease,transform .15s ease}
+  .stat-card:hover{box-shadow:0 6px 18px -8px rgba(12,38,47,.25);transform:translateY(-1px)}
+  .stat-card:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
   .stat-card .n{font-size:26px;font-weight:800;color:var(--navy);line-height:1.1}
   .stat-card .l{font-size:11px;color:#8a9394;text-transform:uppercase;letter-spacing:.5px;margin-top:4px;font-weight:700}
   table.biz-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
@@ -267,17 +269,21 @@ async function loadStats(){
   const { data, error } = await sb.rpc('admin_platform_stats');
   if(error || !data || !data.length){ wrap.innerHTML = '<div class="card empty">Could not load stats.</div>'; return; }
   const s = data[0];
+  // Each card links to the tab that actually shows that number's detail
+  // (e.g. "Pending payments" -> the Payments tab). These used to be
+  // plain, dead divs with no onclick at all, so clicking anywhere on
+  // the Overview page did nothing, this wires them up.
   const cards = [
-    ['Total businesses', s.total_businesses],
-    ['Starter plan', s.starter_count],
-    ['Growth plan', s.growth_count],
-    ['Enterprise plan', s.enterprise_count],
-    ['Active paid subs', s.active_paid_count],
-    ['Pending payments', s.pending_payment_count],
-    ['Signups (7d)', s.signups_last_7d],
-    ['Signups (30d)', s.signups_last_30d],
+    ['Total businesses', s.total_businesses, 'businesses'],
+    ['Starter plan', s.starter_count, 'businesses'],
+    ['Growth plan', s.growth_count, 'businesses'],
+    ['Enterprise plan', s.enterprise_count, 'businesses'],
+    ['Active paid subs', s.active_paid_count, 'businesses'],
+    ['Pending payments', s.pending_payment_count, 'payments'],
+    ['Signups (7d)', s.signups_last_7d, 'businesses'],
+    ['Signups (30d)', s.signups_last_30d, 'businesses'],
   ];
-  wrap.innerHTML = cards.map(([l,n])=>`<div class="stat-card"><div class="n">${n ?? 0}</div><div class="l">${l}</div></div>`).join('');
+  wrap.innerHTML = cards.map(([l,n,tab])=>`<div class="stat-card" role="button" tabindex="0" onclick="switchTab('${tab}')" onkeydown="if(event.key==='Enter')switchTab('${tab}')"><div class="n">${n ?? 0}</div><div class="l">${l}</div></div>`).join('');
 }
 
 function planPill(plan){
