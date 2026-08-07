@@ -202,6 +202,23 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 .cal-pill{font-size:9px; padding:2px 6px; border-radius:5px; background:var(--paper); border:1px solid var(--line); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;}
 .chip{display:inline-flex; align-items:center; gap:5px; background:var(--teal-tint); color:var(--teal-dim); padding:5px 11px; border-radius:20px; font-size:11px; font-weight:700; margin:2px 4px 2px 0;}
 .modal-overlay{display:none; position:fixed; inset:0; background:rgba(12,38,47,.55); z-index:200; align-items:flex-start; justify-content:center; padding:50px 16px; overflow-y:auto;}
+/* ---------- LEGAL FOOTER ----------
+   Fixed, sits on top of every screen (boot loader / auth / wizard / app)
+   since it lives at the end of <body> rather than inside any one screen's
+   container, so it never needs to be duplicated or gets wiped out when
+   #pageContent or #wizard get re-rendered. */
+.legal-foot{position:fixed; left:0; right:0; bottom:0; z-index:150; display:flex; align-items:center; justify-content:center; gap:10px; padding:5px 12px; background:rgba(250,248,243,.92); backdrop-filter:blur(4px); border-top:1px solid var(--line); font-size:10.5px; color:var(--muted); pointer-events:none;}
+.legal-foot > *{pointer-events:auto;}
+.legal-foot button{background:none; border:none; padding:0; font:inherit; color:var(--muted); text-decoration:underline; cursor:pointer;}
+.legal-foot button:hover{color:var(--teal-dim);}
+@media (max-width:520px){.legal-foot{font-size:9.5px; gap:6px; padding:4px 8px;}}
+#app .legal-foot, #app ~ .legal-foot{position:fixed;}
+.terms-body{font-size:12.5px; line-height:1.75; color:var(--ink-dim); max-height:60vh; overflow-y:auto; padding-right:4px;}
+.terms-body h4{font-family:'Space Grotesk',sans-serif; color:var(--navy); font-size:13.5px; margin:18px 0 6px;}
+.terms-body h4:first-child{margin-top:0;}
+.terms-body p{margin:0 0 10px;}
+.terms-body ul{margin:0 0 10px; padding-left:18px;}
+.terms-body li{margin-bottom:4px;}
 .modal-overlay.show{display:flex;}
 .modal{background:var(--paper); border-radius:var(--r-lg); padding:26px; width:100%; max-width:560px; box-shadow:var(--shadow);}
 .modal-head{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;}
@@ -1121,8 +1138,8 @@ function renderInsightsCard(){
   return `<div class="card" style="border-color:var(--coral,#c9633f)">
     <div class="card-title">🧠 Noticed This Week <span class="sub">from your own data</span></div>
     ${insights.slice(0,3).map(ins=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:6px;padding:10px 0">
-      <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.6">${ins.text}</div>
-      ${ins.cta?`<button class="tab-pill" onclick="navTo('${ins.cta.page}')">${ins.cta.label} →</button>`:''}
+      <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.6">${esc(ins.text)}</div>
+      ${ins.cta?`<button class="tab-pill" onclick="navTo('${ins.cta.page}')">${esc(ins.cta.label)} →</button>`:''}
     </div>`).join('')}
   </div>`;
 }
@@ -2047,6 +2064,76 @@ async function archiveContact(id){
 function openNewContactModal(){ navTo('crm'); setTimeout(()=>document.getElementById('cName')?.focus(),150); }
 function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
 
+/* ---------- TERMS & CONDITIONS ----------
+   Rendered into the same #modalRoot every other modal uses, so it works
+   from the boot loader, auth screen, wizard, or the main app, any screen,
+   any time, without needing its own container duplicated per-screen. */
+const TERMS_HTML = `
+  <h4>1. Who We Are</h4>
+  <p>TecXFRA is a business operating system built and owned by BYINFORGH ("we", "us", "our"). By creating an account or using TecXFRA in any form, you ("the business", "you", "your") agree to these Terms & Conditions. If you do not agree, please do not use TecXFRA.</p>
+
+  <h4>2. What TecXFRA Is</h4>
+  <p>TecXFRA is software provided to help you run daily business operations, tasks, expenses, customer relationships, follow-ups, revenue, and accountability, in one place. It is provided as a tool to support your business decisions. It does not replace professional legal, tax, accounting, or financial advice, and BYINFORGH is not liable for business decisions made using information, tips, or figures shown inside TecXFRA.</p>
+
+  <h4>3. Your Account & Data</h4>
+  <ul>
+    <li>You are responsible for keeping your login credentials secure and for all activity under your account.</li>
+    <li>The business data you enter, contacts, transactions, journal entries, persona details, and similar, belongs to you. TecXFRA stores it on your behalf to run the service.</li>
+    <li>Each business's data is kept separate from every other business on the platform. We do not share your data with other businesses using TecXFRA.</li>
+    <li>You are responsible for the accuracy of the data you enter, and for how you use any contact, customer, or staff information inside the system, including complying with any data protection laws that apply to your business.</li>
+  </ul>
+
+  <h4>4. Plans, Pricing & the Founding Member Offer</h4>
+  <ul>
+    <li>TecXFRA is offered on tiered plans: Starter, Growth, and Enterprise. Each plan unlocks a different set of modules. Upgrading a plan never removes anything you already have access to, it only adds to it.</li>
+    <li>The first 10 businesses to sign up receive their chosen plan free, permanently, split as 2 Enterprise, 3 Growth, and 5 Starter founding spots. This offer is limited, one-time, non-transferable, and applies once per account. Once all 10 spots are claimed, all new signups are paid plans.</li>
+    <li>Paid plans may be settled by card (Paystack), Mobile Money, Invoice, or Cash. Manual payment methods (MoMo, Invoice, Cash) are reviewed and approved by our team and may take time to activate; your plan is upgraded once approved.</li>
+    <li>Prices, plan features, and the founding member offer may be updated from time to time. Material changes will be communicated within the app where reasonably possible.</li>
+  </ul>
+
+  <h4>5. Cancelling or Downgrading</h4>
+  <p>You may cancel a paid subscription at any time from Settings. Cancelling moves your account back to the Starter plan; your historical data is retained and not deleted. We do not offer automatic refunds for partial billing periods unless required by law.</p>
+
+  <h4>6. Acceptable Use</h4>
+  <p>You agree not to use TecXFRA to:</p>
+  <ul>
+    <li>Store or send unlawful, fraudulent, threatening, or abusive content;</li>
+    <li>Attempt to access another business's data, or probe, disrupt, or overload the platform;</li>
+    <li>Reverse-engineer, resell, sublicense, white-label, or redistribute the TecXFRA software, codebase, or brand without our written permission;</li>
+    <li>Use the platform for any purpose that violates the laws of the country you operate in.</li>
+  </ul>
+  <p>We may suspend or terminate accounts that breach these terms.</p>
+
+  <h4>7. Ownership & Intellectual Property</h4>
+  <p>TecXFRA, its name, logo, codebase, proprietary algorithms, and API are owned entirely by BYINFORGH. Nothing in these Terms transfers any ownership of the platform to you. Businesses who use TecXFRA successfully may apply to become official BYINFORGH Affiliates or Certified Partners, but affiliates and partners may not resell, modify, or claim ownership of the underlying platform.</p>
+
+  <h4>8. Country, Tax & Payroll Information</h4>
+  <p>Tax rates, payroll terminology, and related figures shown inside TecXFRA are provided as general guidance to help you understand your country's system, and are periodically reviewed, but tax law changes. Always verify current rates and requirements with your local tax or revenue authority before filing or making financial decisions.</p>
+
+  <h4>9. Service Availability</h4>
+  <p>We work to keep TecXFRA available and reliable, but we do not guarantee uninterrupted access. The service is provided "as is" and "as available," without warranties of any kind, to the fullest extent permitted by law.</p>
+
+  <h4>10. Limitation of Liability</h4>
+  <p>To the fullest extent permitted by law, BYINFORGH is not liable for indirect, incidental, or consequential losses (such as lost profits or lost data) arising from your use of TecXFRA. Our total liability for any claim relating to the service is limited to the amount you paid us in the 3 months before the claim arose.</p>
+
+  <h4>11. Changes to These Terms</h4>
+  <p>We may update these Terms as TecXFRA grows. Continued use of TecXFRA after an update means you accept the revised Terms.</p>
+
+  <h4>12. Governing Law</h4>
+  <p>These Terms are governed by the laws of the Republic of Ghana, without regard to conflict of law principles, regardless of the country your business operates from.</p>
+
+  <h4>13. Contact</h4>
+  <p>Questions about these Terms can be directed to BYINFORGH through the contact details provided on our official channels.</p>
+
+  <p style="margin-top:16px;font-size:11px;color:var(--muted)">Last updated: August 2026. TecXFRA is a product of BYINFORGH. All rights reserved.</p>
+`;
+function showTerms(){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px;max-height:80vh">
+    <div class="modal-head"><h3>Terms &amp; Conditions</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="terms-body">${TERMS_HTML}</div>
+  </div></div>`;
+}
+
 /* ---------- FOLLOW-UPS ---------- */
 function renderFollowups(){
   const t = todayStr();
@@ -2081,7 +2168,7 @@ function renderPOS(){
         <span>Total</span><span id="cartTotal" class="mono">${money(0)}</span>
       </div>
       <label class="lbl">Customer (optional)</label>
-      <select class="inp" id="posCustomer"><option value="">Walk-in</option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+      <select class="inp" id="posCustomer"><option value="">Walk-in</option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
       <button class="btn btn-primary btn-full" onclick="checkout()">✓ Complete Sale</button>
     </div>
   </div>`;
@@ -2143,13 +2230,13 @@ function renderInventory(){
     <div class="card">
       <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun}, Stock</div>
       <div class="scroll-tbl"><table><thead><tr><th>Item</th><th>Stock</th><th>Par</th><th>Cost</th><th>Price</th></tr></thead><tbody>
-        ${(DATA.inventory||[]).map(it=>`<tr style="${it.stock<=it.par?'color:var(--coral)':''}"><td>${it.name}</td><td class="mono">${it.stock}</td><td class="mono">${it.par}</td><td class="mono">${money(it.cost)}</td><td class="mono">${money(it.price)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No stock items yet</td></tr>'}
+        ${(DATA.inventory||[]).map(it=>`<tr style="${it.stock<=it.par?'color:var(--coral)':''}"><td>${esc(it.name)}</td><td class="mono">${it.stock}</td><td class="mono">${it.par}</td><td class="mono">${money(it.cost)}</td><td class="mono">${money(it.price)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No stock items yet</td></tr>'}
       </tbody></table></div>
     </div>
     <div class="card">
       <div class="card-title">Restock an Item</div>
       <label class="lbl">Item name</label><input class="inp" id="rName" list="invList" placeholder="Must match exactly to update, or creates new">
-      <datalist id="invList">${(DATA.inventory||[]).map(it=>`<option value="${it.name}">`).join('')}</datalist>
+      <datalist id="invList">${(DATA.inventory||[]).map(it=>`<option value="${esc(it.name)}">`).join('')}</datalist>
       <label class="lbl">Qty to add</label><input class="inp" id="rQty" type="number" placeholder="e.g. 24">
       <label class="lbl">Par level (optional)</label><input class="inp" id="rPar" type="number" placeholder="e.g. 10">
       <button class="btn btn-primary btn-full" onclick="restock()">＋ Add Stock</button>
@@ -2375,8 +2462,8 @@ function renderMessages(){
   const t = getTemplates()[msgCat];
   document.getElementById('msgLib').innerHTML = t.map((m,i)=>`
     <div class="list-row" style="align-items:flex-start;flex-direction:column;gap:6px">
-      <div style="font-weight:700;font-size:12.5px">${m.title}</div>
-      <div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-wrap">${m.body}</div>
+      <div style="font-weight:700;font-size:12.5px">${esc(m.title)}</div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-wrap">${esc(m.body)}</div>
       <button class="btn btn-ghost" style="padding:5px 12px" onclick="copyMsg(${i})">Copy</button>
     </div>`).join('');
 }
@@ -2433,7 +2520,7 @@ function drawRefBody(){
       ${LOYALTY_TIERS.map(t=>`<div class="list-row"><span><b>${t.label}</b><br><span style="font-size:11px;color:var(--muted)">${t.desc}</span></span><span class="pill pill-client">${counts[t.key]||0}</span></div>`).join('')}
     </div>
     <div class="card"><div class="card-title">Assign a Tier</div>
-      <select class="inp" id="tierContact">${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+      <select class="inp" id="tierContact">${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
       <select class="inp" id="tierValue">${LOYALTY_TIERS.map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}</select>
       <button class="btn btn-primary btn-full" onclick="assignTier()">Set Tier</button>
     </div>`;
@@ -2484,24 +2571,24 @@ function renderPersona(){
   document.getElementById('pageContent').innerHTML = `
   <div class="card"><div class="card-title">Build Your Ideal ${CUR_INDUSTRY_OBJ.crmNoun.slice(0,-1)} Persona <span class="sub">the more specific, the sharper your messaging gets</span></div>
     <div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px">Answer as specifically as you can. This feeds your AI Assistant and your Messages templates.</div>
-    <label class="lbl">Give them a name (e.g. "Auntie Ama")</label><input class="inp" id="pName" value="${p.name||''}">
+    <label class="lbl">Give them a name (e.g. "Auntie Ama")</label><input class="inp" id="pName" value="${esc(p.name||'')}">
     <div class="wiz-row">
-      <div><label class="lbl">Age range</label><input class="inp" id="pAge" value="${p.age||''}" placeholder="e.g. 28–40"></div>
-      <div><label class="lbl">Income / spend level</label><input class="inp" id="pIncome" value="${p.income||''}" placeholder="e.g. mid-income, spends 100-300/mo"></div>
+      <div><label class="lbl">Age range</label><input class="inp" id="pAge" value="${esc(p.age||'')}" placeholder="e.g. 28–40"></div>
+      <div><label class="lbl">Income / spend level</label><input class="inp" id="pIncome" value="${esc(p.income||'')}" placeholder="e.g. mid-income, spends 100-300/mo"></div>
     </div>
-    <label class="lbl">Biggest pain point they come to you with</label><textarea class="inp" id="pPain" rows="2">${p.pain||''}</textarea>
-    <label class="lbl">Where do they spend time? (platforms, places)</label><input class="inp" id="pWhere" value="${p.where||''}" placeholder="e.g. WhatsApp Status, local market, Instagram">
-    <label class="lbl">Most common objection they raise</label><textarea class="inp" id="pObjection" rows="2">${p.objection||''}</textarea>
-    <label class="lbl">What makes them finally say yes?</label><textarea class="inp" id="pTrigger" rows="2">${p.trigger||''}</textarea>
+    <label class="lbl">Biggest pain point they come to you with</label><textarea class="inp" id="pPain" rows="2">${esc(p.pain||'')}</textarea>
+    <label class="lbl">Where do they spend time? (platforms, places)</label><input class="inp" id="pWhere" value="${esc(p.where||'')}" placeholder="e.g. WhatsApp Status, local market, Instagram">
+    <label class="lbl">Most common objection they raise</label><textarea class="inp" id="pObjection" rows="2">${esc(p.objection||'')}</textarea>
+    <label class="lbl">What makes them finally say yes?</label><textarea class="inp" id="pTrigger" rows="2">${esc(p.trigger||'')}</textarea>
     <button class="btn btn-primary btn-full" onclick="savePersona()">Save Persona</button>
   </div>
   ${p.name ? `<div class="card" style="border-color:var(--teal)"><div class="card-title">Your Current Persona</div>
     <div style="font-size:12.5px;line-height:1.8;color:var(--ink-dim)">
-      <b style="color:var(--navy)">${p.name}</b>, ${p.age||'age not set'}, ${p.income||'spend not set'}.<br>
-      Struggles with: ${p.pain||', '}<br>
-      Found on: ${p.where||', '}<br>
-      Usually objects with: "${p.objection||', '}"<br>
-      Says yes when: ${p.trigger||', '}
+      <b style="color:var(--navy)">${esc(p.name)}</b>, ${esc(p.age||'age not set')}, ${esc(p.income||'spend not set')}.<br>
+      Struggles with: ${esc(p.pain||', ')}<br>
+      Found on: ${esc(p.where||', ')}<br>
+      Usually objects with: "${esc(p.objection||', ')}"<br>
+      Says yes when: ${esc(p.trigger||', ')}
     </div>
   </div>` : ''}`;
 }
@@ -2668,7 +2755,7 @@ function renderJournal(){
     </div>
     <div class="card"><div class="card-title">New Entry</div>
       <label class="lbl">Link to a ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
-      <select class="inp" id="jLink"><option value="">General / business-wide</option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}|${c.name}">${esc(c.name)}</option>`).join('')}</select>
+      <select class="inp" id="jLink"><option value="">General / business-wide</option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}|${esc(c.name)}">${esc(c.name)}</option>`).join('')}</select>
       <label class="lbl">Note</label><textarea class="inp" id="jText" rows="5" placeholder="What happened, what you decided, what to remember..."></textarea>
       <button class="btn btn-primary btn-full" onclick="addJournal()">＋ Save Entry</button>
     </div>
@@ -2945,12 +3032,12 @@ function renderSystem(){
   <div class="card" style="background:linear-gradient(135deg, var(--navy), var(--navy-deep)); border:none; color:#fff">
     <div style="font-size:10.5px;letter-spacing:2px;text-transform:uppercase;color:var(--teal);font-weight:800;margin-bottom:10px">The Philosophy Behind The Name</div>
     <div class="disp" style="font-size:26px;font-weight:700;letter-spacing:-.3px;margin-bottom:10px">TecXFRA, Complete Total Control</div>
-    <div style="font-size:13px;line-height:1.8;color:#d9e8ea;max-width:760px">Picture ${CFG.bizName} as a fully automated, high-performance smart factory. A factory can't run on one machine alone, it needs a floor, fuel, conveyor belts, a control tower, shipping docks, a cash vault, and an automated supervisor. TecXFRA is the single software nervous system that locks every one of those moving parts into one unbreakable chain of control.</div>
+    <div style="font-size:13px;line-height:1.8;color:#d9e8ea;max-width:760px">Picture ${esc(CFG.bizName)} as a fully automated, high-performance smart factory. A factory can't run on one machine alone, it needs a floor, fuel, conveyor belts, a control tower, shipping docks, a cash vault, and an automated supervisor. TecXFRA is the single software nervous system that locks every one of those moving parts into one unbreakable chain of control.</div>
   </div>
 
   <div class="card"><div class="card-title">Not a CRM. Not a Dashboard. Not an ERP.</div>
     <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8">
-      A CRM is just a contact list. A dashboard is graphs you glance at once a week. An ERP is bloated, expensive, and a nightmare to set up. TecXFRA is a <b style="color:var(--navy)">Business Operating System</b>, the thing that actually boots up and runs ${CFG.bizName||'your business'} every morning, the way an engine runs a car rather than just showing a speedometer.<br><br>
+      A CRM is just a contact list. A dashboard is graphs you glance at once a week. An ERP is bloated, expensive, and a nightmare to set up. TecXFRA is a <b style="color:var(--navy)">Business Operating System</b>, the thing that actually boots up and runs ${esc(CFG.bizName||'your business')} every morning, the way an engine runs a car rather than just showing a speedometer.<br><br>
       Every business wakes up asking the same questions: What do I need to do today? Who owes me money? Who's coming in? Who's working? What's low in stock? Which customer do I need to follow up? What's today's revenue? What broke yesterday? What should happen next? TecXFRA is built to answer exactly that list, every single day.
     </div>
   </div>
@@ -2982,7 +3069,7 @@ function renderSystem(){
 /* ---------- ARCHIVE ---------- */
 function renderArchive(){
   document.getElementById('pageContent').innerHTML = `<div class="card"><div class="card-title">Archive <span class="sub">nothing is ever deleted</span></div>
-  ${(DATA.archive||[]).length ? DATA.archive.map((a,i)=>`<div class="list-row"><span><b>${a.name}</b> <span style="color:var(--muted);font-size:11px">· archived ${fmtDate(a.archivedDate)}</span></span><button class="btn btn-ghost" style="padding:6px 12px" onclick="restoreArchive(${i})">↺ Restore</button></div>`).join('') : '<div class="empty">Nothing archived yet.</div>'}
+  ${(DATA.archive||[]).length ? DATA.archive.map((a,i)=>`<div class="list-row"><span><b>${esc(a.name)}</b> <span style="color:var(--muted);font-size:11px">· archived ${fmtDate(a.archivedDate)}</span></span><button class="btn btn-ghost" style="padding:6px 12px" onclick="restoreArchive(${i})">↺ Restore</button></div>`).join('') : '<div class="empty">Nothing archived yet.</div>'}
   </div>`;
 }
 async function restoreArchive(i){
@@ -3010,8 +3097,8 @@ function drawSettingsBody(){
     const countryBase = COUNTRIES.find(c=>c.country===CFG.country) || ci;
     b.innerHTML = `<div class="card" style="max-width:480px">
       <div class="industry-badge" style="margin-bottom:14px">${CUR_INDUSTRY_OBJ.ic} ${CUR_INDUSTRY_OBJ.label}</div>
-      <label class="lbl">Business name</label><input class="inp" id="setBizName" value="${CFG.bizName}">
-      <label class="lbl">Owner name</label><input class="inp" id="setOwnerName" value="${CFG.ownerName}">
+      <label class="lbl">Business name</label><input class="inp" id="setBizName" value="${esc(CFG.bizName)}">
+      <label class="lbl">Owner name</label><input class="inp" id="setOwnerName" value="${esc(CFG.ownerName)}">
       <label class="lbl">Country</label>
       <select class="inp" id="setCountry">${COUNTRIES.map(c=>`<option value="${c.country}" ${c.country===CFG.country?'selected':''}>${c.country}</option>`).join('')}</select>
       <label class="lbl">Currency</label>
@@ -3364,5 +3451,12 @@ async function toggleLiveModule(el, key){
   document.getElementById('menuToggle').classList.toggle('hidden', window.innerWidth>860);
 })();
 </script>
+
+<div class="legal-foot">
+  <span>TecXFRA<span style="vertical-align:super;font-size:8px">©</span> · a BYINFORGH product</span>
+  <span aria-hidden="true">·</span>
+  <button onclick="showTerms()">Terms &amp; Conditions</button>
+</div>
+
 </body>
 </html>
