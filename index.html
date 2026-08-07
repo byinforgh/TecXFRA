@@ -2912,11 +2912,66 @@ const AUDIT_QUESTIONS = [
   {key:'referralask', q:'Do you actively ask satisfied customers to refer others, rather than hoping it happens?'},
   {key:'numbers', q:'Do you know your revenue and expenses for the current month, right now, without checking?'}
 ];
+// Extra questions tailored to what actually matters in each industry,
+// added on top of the 12 universal ones above so the audit reflects
+// the real business, not a generic checklist. Falls back to just the
+// universal set for any industry key not covered here.
+const AUDIT_INDUSTRY_EXTRA = {
+  retail: [
+    {key:'ind_stocklevels', q:'Do you know, right now, which items are close to running out?'},
+    {key:'ind_supplierbackup', q:'Do you have a backup supplier if your main one lets you down?'}
+  ],
+  hospitality: [
+    {key:'ind_wastecontrol', q:'Do you track food/drink spoilage or waste as a real cost, not just an afterthought?'},
+    {key:'ind_peaktimes', q:'Do you know your busiest hours and have enough staff on for them?'}
+  ],
+  salon: [
+    {key:'ind_bookingsystem', q:'Do clients book appointments through a system, rather than just showing up or calling?'},
+    {key:'ind_noshow', q:'Do you have any way of reducing no-shows (deposits, reminders)?'}
+  ],
+  services: [
+    {key:'ind_scopeclarity', q:'Is it clear to clients, in writing, exactly what is and isn\'t included before you start work?'},
+    {key:'ind_repeatcontracts', q:'Do you have any clients on a repeat or retainer basis, not just one-off jobs?'}
+  ],
+  realestate: [
+    {key:'ind_listingsupdated', q:'Are all your active listings currently accurate, with correct prices and availability?'},
+    {key:'ind_leadresponse', q:'Do you respond to a new property enquiry within the hour, not the next day?'}
+  ],
+  healthcare: [
+    {key:'ind_recordsdigital', q:'Are patient/client records kept somewhere organised and searchable, not scattered on paper?'},
+    {key:'ind_followupcare', q:'Do you follow up with patients/clients after treatment to check on their progress?'}
+  ],
+  logistics: [
+    {key:'ind_trackingvisibility', q:'Can a customer tell where their delivery is without calling you to ask?'},
+    {key:'ind_ontimerate', q:'Do you know roughly what percentage of your deliveries are on time?'}
+  ],
+  education: [
+    {key:'ind_progresstracking', q:'Do you track each student\'s progress somewhere, not just remember it?'},
+    {key:'ind_parentcomms', q:'Do parents/guardians get regular updates without having to ask for them?'}
+  ],
+  manufacturing: [
+    {key:'ind_qualitycheck', q:'Do you have a consistent quality check before goods go out, not just spot-checking sometimes?'},
+    {key:'ind_leadtime', q:'Do you know your average lead time from order to delivery?'}
+  ],
+  events: [
+    {key:'ind_bookingcalendar', q:'Do you use a single calendar to avoid double-booking a date?'},
+    {key:'ind_depositpolicy', q:'Do you take a deposit to confirm bookings, rather than relying on a verbal yes?'}
+  ],
+  nonprofit: [
+    {key:'ind_impactreporting', q:'Can you show, with real numbers, the impact of what you\'ve done in the last 3 months?'},
+    {key:'ind_donorretention', q:'Do you have a system for keeping past donors/members engaged, not just chasing new ones?'}
+  ]
+};
+function getAuditQuestions(){
+  const extra = AUDIT_INDUSTRY_EXTRA[CFG?.industry] || [];
+  return [...AUDIT_QUESTIONS, ...extra];
+}
 function renderAudit(){
   const ans = DATA.auditAnswers || {};
+  const questions = getAuditQuestions();
   document.getElementById('pageContent').innerHTML = `
-  <div class="card"><div class="card-title">Business Foundation Check <span class="sub">answer honestly, this shapes what TecXFRA prioritises for you</span></div>
-    ${AUDIT_QUESTIONS.map(a=>`<div class="list-row" style="align-items:flex-start">
+  <div class="card"><div class="card-title">Business Foundation Check <span class="sub">tailored to ${CUR_INDUSTRY_OBJ.label}, answer honestly, this shapes what TecXFRA prioritises for you</span></div>
+    ${questions.map(a=>`<div class="list-row" style="align-items:flex-start">
       <span style="flex:1;font-size:12.5px;line-height:1.6">${a.q}</span>
       <div style="display:flex;gap:6px;flex-shrink:0">
         <button class="btn ${ans[a.key]===true?'btn-primary':'btn-ghost'}" style="padding:6px 12px" onclick="setAuditAnswer('${a.key}',true)">Yes</button>
@@ -2934,7 +2989,7 @@ async function setAuditAnswer(key, val){
 }
 function renderAuditScore(){
   const score = DATA.auditScore;
-  const total = AUDIT_QUESTIONS.length;
+  const total = getAuditQuestions().length;
   let tier, advice;
   if(score <= total*0.33){ tier='Foundation Stage'; advice='Focus first on visibility and being findable, a complete profile, one clear link, and consistent replies. Use the CRM and Messages modules daily before worrying about referrals or retention.'; }
   else if(score <= total*0.66){ tier='Visibility Stage'; advice='Your foundation is decent, now build consistent follow-up and a simple retention rhythm. Turn on the Follow-Ups and Referrals modules and use them every day.'; }
@@ -2947,11 +3002,12 @@ function renderAuditScore(){
 }
 async function scoreAudit(){
   const ans = DATA.auditAnswers || {};
-  const score = AUDIT_QUESTIONS.filter(a=>ans[a.key]===true).length;
+  const questions = getAuditQuestions();
+  const score = questions.filter(a=>ans[a.key]===true).length;
   DATA.auditScore = score;
   await saveData(); showToast('Audit scored'); renderAudit();
-  const tier = score<=AUDIT_QUESTIONS.length*0.33?'Foundation':score<=AUDIT_QUESTIONS.length*0.66?'Visibility':'Growth';
-  await addKnowledgeFact(`Business audit scored ${score}/${AUDIT_QUESTIONS.length}, ${tier} stage.`);
+  const tier = score<=questions.length*0.33?'Foundation':score<=questions.length*0.66?'Visibility':'Growth';
+  await addKnowledgeFact(`Business audit scored ${score}/${questions.length}, ${tier} stage.`);
 }
 
 /* ============================================================
@@ -2964,11 +3020,40 @@ const ACCOUNTABILITY_TASKS = [
   {key:'status_posted', label:'Posted an update / status about the business'},
   {key:'reviewed_numbers', label:'Checked today\'s revenue and expenses'}
 ];
+// As a business matures, the checklist gets harder, not just longer,
+// this is what keeps Accountability strategic instead of a permanent
+// beginner checklist. Tier 2 unlocks once the Business Audit shows
+// Visibility Stage or higher, or a 14-day streak is hit. Tier 3
+// unlocks at Growth Stage or a 30-day streak.
+const ACCOUNTABILITY_TASKS_TIER2 = [
+  {key:'referral_ask', label:'Asked at least one happy customer for a referral'},
+  {key:'reengaged_cold', label:'Re-engaged one contact who had gone quiet'}
+];
+const ACCOUNTABILITY_TASKS_TIER3 = [
+  {key:'margin_check', label:'Checked margin/profitability on today\'s top-selling item'},
+  {key:'systemised_something', label:'Turned a one-off task into a repeatable script, template or checklist'}
+];
+function accountabilityTier(){
+  const score = DATA.auditScore;
+  const total = getAuditQuestions().length;
+  const streak = calcStreak();
+  if((score!==null && score!==undefined && score > total*0.66) || streak>=30) return 3;
+  if((score!==null && score!==undefined && score > total*0.33) || streak>=14) return 2;
+  return 1;
+}
+function getAccountabilityTasks(){
+  const tier = accountabilityTier();
+  let tasks = ACCOUNTABILITY_TASKS.slice();
+  if(tier>=2) tasks = tasks.concat(ACCOUNTABILITY_TASKS_TIER2);
+  if(tier>=3) tasks = tasks.concat(ACCOUNTABILITY_TASKS_TIER3);
+  return tasks;
+}
 function accountabilityKeyToday(){ return todayStr(); }
 function accountabilityTodayScore(){
+  const tasks = getAccountabilityTasks();
   const day = (DATA.accountability?.daily||{})[accountabilityKeyToday()] || {};
-  const done = ACCOUNTABILITY_TASKS.filter(t=>day[t.key]).length;
-  return {done, total: ACCOUNTABILITY_TASKS.length};
+  const done = tasks.filter(t=>day[t.key]).length;
+  return {done, total: tasks.length};
 }
 async function logAccountability(taskKey){
   if(!DATA.accountability) DATA.accountability = {daily:{}, log:[]};
@@ -2981,28 +3066,32 @@ async function logAccountability(taskKey){
 }
 function renderAccountability(){
   if(!DATA.accountability) DATA.accountability = {daily:{}, log:[]};
+  const tasks = getAccountabilityTasks();
+  const tier = accountabilityTier();
   const k = accountabilityKeyToday();
   const day = DATA.accountability.daily[k] || {};
   const days = Object.keys(DATA.accountability.daily).sort().slice(-7);
   const weekScores = days.map(d=>{
     const dd = DATA.accountability.daily[d];
-    return ACCOUNTABILITY_TASKS.filter(t=>dd[t.key]).length;
+    return tasks.filter(t=>dd[t.key]).length;
   });
   const streak = calcStreak();
   document.getElementById('pageContent').innerHTML = `
   <div class="grid-metrics">
-    <div class="metric teal navy"><div class="ml">Today's Score</div><div class="mv">${ACCOUNTABILITY_TASKS.filter(t=>day[t.key]).length}/${ACCOUNTABILITY_TASKS.length}</div></div>
+    <div class="metric teal navy"><div class="ml">Today's Score</div><div class="mv">${tasks.filter(t=>day[t.key]).length}/${tasks.length}</div></div>
     <div class="metric green"><div class="ml">Current Streak</div><div class="mv">${streak}d</div><div class="ms">days with at least 1 task done</div></div>
   </div>
+  ${tier>1?`<div class="card" style="border-color:var(--teal);margin-bottom:0"><div style="font-size:12px;color:var(--ink-dim)">${tier===3?'🔥 Growth-stage checklist unlocked, extra strategic tasks added below because the basics are already solid.':'📈 Visibility-stage checklist unlocked, referral and re-engagement tasks added below.'}</div></div>`:''}
   <div class="card"><div class="card-title">Today's Checklist</div>
-    ${ACCOUNTABILITY_TASKS.map(t=>`<div class="list-row"><span>${t.label}</span>
+    ${tasks.map(t=>`<div class="list-row"><span>${t.label}</span>
       <input type="checkbox" ${day[t.key]?'checked':''} onchange="toggleAccountability('${t.key}',this.checked)" style="width:18px;height:18px;accent-color:var(--teal)">
     </div>`).join('')}
+    ${tier<3?`<div class="sub" style="margin-top:10px">${tier===1?'Score above '+Math.round(getAuditQuestions().length*0.33)+' on your Business Audit, or hit a 14-day streak, to unlock the next tier.':'Score above '+Math.round(getAuditQuestions().length*0.66)+' on your Business Audit, or hit a 30-day streak, to unlock the final tier.'}</div>`:''}
   </div>
   <div class="card"><div class="card-title">Last 7 Days</div>
     <div style="display:flex;align-items:flex-end;gap:10px;height:100px;padding-top:10px">
     ${days.map((d,i)=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
-      <div style="width:100%;background:var(--teal);border-radius:5px 5px 0 0;height:${Math.max(4,(weekScores[i]/ACCOUNTABILITY_TASKS.length)*70)}px"></div>
+      <div style="width:100%;background:var(--teal);border-radius:5px 5px 0 0;height:${Math.max(4,(weekScores[i]/tasks.length)*70)}px"></div>
       <div style="font-size:9.5px;color:var(--muted);margin-top:5px">${d.slice(5)}</div>
     </div>`).join('') || '<div class="empty">No history yet</div>'}
     </div>
@@ -3125,7 +3214,7 @@ function aiAnswer(q){
   }
   if(ql.includes('audit') || ql.includes('score my business')){
     if(DATA.auditScore===null || DATA.auditScore===undefined) return `You haven't run your Business Audit yet, head to the Audit module, it takes about 2 minutes and shapes what I prioritise for you.`;
-    return `Your last audit score was ${DATA.auditScore} out of ${AUDIT_QUESTIONS.length}. ${DATA.auditScore <= AUDIT_QUESTIONS.length*0.33 ? 'You are in the Foundation stage, focus on visibility and fast replies before anything else.' : DATA.auditScore <= AUDIT_QUESTIONS.length*0.66 ? 'You are in the Visibility stage, build consistent follow-up and retention next.' : 'You are in the Growth stage, focus on referrals and systemising what already works.'}`;
+    return `Your last audit score was ${DATA.auditScore} out of ${getAuditQuestions().length}. ${DATA.auditScore <= getAuditQuestions().length*0.33 ? 'You are in the Foundation stage, focus on visibility and fast replies before anything else.' : DATA.auditScore <= getAuditQuestions().length*0.66 ? 'You are in the Visibility stage, build consistent follow-up and retention next.' : 'You are in the Growth stage, focus on referrals and systemising what already works.'}`;
   }
   if(ql.includes('follow') || ql.includes('contact') || ql.includes('who')){
     const due = (DATA.followups||[]).filter(f=>!f.done).slice(0,5);
@@ -3337,6 +3426,8 @@ const GUIDES = [
   {cat:'Money Mindset', t:'Money Mindset, Habits That Build Wealth', b:75, full:`Wealth isn't built by one big lucky sale, it's built by a stack of small, boring, repeated decisions. These are the habits that separate business owners who are still standing in ten years from those who aren't.\n\nHow you think about money: play the long game, decide today what your business looks like in 3 years, not just this week. Believe there's enough for everyone, competitors doing well doesn't mean less for you, it usually means the market itself is growing. Treat setbacks as tuition, a bad month teaches you something a good month never will. Keep learning, about pricing, about your industry, about money itself, nobody stays sharp on autopilot. Delay the reward, the profit you don't withdraw today is the stock you don't run out of next month. Stay humble and stay focused, flashy spending doesn't grow a business, reinvestment does.\n\nPlanning your money: write down where the business needs to be this year, not just "make more." Know exactly where every cedi goes, budgets aren't restrictive, they're what tells you where the leaks are. Pay the business first, before you pay yourself extra, keep something back for stock, rent, and slow months. Keep 3 months of basic operating costs somewhere safe, that's what survives a slow season without panic. Review your numbers on a fixed schedule, weekly if you can, monthly at minimum, in TecXFRA that's your Revenue & Analytics page.\n\nEarning more: never depend on one single income source if you can help it, a second stream is insurance, not greed. Your time is worth something too, price it in, don't give away hours you could be selling. Keep upgrading your skills, a better skill sells at a better price. Take risks you've actually thought through, not blind ones, calculate the downside before you jump.\n\nSpending with intent: spend on things that bring the business real, lasting value, not things that just look good. Negotiate every recurring bill, rent, supplier rates, data, nobody offers a discount you don't ask for. Plan big purchases in advance instead of reacting to them, panic-buying is expensive buying. Protect what you've built, keep insurance current, keep contracts in writing, keep debt on a short leash and only for things that grow the business, never for things that just get consumed.\n\nTry this today: open Revenue & Analytics and look at your expense breakdown by category, one number in there is bigger than it should be, find it. This week, set one number aside as untouchable, an emergency float, even a small one. This month, write down one skill or habit from this list you're weakest at, and fix that one thing before moving to the next.`},
   {cat:'Money Mindset', t:'Building More Than One Income Stream', b:65, full:`Most businesses rely on one product, one service, one customer type, and one season. That's not stability, that's one shock away from a very bad month. Diversifying income doesn't mean starting five businesses, it means finding a few honest ways for what you already have to earn in more than one direction.\n\nThe four kinds of income worth knowing: Active income, you trade time or stock directly for money, this is most small businesses today, reliable but it stops the moment you stop. Leveraged income, you build something once (a course, a template, a recipe, a system) and sell it repeatedly with far less ongoing effort per sale. Passive-ish income, rent from a spare space, commission from referring customers to a trusted partner business, affiliate income from recommending products you already believe in. Portfolio income, money your savings themselves earn over time, interest, a savings plan, small investments, this only exists once the other three are stable.\n\nWhere small business owners usually find a second stream without starting over: sell what you already know as a mini-guide or short course to people earlier in the journey than you. Add a complementary product or service that your existing customers already need (the barber and the shoe-shine example). Take a referral fee for pointing customers toward a trusted partner business when you can't serve their exact need yourself. Rent out equipment, space, or skills during the hours they'd otherwise sit idle.\n\nHow to add a stream without breaking the main business: never let stream two distract from stream one until stream one is actually stable, protect the business that pays the bills first. Start the smallest possible version, test it on your existing customers before building anything elaborate. Track it separately in Revenue & Analytics so you actually know if it's working, not just guessing.\n\nTry this today: write down one thing you already know, make, or have access to that a customer would pay for on its own. This week, offer it to 5 existing customers at a simple test price. This month, if 2 or more say yes, decide whether it's worth building into a proper second stream.`},
   {cat:'Money Mindset', t:'Beating the Fear of Success', b:45, full:`Everyone talks about fear of failure. Fewer talk about the fear that quietly stalls just as many businesses, the fear of success itself, of what happens if this actually works. More customers, more responsibility, more visibility, more to lose. It shows up as self-sabotage: the marketing that never quite gets posted, the price that's set too low to attract "too many" customers, the growth that gets talked about constantly but never actually pursued.\n\nHow it usually shows up: procrastinating on the exact steps that would bring in more customers, undercharging so growth stays "manageable," avoiding visibility (no photo on the profile, no video, no name on the sign), or quietly believing that if this gets big, something will go wrong, or that you don't deserve it to.\n\nWhy it happens: success changes your identity, and that's genuinely uncomfortable even when it's good. It comes with new pressure, staff to manage, bigger promises to keep, more eyes watching. And for many people, the environment around them, family, friends, community, wasn't built to celebrate someone pulling ahead, so some part of the brain quietly protects against standing out.\n\nWhat to do about it: name it. The moment you notice yourself avoiding the exact thing that would grow your business, that's usually not laziness, it's this fear, wearing a disguise. Take the next step at a size that doesn't feel like a leap, one new customer this week, not fifty. Get comfortable being visible in small doses before doing it in big ones. Surround yourself with at least one person who wants to see you win, not everyone will, that's fine, you only need a few.\n\nA thought worth keeping close: discipline shows up long before results do, and confidence is built by the small promises you kept to yourself, not the ones you're waiting to feel ready for. Waiting to feel ready is often just fear, wearing patience as a disguise.\n\nTry this today: name one thing you've been putting off that would actually grow the business. This week, do the smallest possible version of it. This month, track how many times you did the uncomfortable thing anyway, that number is your real growth metric.`},
+  {cat:'Money Mindset', t:'Budgeting Basics, Take Control of Your Money', b:60, full:`Budgeting isn't about restriction, it's about clarity. Most business owners don't lose money because they earn too little, they lose it because they don't actually know where it goes, and what feels like "no money left" is often just money that went somewhere unplanned.\n\nWhy it matters: a budget reduces stress by turning a vague worry into a concrete number you can act on. It's what lets you save for emergencies and real goals on purpose instead of by accident. And it's what lets you eliminate debt systematically instead of hoping it shrinks on its own.\n\nThe two sides of a budget: Income, every source of money coming in, your main sales, any side income, anything else. Don't just estimate this, pull the real number from Revenue & Analytics. Expenses, broken into two honest categories: Fixed Costs (rent, staff salaries, loan repayments, subscriptions, the things that happen whether you sell anything or not) and Variable Costs (stock, transport, data, the things that move with how busy you are).\n\nWhere savings fit in: treat savings and reinvestment as a cost, not a leftover. If you only save "whatever's left," the honest answer is usually nothing, because spending expands to fill whatever's available. Pay this one first, even a small fixed amount, before anything discretionary.\n\nSet goals the SMART way, Specific, Measurable, Achievable, Relevant, Time-bound. "Save more" isn't a goal. "Save GHS 500 toward a second freezer in 6 months" is, it tells you exactly how much to set aside each week to hit it on time.\n\nThe simplest way to start: list every fixed expense you have right now, then every variable expense from an average week. Compare that total against what you actually bring in. If they're close or income loses, that's not a personal failing, it's information, and now you can act on it instead of just feeling it.\n\nTry this today: write down 3 fixed expenses and 2 variable expenses without checking anything, then compare against your real numbers in Expenses, most people are surprised by the gap. This week, set one SMART savings goal with a real number and a real date. This month, review your expense breakdown by category in Revenue & Analytics and find the one variable cost that's grown without you noticing.`},
+  {cat:'Money Mindset', t:'The Incremental Savings Challenge', b:40, full:`Most savings plans fail because they start too big, save a large fixed amount every month, then one tight month breaks the habit entirely and the whole thing gets abandoned. This approach does the opposite: start absurdly small, and let it grow on its own.\n\nThe concept: pick your smallest unit of currency. Day 1, save one unit. Day 2, save two units. Day 3, save three, and so on, every day, for a year. Because the amount grows so gradually, it never feels like a sacrifice on any single day, day 40 doesn't feel meaningfully different from day 39. But because it compounds daily, the total by day 365 is far larger than almost anyone expects, hundreds of times your original daily unit, built entirely from amounts too small to ever notice missing.\n\nWhy it actually works where other savings plans fail: it builds the habit of saving before it ever asks for a habit of sacrifice, the behaviour comes first, the amount catches up later. It makes consistency visible, missing a day breaks a streak you can see, which motivates showing up again tomorrow. And it proves, with real numbers, that small daily actions genuinely compound into something significant, which is the exact same principle behind daily accountability, daily follow-ups, and daily outreach in this platform.\n\nWho this is useful for: an owner building a business emergency float for the first time who's never successfully stuck to a savings plan. A business teaching this exact discipline to family or staff. Anyone who's tried "save a big amount every month" and abandoned it after one bad month.\n\nHow to run it in your business: instead of loose cash, log it as a recurring entry in Expenses under a "Savings/Reserve" category so it shows up in your own numbers, not just a private tally. Treat the daily entry itself as the win, not the amount, the discipline is the actual product here, the money is just proof it happened.\n\nTry this today: pick your starting unit and log Day 1. This week, don't miss a single day, even if it means logging it late at night. This month, check your running total in Expenses and notice how much larger it already is than the amount on any single day, that gap is the entire lesson.`},
 ];
 let guideCatFilter = 'All';
 let guidesMainTab = 'library';
