@@ -973,13 +973,13 @@ async function loadAll(){
   // Self-heal (the real cause of the "logged in, nothing inside" bug):
   // if DATA never got saved on the original signup (a dropped network
   // call, a bfcache-restored tab, etc.), every renderer that reads
-  // DATA.contacts / DATA.followups / DATA.items throws on a missing
+  // DATA.contacts / DATA.followups / DATA.inventory throws on a missing
   // key, which silently kills the sidebar and page render right
   // after the header text is drawn. A business should never be stuck
   // like that; reseed it and save it back so the app always has a
   // safe, working data shape to render.
   if(CFG && (!DATA || typeof DATA !== 'object' || !Object.keys(DATA).length)){
-    DATA = seedData(CFG.industry);
+    DATA = emptyData();
     await saveData();
   }
 }
@@ -1036,9 +1036,9 @@ function esc(s){
    every time it answers, so the more a business feeds it, the
    sharper and more specific its answers get, instead of resetting
    to generic advice every conversation. */
-async function addKnowledgeFact(text){
-  if(!DATA.knowledge) DATA.knowledge = {facts:[], questionsAsked:0};
-  DATA.knowledge.facts.push({date:todayStr(), text});
+async function addKnowledgeFact(text, source){
+  if(!DATA.knowledge) DATA.knowledge = {facts:[], questionsAsked:0, goal:''};
+  DATA.knowledge.facts.push({id:uid('K'), date:todayStr(), text, source: source||'system'});
   if(DATA.knowledge.facts.length>200) DATA.knowledge.facts = DATA.knowledge.facts.slice(-200);
   await saveData();
 }
@@ -1298,10 +1298,23 @@ function seedData(industryKey){
   const archive = [];
   return {contacts, items, inventory, staff, transactions, expenses, events, followups, archive, messageLog:[],
     journal:[], persona:null, auditAnswers:{}, auditScore:null, accountability:{daily:{}, log:[]},
-    referrals:[], knowledge:{facts:[], questionsAsked:0}
+    referrals:[], knowledge:{facts:[], questionsAsked:0, goal:''}
   };
 }
 
+// A real, blank-canvas DATA object for an actual new signup or a
+// self-heal recovery. No demo names, no demo transactions, no fake
+// clients, an empty stock/expense table — a brand-new business opens
+// to nothing but their own future data. seedData() (below) still
+// exists and is only ever used for internal demo/testing, never for
+// a real account.
+function emptyData(){
+  return {contacts:[], items:[], inventory:[], staff:[], transactions:[],
+    expenses:[], events:[], followups:[], archive:[], messageLog:[],
+    journal:[], persona:null, auditAnswers:{}, auditScore:null,
+    accountability:{daily:{}, log:[]}, referrals:[], monthlyRollups:{},
+    knowledge:{facts:[], questionsAsked:0, goal:''}};
+}
 // Guarantees every key every renderer expects on DATA actually exists,
 // without wiping out any real data that's already there. Protects
 // against exactly the bug found in production: a partially-saved
@@ -1312,10 +1325,12 @@ function hydrateData(d){
     expenses:[], events:[], followups:[], archive:[], messageLog:[],
     journal:[], persona:null, auditAnswers:{}, auditScore:null,
     accountability:{daily:{}, log:[]}, referrals:[], monthlyRollups:{},
-    knowledge:{facts:[], questionsAsked:0}};
+    knowledge:{facts:[], questionsAsked:0, goal:''}};
   const out = Object.assign({}, shape, d||{});
   if(!out.accountability || typeof out.accountability !== 'object') out.accountability = {daily:{}, log:[]};
-  if(!out.knowledge || typeof out.knowledge !== 'object') out.knowledge = {facts:[], questionsAsked:0};
+  if(!out.knowledge || typeof out.knowledge !== 'object') out.knowledge = {facts:[], questionsAsked:0, goal:''};
+  if(!Array.isArray(out.knowledge.facts)) out.knowledge.facts = [];
+  if(typeof out.knowledge.goal !== 'string') out.knowledge.goal = '';
   return out;
 }
 function getTemplates(){
@@ -1323,22 +1338,43 @@ function getTemplates(){
   return {
     cold:[
       {title:'Opening question', body:`Hi [NAME], quick question, how are you currently finding ${CFG.bizName}? Always looking to make it easier for ${noun} like you.`},
-      {title:'Direct intro', body:`Hi [NAME], this is ${CFG.ownerName} from ${CFG.bizName}. Would you be open to a quick chat about how we could help?`}
+      {title:'Direct intro', body:`Hi [NAME], this is ${CFG.ownerName} from ${CFG.bizName}. Would you be open to a quick chat about how we could help?`},
+      {title:'Low-commitment ask (best opener)', body:`Hi [NAME], saw you're [specific detail, e.g. based near X / into Y]. Quick one, would it be useful if I sent over [specific thing], no obligation at all?`},
+      {title:'Local proof', body:`Hi [NAME], we've been helping a few [industry] owners nearby with [specific result]. Worth a 2-minute chat to see if it'd help you too?`},
+      {title:'The fast win', body:`Hi [NAME], noticed [specific detail about their situation]. Here's a quick tip that might help either way: [one genuinely useful tip]. If you ever want more like this, I'm here.`}
     ],
     warm:[
       {title:'Gentle re-engage', body:`Hi [NAME], following up on our last chat, any questions I can help with before you decide?`},
-      {title:'Value nudge', body:`Hi [NAME], just circling back, happy to walk you through the options whenever suits you.`}
+      {title:'Value nudge', body:`Hi [NAME], just circling back, happy to walk you through the options whenever suits you.`},
+      {title:'New reason to reconnect', body:`Hi [NAME], thought of you when [new arrival / update / relevant news]. Still worth a look on your end?`},
+      {title:'Specific, not vague check-in', body:`Hi [NAME], did you get a chance to think about [the specific thing discussed]? Happy to answer anything, no pressure at all.`}
     ],
     close:[
       {title:'Direct close', body:`Hi [NAME], I have everything ready on our end. Shall we lock it in today?`},
-      {title:'Soft close with offer', body:`Hi [NAME], if it helps, we can start with the smaller option first and grow from there, want me to set that up?`}
+      {title:'Soft close with offer', body:`Hi [NAME], if it helps, we can start with the smaller option first and grow from there, want me to set that up?`},
+      {title:'Ask for the sale plainly', body:`Shall I go ahead and reserve this for you, [NAME]? I can send the payment details right now.`},
+      {title:'Honest urgency', body:`Hi [NAME], just to flag, [genuine reason: limited stock / offer ends Friday / etc]. Want me to hold yours?`}
     ],
     objection:[
       {title:'Price pushback', body:`Totally fair, let's look at what matters most to you and find the option that fits, no pressure either way.`},
-      {title:'"Let me think about it"', body:`Of course, while you think it over, is there anything specific holding you back that I can clear up now?`}
+      {title:'"Let me think about it"', body:`Of course, while you think it over, is there anything specific holding you back that I can clear up now?`},
+      {title:'"Tried something like this before, didn\'t work"', body:`Makes sense you'd be cautious. This is a bit different because [specific difference], happy to start small so you can see for yourself before committing further.`},
+      {title:'"Send me more info"', body:`Happy to! Actually, quickest way to really show you is a 2-minute look live, got a moment now, or would tomorrow suit better?`},
+      {title:'"How do I know this is legit"', body:`Great question, totally fair to ask. [Reference: nearby customer / review / verification]. Happy to connect you if you'd like to check for yourself.`}
+    ],
+    reconnect:[
+      {title:'Gone-quiet, 30 days', body:`Hi [NAME], it's been a while! Wanted to share [something new, no sales pressure], hope things are going well on your end.`},
+      {title:'Gone-quiet, 90+ days, zero pressure', body:`Hi [NAME], no agenda here, just checking in and hoping you're doing well. Here if you ever need anything.`},
+      {title:'Win-back with a fresh reason', body:`Hi [NAME], we've added [new product/service/change] since we last spoke, thought it might actually solve [their original need] better this time.`}
     ]
   };
 }
+// Suggested follow-up rhythm (from the Sales Playbook in the Growth
+// Library): most sales genuinely need 5+ touches before a decision.
+// Day 1 first message, Day 2-3 new value (not "just checking in"),
+// Day 7 a different angle entirely, Day 14 a short question only,
+// Day 30 a final, honest re-entry that acknowledges the gap.
+const TEMPLATE_CATEGORY_LABELS = {cold:'Cold Outreach', warm:'Warm Follow-Up', close:'Closing', objection:'Handling Objections', reconnect:'Reconnect / Gone-Quiet'};
 
 let wizIndustry = null;
 let wizPlan = 'growth';
@@ -1454,7 +1490,7 @@ async function finishSetup(setup){
     digestPhone: '',
     digestTime: '18:00'
   };
-  DATA = seedData(setup.industry);
+  DATA = emptyData();
   await saveCfg(); await saveData();
   await claimFoundingSlotIfChosen(setup.plan);
   boot();
@@ -1855,22 +1891,65 @@ function drawCalendar(){
   for(let d=1; d<=days; d++){
     const key = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const evs = (DATA.events||[]).filter(e=>e.date===key);
-    html += `<div class="cal-cell ${key===tKey?'today':''}"><div class="cal-daynum">${d}</div>${evs.slice(0,3).map(e=>`<div class="cal-pill" style="cursor:pointer" onclick="openEventModal('${e.id}')" title="${esc(e.title)}${e.location?' · '+esc(e.location):''}">${e.time?esc(e.time)+' ':''}${esc(e.title)}</div>`).join('')}</div>`;
+    const extra = evs.length>3 ? `<div class="cal-pill" style="cursor:pointer;background:transparent;color:var(--muted)" onclick="openDayModal('${key}')">+${evs.length-3} more</div>` : '';
+    html += `<div class="cal-cell ${key===tKey?'today':''}" style="cursor:pointer" onclick="openDayModal('${key}')">
+      <div class="cal-daynum">${d}</div>
+      ${evs.slice(0,3).map(e=>`<div class="cal-pill" style="cursor:pointer" onclick="event.stopPropagation();openEventModal('${e.id}')" title="${esc(e.title)}${e.location?' · '+esc(e.location):''}">${e.time?esc(e.time)+' ':''}${esc(e.title)}</div>`).join('')}${extra}
+    </div>`;
   }
   document.getElementById('calGrid').innerHTML = html;
+}
+// Clicking any day (not on an existing event pill) shows that day's
+// full event list plus a quick "add event on this day" shortcut, pre-filled
+// with the date so nobody has to retype it.
+function openDayModal(dateKey){
+  const evs = (DATA.events||[]).filter(e=>e.date===dateKey);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="modal-head"><h3>${fmtDate(dateKey)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    ${evs.length ? evs.map(e=>`<div class="list-row" style="cursor:pointer" onclick="openEventModal('${e.id}')"><span><b>${e.time?esc(e.time)+' ':''}${esc(e.title)}</b>${e.location?` <span style="color:var(--muted);font-size:11px">· ${esc(e.location)}</span>`:''}</span><span style="color:var(--muted);font-size:11px">edit →</span></div>`).join('') : '<div class="empty">Nothing on this day yet.</div>'}
+    <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="openNewEventModal('${dateKey}')">＋ Add Event on This Day</button>
+  </div></div>`;
+}
+function openNewEventModal(dateKey){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="modal-head"><h3>New Event</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <label class="lbl">Title</label><input class="inp" id="mEvTitle" placeholder="e.g. Client meeting">
+    <label class="lbl">Date</label><input class="inp" id="mEvDate" type="date" value="${dateKey||todayStr()}">
+    <label class="lbl">Time</label><input class="inp" id="mEvTime" type="time" value="09:00">
+    <label class="lbl">Location (optional)</label><input class="inp" id="mEvLocation" placeholder="e.g. Shop, client's address">
+    <label class="lbl">Phone number (optional)</label><input class="inp" id="mEvPhone" placeholder="e.g. 05X XXX XXXX">
+    <label class="lbl">Note (optional)</label><textarea class="inp" id="mEvNote" rows="2" placeholder="Any extra detail worth remembering"></textarea>
+    <button class="btn btn-primary btn-full" style="margin-top:6px" onclick="addEventFromModal()">＋ Add Event</button>
+  </div></div>`;
+}
+async function addEventFromModal(){
+  const title = document.getElementById('mEvTitle').value.trim();
+  if(!title){ showToast('Add a title first'); return; }
+  const date = document.getElementById('mEvDate').value || todayStr();
+  DATA.events.push({id:uid('EV'), title, date, time:document.getElementById('mEvTime').value,
+    location:document.getElementById('mEvLocation').value.trim().slice(0,200), phone:document.getElementById('mEvPhone').value.trim().slice(0,40),
+    note:document.getElementById('mEvNote').value.trim().slice(0,500), type:'manual'});
+  await saveData(); closeModal(); showToast('Added to calendar'); drawCalendar();
 }
 function openEventModal(id){
   const e = (DATA.events||[]).find(x=>x.id===id); if(!e) return;
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
-    <div class="modal-head"><h3>${esc(e.title)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;padding:4px 0">
-      <div><b style="color:var(--navy)">Date:</b> ${fmtDate(e.date)}${e.time?' at '+esc(e.time):''}</div>
-      ${e.location?`<div><b style="color:var(--navy)">Location:</b> ${esc(e.location)}</div>`:''}
-      ${e.phone?`<div><b style="color:var(--navy)">Phone:</b> ${esc(e.phone)} <a href="tel:${esc(e.phone)}" style="color:var(--teal)">call</a></div>`:''}
-      ${e.note?`<div style="margin-top:8px;white-space:pre-wrap"><b style="color:var(--navy)">Note:</b> ${esc(e.note)}</div>`:''}
-    </div>
-    <button class="btn btn-ghost btn-full" style="margin-top:10px;color:var(--coral)" onclick="deleteEvent('${e.id}')">Delete Event</button>
+    <div class="modal-head"><h3>Edit Event</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <label class="lbl">Title</label><input class="inp" value="${esc(e.title||'')}" onchange="updateEvent('${id}','title',this.value)">
+    <label class="lbl">Date</label><input class="inp" type="date" value="${e.date||''}" onchange="updateEvent('${id}','date',this.value)">
+    <label class="lbl">Time</label><input class="inp" type="time" value="${e.time||''}" onchange="updateEvent('${id}','time',this.value)">
+    <label class="lbl">Location</label><input class="inp" value="${esc(e.location||'')}" onchange="updateEvent('${id}','location',this.value)">
+    <label class="lbl">Phone number</label><input class="inp" value="${esc(e.phone||'')}" onchange="updateEvent('${id}','phone',this.value)">
+    <label class="lbl">Note</label><textarea class="inp" rows="3" onchange="updateEvent('${id}','note',this.value)">${esc(e.note||'')}</textarea>
+    ${e.phone?`<a class="btn btn-ghost btn-full" style="margin-top:8px;text-decoration:none;text-align:center;display:block" href="tel:${esc(e.phone)}">📞 Call</a>`:''}
+    <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--coral)" onclick="deleteEvent('${id}')">Delete Event</button>
   </div></div>`;
+}
+async function updateEvent(id, field, val){
+  const e = (DATA.events||[]).find(x=>x.id===id); if(!e) return;
+  const limits = {title:200, location:200, phone:40, note:500};
+  e[field] = limits[field] ? String(val).trim().slice(0,limits[field]) : val;
+  await saveData(); drawCalendar(); showToast('Updated');
 }
 async function deleteEvent(id){
   DATA.events = (DATA.events||[]).filter(e=>e.id!==id);
@@ -1957,9 +2036,10 @@ async function importInventoryCSV(input){
       if(r.par) it.par = parseFloat(r.par);
       if(r.cost) it.cost = parseFloat(r.cost);
       if(r.price) it.price = parseFloat(r.price);
+      if(r.notes) it.notes = r.notes.slice(0,400);
       updated++;
     } else {
-      DATA.inventory.push({id:uid('I'), name, stock, par: parseFloat(r.par)||5, cost: parseFloat(r.cost)||0, price: parseFloat(r.price)||0});
+      DATA.inventory.push({id:uid('I'), name, stock, par: parseFloat(r.par)||5, cost: parseFloat(r.cost)||0, price: parseFloat(r.price)||0, notes: (r.notes||'').slice(0,400)});
       added++;
     }
   });
@@ -2139,27 +2219,58 @@ function renderFollowups(){
   const t = todayStr();
   const due = (DATA.followups||[]).filter(f=>!f.done).sort((a,b)=>a.due.localeCompare(b.due));
   document.getElementById('pageContent').innerHTML = `
-  <div class="card"><div class="card-title">Follow-Up Queue <span class="sub">everything due, across every module, in one list</span></div>
-  ${due.length ? due.map(f=>`
-    <div class="list-row" style="align-items:flex-start">
-      <div><b>${esc(f.contactName)}</b><br><span style="font-size:11.5px;color:var(--ink-dim)">${esc(f.detail)} · due ${fmtDate(f.due)}${f.due<t?', overdue':''}</span></div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-ghost" style="padding:6px 10px" onclick="snoozeFollowup('${f.id}')">Snooze 3d</button>
-        <button class="btn btn-primary" style="padding:6px 10px" onclick="doneFollowup('${f.id}')">✓ Done</button>
-      </div>
-    </div>`).join('') : '<div class="empty">Nothing outstanding, nice work.</div>'}
+  <div class="two-col">
+    <div class="card"><div class="card-title">Follow-Up Queue <span class="sub">everything due, across every module, in one list</span></div>
+    ${due.length ? due.map(f=>`
+      <div class="list-row" style="align-items:flex-start">
+        <div><b>${esc(f.contactName)}</b><br><span style="font-size:11.5px;color:var(--ink-dim)">${esc(f.detail)} · due ${fmtDate(f.due)}${f.due<t?', overdue':''}</span></div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost" style="padding:6px 10px" onclick="snoozeFollowup('${f.id}')">Snooze 3d</button>
+          <button class="btn btn-primary" style="padding:6px 10px" onclick="doneFollowup('${f.id}')">✓ Done</button>
+        </div>
+      </div>`).join('') : '<div class="empty">Nothing outstanding, nice work.</div>'}
+    </div>
+    <div class="card"><div class="card-title">＋ Add a Follow-Up</div>
+      <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
+      <select class="inp" id="fuContact"><option value="">, New name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+      <label class="lbl">Or new name</label><input class="inp" id="fuNewName" placeholder="e.g. Kwame Enterprises">
+      <label class="lbl">What's this about</label><input class="inp" id="fuDetail" placeholder="e.g. Check in on the quote">
+      <label class="lbl">Due date</label><input class="inp" id="fuDue" type="date" value="${todayStr()}">
+      <button class="btn btn-primary btn-full" onclick="addFollowup()">＋ Add Follow-Up</button>
+    </div>
   </div>`;
+}
+async function addFollowup(){
+  const existingId = document.getElementById('fuContact').value;
+  const newName = document.getElementById('fuNewName').value.trim().slice(0,120);
+  const detail = document.getElementById('fuDetail').value.trim().slice(0,200) || 'Follow up';
+  const due = document.getElementById('fuDue').value || todayStr();
+  let contactId = existingId, contactName;
+  if(existingId){ contactName = DATA.contacts.find(x=>x.id===existingId)?.name || ''; }
+  else if(newName){
+    const c = { id:uid('C'), name:newName, phone:'', temp:'warm', stage:'New', value:0, notes:'', lastContact: todayStr(), nextFollowUp: due, source:'Other' };
+    DATA.contacts.push(c); contactId = c.id; contactName = c.name;
+  }
+  if(!contactId){ showToast('Pick an existing contact or type a new name'); return; }
+  DATA.followups.push({id:uid('F'), contactId, contactName, due, detail, done:false});
+  await saveData(); showToast('Follow-up added'); renderFollowups(); renderSidebar();
 }
 async function doneFollowup(id){ const f=DATA.followups.find(x=>x.id===id); if(f){f.done=true; logAccountability('followups_cleared');} await saveData(); renderFollowups(); renderSidebar(); showToast('Marked done'); }
 async function snoozeFollowup(id){ const f=DATA.followups.find(x=>x.id===id); if(f){ f.due=new Date(Date.now()+3*86400000).toISOString().slice(0,10); } await saveData(); renderFollowups(); showToast('Snoozed 3 days'); }
 
-/* ---------- POS / QUICK SELL ---------- */
+/* ---------- POS / QUICK SELL ----------
+   Sells directly off the real Service Packages / Inventory list
+   (DATA.inventory), the same items and prices you manage on the
+   Inventory page, so nothing needs adding twice. Anything sold here
+   is deducted from stock automatically. */
 function renderPOS(){
+  const hasItems = (DATA.inventory||[]).length>0;
   document.getElementById('pageContent').innerHTML = `
   <div class="two-col">
     <div class="card">
-      <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun}</div>
+      <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun} <span class="sub" style="cursor:pointer" onclick="navTo('inventory')">manage list →</span></div>
       <div class="qs-grid" id="qsGrid"></div>
+      ${hasItems?'':`<div class="empty" style="margin-top:10px">No ${CUR_INDUSTRY_OBJ.itemNoun.toLowerCase()} yet. <span style="cursor:pointer;color:var(--teal)" onclick="navTo('inventory')">Add your first one on the Inventory page →</span></div>`}
     </div>
     <div class="card">
       <div class="card-title">Cart</div>
@@ -2172,30 +2283,39 @@ function renderPOS(){
       <button class="btn btn-primary btn-full" onclick="checkout()">✓ Complete Sale</button>
     </div>
   </div>`;
-  document.getElementById('qsGrid').innerHTML = (DATA.items||[]).map(it=>`
-    <button class="qs-item" onclick="addToCart('${it[0].replace(/'/g,"\\'")}',${it[1]})"><div class="qn">${it[0]}</div><div class="qp">${money(it[1])}</div></button>
+  document.getElementById('qsGrid').innerHTML = (DATA.inventory||[]).map(it=>`
+    <button class="qs-item" onclick="addToCart('${it.id}')"><div class="qn">${esc(it.name)}</div><div class="qp">${money(it.price)}</div>${it.stock<=it.par?'<div style="font-size:10px;color:var(--coral)">low stock</div>':''}</button>
   `).join('');
   drawCart();
 }
-function addToCart(name, price){ cart[name] = cart[name] || {qty:0, price}; cart[name].qty++; drawCart(); }
-function setCartQty(name, q){ if(q<=0){ delete cart[name]; } else { cart[name].qty=q; } drawCart(); }
+function addToCart(id){
+  const it = (DATA.inventory||[]).find(x=>x.id===id); if(!it) return;
+  cart[id] = cart[id] || {qty:0, price:it.price, name:it.name};
+  cart[id].qty++; drawCart();
+}
+function setCartQty(id, q){ if(q<=0){ delete cart[id]; } else { cart[id].qty=q; } drawCart(); }
 function drawCart(){
-  const names = Object.keys(cart);
+  const ids = Object.keys(cart);
   const area = document.getElementById('cartArea'); if(!area) return;
-  area.innerHTML = names.length ? names.map(n=>`
-    <div class="cart-row"><span class="cn">${n}</span>
-      <div class="stepper"><button onclick="setCartQty('${n.replace(/'/g,"\\'")}',${cart[n].qty-1})">−</button><span class="mono">${cart[n].qty}</span><button onclick="setCartQty('${n.replace(/'/g,"\\'")}',${cart[n].qty+1})">+</button></div>
-      <span class="mono">${money(cart[n].qty*cart[n].price)}</span>
+  area.innerHTML = ids.length ? ids.map(id=>`
+    <div class="cart-row"><span class="cn">${esc(cart[id].name)}</span>
+      <div class="stepper"><button onclick="setCartQty('${id}',${cart[id].qty-1})">−</button><span class="mono">${cart[id].qty}</span><button onclick="setCartQty('${id}',${cart[id].qty+1})">+</button></div>
+      <span class="mono">${money(cart[id].qty*cart[id].price)}</span>
     </div>`).join('') : '<div class="empty">Tap items to add them.</div>';
-  const total = names.reduce((s,n)=>s+cart[n].qty*cart[n].price,0);
+  const total = ids.reduce((s,id)=>s+cart[id].qty*cart[id].price,0);
   document.getElementById('cartTotal').textContent = money(total);
 }
 async function checkout(){
-  const names = Object.keys(cart);
-  if(!names.length){ showToast('Cart is empty'); return; }
+  const ids = Object.keys(cart);
+  if(!ids.length){ showToast('Cart is empty'); return; }
   const custId = document.getElementById('posCustomer').value;
   const custName = custId ? DATA.contacts.find(c=>c.id===custId)?.name : 'Walk-in';
-  names.forEach(n=>{ DATA.transactions.push({id:uid('T'), date:todayStr(), item:n, amount:cart[n].qty*cart[n].price, type:'sale', staff:CFG.ownerName, contact:custName}); });
+  ids.forEach(id=>{
+    const c = cart[id];
+    DATA.transactions.push({id:uid('T'), date:todayStr(), item:c.name, amount:c.qty*c.price, type:'sale', staff:CFG.ownerName, contact:custName});
+    const it = (DATA.inventory||[]).find(x=>x.id===id);
+    if(it) it.stock = Math.max(0, (it.stock||0) - c.qty);
+  });
   cart = {};
   logAccountability('sales_made');
   await saveData(); showToast('Sale completed'); renderPOS();
@@ -2228,22 +2348,25 @@ function renderInventory(){
   document.getElementById('pageContent').innerHTML = `
   <div class="two-col">
     <div class="card">
-      <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun}, Stock</div>
-      <div class="scroll-tbl"><table><thead><tr><th>Item</th><th>Stock</th><th>Par</th><th>Cost</th><th>Price</th></tr></thead><tbody>
-        ${(DATA.inventory||[]).map(it=>`<tr style="${it.stock<=it.par?'color:var(--coral)':''}"><td>${esc(it.name)}</td><td class="mono">${it.stock}</td><td class="mono">${it.par}</td><td class="mono">${money(it.cost)}</td><td class="mono">${money(it.price)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No stock items yet</td></tr>'}
+      <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun}, Stock <span class="sub">click a row to edit</span></div>
+      <div class="scroll-tbl"><table><thead><tr><th>Item</th><th>Stock</th><th>Par</th><th>Cost</th><th>Price</th><th>Notes</th></tr></thead><tbody>
+        ${(DATA.inventory||[]).map(it=>`<tr style="cursor:pointer;${it.stock<=it.par?'color:var(--coral)':''}" onclick="openItemModal('${it.id}')"><td>${esc(it.name)}</td><td class="mono">${it.stock}</td><td class="mono">${it.par}</td><td class="mono">${money(it.cost)}</td><td class="mono">${money(it.price)}</td><td style="color:var(--muted);font-size:11.5px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.notes||'')}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No stock items yet</td></tr>'}
       </tbody></table></div>
     </div>
     <div class="card">
-      <div class="card-title">Restock an Item</div>
+      <div class="card-title">Restock / Add an Item</div>
       <label class="lbl">Item name</label><input class="inp" id="rName" list="invList" placeholder="Must match exactly to update, or creates new">
       <datalist id="invList">${(DATA.inventory||[]).map(it=>`<option value="${esc(it.name)}">`).join('')}</datalist>
       <label class="lbl">Qty to add</label><input class="inp" id="rQty" type="number" placeholder="e.g. 24">
       <label class="lbl">Par level (optional)</label><input class="inp" id="rPar" type="number" placeholder="e.g. 10">
+      <label class="lbl">Cost per unit (optional)</label><input class="inp" id="rCost" type="number" placeholder="what it costs you">
+      <label class="lbl">Sale price (optional)</label><input class="inp" id="rPrice" type="number" placeholder="what you charge">
+      <label class="lbl">Notes (optional)</label><textarea class="inp" id="rNotes" rows="2" placeholder="Supplier, variant, anything worth remembering"></textarea>
       <button class="btn btn-primary btn-full" onclick="restock()">＋ Add Stock</button>
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
         <label class="lbl">Import from CSV ${currentPlan().csvImport?'':'<span style=\"color:var(--muted)\">(Growth/Enterprise)</span>'}</label>
         <input class="inp" type="file" accept=".csv" onchange="importInventoryCSV(this)" ${currentPlan().csvImport?'':'disabled title=\"Upgrade to Growth or Enterprise to import inventory from CSV\"'}>
-        <div class="sub" style="margin-top:4px">Columns: name, stock, par, cost, price, matches existing items by name</div>
+        <div class="sub" style="margin-top:4px">Columns: name, stock, par, cost, price, notes, matches existing items by name</div>
       </div>
     </div>
   </div>`;
@@ -2254,9 +2377,41 @@ async function restock(){
   if(!name || !qty){ showToast('Item name and quantity required'); return; }
   let it = DATA.inventory.find(x=>x.name.toLowerCase()===name.toLowerCase());
   const par = document.getElementById('rPar').value;
-  if(it){ it.stock += qty; if(par) it.par = parseFloat(par); }
-  else{ DATA.inventory.push({id:uid('I'), name, stock:qty, par: par?parseFloat(par):5, cost:0, price:0}); }
+  const cost = document.getElementById('rCost').value;
+  const price = document.getElementById('rPrice').value;
+  const notes = document.getElementById('rNotes').value.trim().slice(0,400);
+  if(it){
+    it.stock += qty;
+    if(par) it.par = parseFloat(par);
+    if(cost) it.cost = parseFloat(cost);
+    if(price) it.price = parseFloat(price);
+    if(notes) it.notes = notes;
+  } else {
+    DATA.inventory.push({id:uid('I'), name, stock:qty, par: par?parseFloat(par):5, cost: cost?parseFloat(cost):0, price: price?parseFloat(price):0, notes});
+  }
   await saveData(); showToast('Stock updated'); renderInventory();
+}
+function openItemModal(id){
+  const it = (DATA.inventory||[]).find(x=>x.id===id); if(!it) return;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="modal-head"><h3>${esc(it.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <label class="lbl">Name</label><input class="inp" value="${esc(it.name||'')}" onchange="updateItem('${id}','name',this.value)">
+    <label class="lbl">Stock on hand</label><input class="inp" type="number" value="${it.stock||0}" onchange="updateItem('${id}','stock',parseFloat(this.value)||0)">
+    <label class="lbl">Par level</label><input class="inp" type="number" value="${it.par||0}" onchange="updateItem('${id}','par',parseFloat(this.value)||0)">
+    <label class="lbl">Cost per unit</label><input class="inp" type="number" value="${it.cost||0}" onchange="updateItem('${id}','cost',parseFloat(this.value)||0)">
+    <label class="lbl">Sale price</label><input class="inp" type="number" value="${it.price||0}" onchange="updateItem('${id}','price',parseFloat(this.value)||0)">
+    <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateItem('${id}','notes',this.value)">${esc(it.notes||'')}</textarea>
+    <button class="btn btn-ghost btn-full" style="margin-top:10px;color:var(--coral)" onclick="removeItem('${id}')">Remove Item</button>
+  </div></div>`;
+}
+async function updateItem(id, field, val){
+  const it = (DATA.inventory||[]).find(x=>x.id===id); if(!it) return;
+  it[field] = (field==='name') ? String(val).trim().slice(0,150) : (field==='notes' ? String(val).trim().slice(0,400) : val);
+  await saveData(); renderInventory(); showToast('Updated');
+}
+async function removeItem(id){
+  DATA.inventory = (DATA.inventory||[]).filter(x=>x.id!==id);
+  await saveData(); closeModal(); showToast('Item removed'); renderInventory();
 }
 
 /* ---------- INVOICING / DEBTORS ---------- */
@@ -2270,8 +2425,8 @@ function renderInvoicing(){
     <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7"><b style="color:var(--navy)">${esc(ci.tax)}.</b> ${esc(ci.taxNote)}</div>
   </div>
   <div class="two-col">
-    <div class="card"><div class="card-title">Debtors, Who Owes What</div>
-    ${owed.length ? owed.map(c=>`<div class="list-row"><span><b>${esc(c.name)}</b></span><span style="display:flex;align-items:center;gap:10px"><span class="mono" style="color:var(--coral)">${money(c.value)}</span><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="markDebtPaid('${c.id}')">Mark Paid</button></span></div>`).join('') : '<div class="empty">Nothing outstanding.</div>'}
+    <div class="card"><div class="card-title">Debtors, Who Owes What <span class="sub">click anyone to edit</span></div>
+    ${owed.length ? owed.map(c=>`<div class="list-row" style="cursor:pointer" onclick="openDebtorModal('${c.id}')"><span><b>${esc(c.name)}</b>${c.dueDate?` <span style="color:var(--muted);font-size:11px">· due ${fmtDate(c.dueDate)}</span>`:''}</span><span style="display:flex;align-items:center;gap:10px"><span class="mono" style="color:var(--coral)">${money(c.value)}</span><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="event.stopPropagation();markDebtPaid('${c.id}')">Mark Paid</button></span></div>`).join('') : '<div class="empty">Nothing outstanding.</div>'}
     </div>
     <div class="card"><div class="card-title">Add Invoice / Debt</div>
       <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
@@ -2299,12 +2454,37 @@ async function addDebtor(){
   if(document.getElementById('invDue').value) c.dueDate = document.getElementById('invDue').value;
   await saveData(); showToast('Invoice added'); renderInvoicing();
 }
+function openDebtorModal(id){
+  const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="modal-head"><h3>${esc(c.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <label class="lbl">Amount owed</label><input class="inp" type="number" value="${c.value||0}" onchange="updateDebtor('${id}','value',parseFloat(this.value)||0)">
+    <label class="lbl">Due date</label><input class="inp" type="date" value="${c.dueDate||''}" onchange="updateDebtor('${id}','dueDate',this.value)">
+    <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="confirmMarkDebtPaid('${id}')">Mark Fully Paid</button>
+  </div></div>`;
+}
+async function updateDebtor(id, field, val){
+  const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
+  c[field] = val;
+  await saveData(); renderInvoicing(); showToast('Updated');
+}
+function confirmMarkDebtPaid(id){
+  const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:380px">
+    <div class="modal-head"><h3>Confirm</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div style="font-size:13px;color:var(--ink-dim);line-height:1.6">Mark <b style="color:var(--navy)">${money(c.value)}</b> from <b style="color:var(--navy)">${esc(c.name)}</b> as fully paid? This logs it as revenue and clears their outstanding balance. This can't be undone.</div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="markDebtPaid('${id}')">Yes, Mark Paid</button>
+    </div>
+  </div></div>`;
+}
 async function markDebtPaid(id){
   const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
   const paidAmt = c.value||0;
   DATA.transactions.push({id:uid('T'), date:todayStr(), item:'Invoice payment', amount:paidAmt, type:'invoice', staff:CFG.ownerName, contact:c.name});
   c.value = 0;
-  await saveData(); showToast('Marked paid and logged as revenue'); renderInvoicing();
+  await saveData(); closeModal(); showToast('Marked paid and logged as revenue'); renderInvoicing();
 }
 
 /* ---------- EXPENSES ---------- */
@@ -2349,15 +2529,16 @@ function renderExpenses(){
     </div>
   </div>
   <div class="two-col">
-    <div class="card"><div class="card-title">Recent Expenses ${oldCount?`<span class="sub" style="cursor:pointer" onclick="archiveOldExpenses()">archive ${oldCount} older than 90 days →</span>`:''}</div>
+    <div class="card"><div class="card-title">Recent Expenses <span class="sub">click a row to edit</span> ${oldCount?`<span class="sub" style="cursor:pointer" onclick="archiveOldExpenses()">· archive ${oldCount} older than 90 days →</span>`:''}</div>
       <div class="scroll-tbl"><table><thead><tr><th>Date</th><th>Item</th><th>Category</th><th>Amount</th><th></th></tr></thead><tbody>
-      ${(DATA.expenses||[]).slice().reverse().map(e=>`<tr><td>${fmtDate(e.date)}</td><td>${esc(e.item)}</td><td style="color:var(--ink-dim)">${esc(e.category)}</td><td class="mono">${money(e.amount)}</td><td><span style="cursor:pointer;color:var(--muted);font-size:11px" onclick="archiveExpense('${e.id}')">archive</span></td></tr>`).join('') || '<tr><td colspan="5" class="empty">None yet</td></tr>'}
+      ${(DATA.expenses||[]).slice().reverse().map(e=>`<tr style="cursor:pointer" onclick="openExpenseModal('${e.id}')"><td>${fmtDate(e.date)}</td><td>${esc(e.item)}</td><td style="color:var(--ink-dim)">${esc(e.category)}</td><td class="mono">${money(e.amount)}</td><td><span style="cursor:pointer;color:var(--muted);font-size:11px" onclick="event.stopPropagation();archiveExpense('${e.id}')">archive</span></td></tr>`).join('') || '<tr><td colspan="5" class="empty">None yet</td></tr>'}
       </tbody></table></div>
     </div>
     <div class="card"><div class="card-title">Log an Expense</div>
       <label class="lbl">What</label><input class="inp" id="eItem" placeholder="e.g. Supplier delivery">
       <label class="lbl">Category</label><select class="inp" id="eCat"><option>Cost of Goods</option><option>Overheads</option><option>Marketing</option><option>Payroll</option><option>Other</option></select>
       <label class="lbl">Amount</label><input class="inp" id="eAmt" type="number">
+      <label class="lbl">Date</label><input class="inp" id="eDate" type="date" value="${todayStr()}">
       <button class="btn btn-primary btn-full" onclick="addExpense()">＋ Log Expense</button>
     </div>
   </div>`;
@@ -2367,6 +2548,37 @@ async function archiveExpense(id){
   const [e] = DATA.expenses.splice(idx,1);
   DATA.archive.push({...e, name:e.item, archivedFrom:'expenses', archivedDate:todayStr()});
   await saveData(); showToast('Archived, restorable anytime'); renderExpenses();
+}
+function openExpenseModal(id){
+  const e = (DATA.expenses||[]).find(x=>x.id===id); if(!e) return;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="modal-head"><h3>Edit Expense</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">Changes here affect your revenue and expense totals immediately.</div>
+    <label class="lbl">What</label><input class="inp" id="eeItem" value="${esc(e.item||'')}">
+    <label class="lbl">Category</label><select class="inp" id="eeCat">${['Cost of Goods','Overheads','Marketing','Payroll','Other'].map(c=>`<option ${c===e.category?'selected':''}>${c}</option>`).join('')}</select>
+    <label class="lbl">Amount</label><input class="inp" id="eeAmt" type="number" value="${e.amount||0}">
+    <label class="lbl">Date</label><input class="inp" id="eeDate" type="date" value="${e.date||todayStr()}">
+    <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="confirmEditExpense('${id}')">Save Changes</button>
+    <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--coral)" onclick="archiveExpense('${id}');closeModal()">Archive This Expense</button>
+  </div></div>`;
+}
+function confirmEditExpense(id){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:380px">
+    <div class="modal-head"><h3>Confirm Edit</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div style="font-size:13px;color:var(--ink-dim);line-height:1.6">You're about to change this expense record. This updates your expense totals and reports right away. Are you sure?</div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-ghost" style="flex:1" onclick="openExpenseModal('${id}')">Back</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveExpenseEdit('${id}')">Yes, Save</button>
+    </div>
+  </div></div>`;
+}
+async function saveExpenseEdit(id){
+  const e = (DATA.expenses||[]).find(x=>x.id===id); if(!e) return;
+  const item = document.getElementById('eeItem').value.trim().slice(0,200);
+  const amount = parseFloat(document.getElementById('eeAmt').value);
+  if(!item || !Number.isFinite(amount) || amount<=0 || amount>1e12){ showToast('Enter an item and a valid positive amount'); return; }
+  e.item = item; e.category = document.getElementById('eeCat').value; e.amount = amount; e.date = document.getElementById('eeDate').value || e.date;
+  await saveData(); closeModal(); showToast('Expense updated'); renderExpenses();
 }
 async function archiveOldExpenses(){
   const t = todayStr(); const cutoff = new Date(t+'T00:00:00'); cutoff.setDate(cutoff.getDate()-90);
@@ -2386,7 +2598,8 @@ async function addExpense(){
   const item = document.getElementById('eItem').value.trim().slice(0,200);
   const amount = parseFloat(document.getElementById('eAmt').value);
   if(!item || !Number.isFinite(amount) || amount<=0 || amount>1e12){ showToast('Enter an item and a valid positive amount'); return; }
-  DATA.expenses.push({id:uid('E'), date:todayStr(), item, category:document.getElementById('eCat').value, amount, paidBy:'Cash'});
+  const date = document.getElementById('eDate').value || todayStr();
+  DATA.expenses.push({id:uid('E'), date, item, category:document.getElementById('eCat').value, amount, paidBy:'Cash'});
   await saveData(); showToast('Expense logged'); renderExpenses();
 }
 
@@ -2394,15 +2607,16 @@ async function addExpense(){
 function renderStaff(){
   document.getElementById('pageContent').innerHTML = `
   <div class="two-col">
-    <div class="card"><div class="card-title">Team</div>
-      ${(DATA.staff||[]).map(s=>`<div class="list-row"><span><b>${esc(s.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(s.role)} · ${esc(s.dept)}</span></span>
-        <button class="btn ${s.onDuty?'btn-primary':'btn-ghost'}" style="padding:6px 12px" onclick="toggleDuty('${s.id}')">${s.onDuty?'● On Duty':'Check In'}</button></div>`).join('') || '<div class="empty">No staff yet</div>'}
+    <div class="card"><div class="card-title">Team <span class="sub">click anyone to edit</span></div>
+      ${(DATA.staff||[]).map(s=>`<div class="list-row" style="cursor:pointer" onclick="openStaffModal('${s.id}')"><span><b>${esc(s.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(s.role)} · ${esc(s.dept)}</span></span>
+        <button class="btn ${s.onDuty?'btn-primary':'btn-ghost'}" style="padding:6px 12px" onclick="event.stopPropagation();toggleDuty('${s.id}')">${s.onDuty?'● On Duty':'Check In'}</button></div>`).join('') || '<div class="empty">No staff yet</div>'}
     </div>
     <div class="card"><div class="card-title">Add Staff</div>
       <label class="lbl">Name</label><input class="inp" id="stName">
       <label class="lbl">Role</label><input class="inp" id="stRole" placeholder="e.g. Sales Associate">
       <label class="lbl">Department</label><input class="inp" id="stDept" placeholder="e.g. Front of House">
       <label class="lbl">Pay type</label><select class="inp" id="stPay"><option>Monthly</option><option>Daily</option><option>Weekly</option><option>Commission</option></select>
+      <label class="lbl">Pay rate (optional)</label><input class="inp" id="stRate" type="number" placeholder="e.g. 1500">
       <button class="btn btn-primary btn-full" onclick="addStaff()">＋ Add</button>
     </div>
   </div>`;
@@ -2412,8 +2626,29 @@ async function addStaff(){
   if(capHit('staff')){ showUpgradeNudge('staff', 'team members'); return; }
   const name=document.getElementById('stName').value.trim();
   if(!name){ showToast('Name required'); return; }
-  DATA.staff.push({id:uid('S'), name, role:document.getElementById('stRole').value||'Team Member', dept:document.getElementById('stDept').value||'General', onDuty:false, payType:document.getElementById('stPay').value, payRate:0});
+  DATA.staff.push({id:uid('S'), name, role:document.getElementById('stRole').value||'Team Member', dept:document.getElementById('stDept').value||'General', onDuty:false, payType:document.getElementById('stPay').value, payRate:parseFloat(document.getElementById('stRate').value)||0});
   await saveData(); showToast('Staff added'); renderStaff();
+}
+function openStaffModal(id){
+  const s = (DATA.staff||[]).find(x=>x.id===id); if(!s) return;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="modal-head"><h3>Edit Staff</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <label class="lbl">Name</label><input class="inp" value="${esc(s.name||'')}" onchange="updateStaff('${id}','name',this.value)">
+    <label class="lbl">Role</label><input class="inp" value="${esc(s.role||'')}" onchange="updateStaff('${id}','role',this.value)">
+    <label class="lbl">Department</label><input class="inp" value="${esc(s.dept||'')}" onchange="updateStaff('${id}','dept',this.value)">
+    <label class="lbl">Pay type</label><select class="inp" onchange="updateStaff('${id}','payType',this.value)">${['Monthly','Daily','Weekly','Commission','Owner'].map(p=>`<option ${p===s.payType?'selected':''}>${p}</option>`).join('')}</select>
+    <label class="lbl">Pay rate</label><input class="inp" type="number" value="${s.payRate||0}" onchange="updateStaff('${id}','payRate',parseFloat(this.value)||0)">
+    <button class="btn btn-ghost btn-full" style="margin-top:10px;color:var(--coral)" onclick="removeStaff('${id}')">Remove Staff Member</button>
+  </div></div>`;
+}
+async function updateStaff(id, field, val){
+  const s = (DATA.staff||[]).find(x=>x.id===id); if(!s) return;
+  s[field] = (field==='name'||field==='role'||field==='dept') ? String(val).trim().slice(0,120) : val;
+  await saveData(); renderStaff(); showToast('Updated');
+}
+async function removeStaff(id){
+  DATA.staff = (DATA.staff||[]).filter(x=>x.id!==id);
+  await saveData(); closeModal(); showToast('Staff member removed'); renderStaff();
 }
 
 /* ---------- REVENUE / ANALYTICS ---------- */
@@ -2426,12 +2661,55 @@ function renderRevenue(){
   const totalExp = (DATA.expenses||[]).reduce((s,e)=>s+e.amount,0);
   const revPt = periodTotals(DATA.transactions, 'date', 'amount');
   const expPt = periodTotals(DATA.expenses, 'date', 'amount');
+
+  // Month-over-month growth
+  const t = todayStr(); const now = new Date(t+'T00:00:00');
+  const thisMonthKey = t.slice(0,7);
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const lastMonthKey = lastMonthDate.toISOString().slice(0,7);
+  const revThisMonth = (DATA.transactions||[]).filter(x=>x.date && x.date.slice(0,7)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const revLastMonth = (DATA.transactions||[]).filter(x=>x.date && x.date.slice(0,7)===lastMonthKey).reduce((s,x)=>s+x.amount,0);
+  const momGrowth = revLastMonth>0 ? Math.round(((revThisMonth-revLastMonth)/revLastMonth)*100) : null;
+
+  // Expense breakdown by category
+  const expByCat = {};
+  (DATA.expenses||[]).forEach(e=>{ expByCat[e.category||'Other'] = (expByCat[e.category||'Other']||0) + e.amount; });
+  const expCats = Object.entries(expByCat).sort((a,b)=>b[1]-a[1]);
+
+  // Top sellers + gross margin estimate (matches sale item names to inventory cost/price)
+  const salesByItem = {};
+  (DATA.transactions||[]).filter(x=>x.type==='sale').forEach(x=>{
+    if(!salesByItem[x.item]) salesByItem[x.item] = {qty:0, revenue:0};
+    salesByItem[x.item].qty++; salesByItem[x.item].revenue += x.amount;
+  });
+  let estCost = 0, matchedRevenue = 0;
+  Object.entries(salesByItem).forEach(([name, s])=>{
+    const inv = (DATA.inventory||[]).find(i=>i.name.toLowerCase()===name.toLowerCase());
+    if(inv && inv.price>0){ estCost += (inv.cost/inv.price) * s.revenue; matchedRevenue += s.revenue; }
+  });
+  const grossMarginPct = matchedRevenue>0 ? Math.round(((matchedRevenue-estCost)/matchedRevenue)*100) : null;
+  const topSellers = Object.entries(salesByItem).sort((a,b)=>b[1].revenue-a[1].revenue).slice(0,5);
+
+  // Top customers by total spend
+  const custSpend = {};
+  (DATA.transactions||[]).forEach(x=>{ if(x.contact && x.contact!=='Walk-in'){ custSpend[x.contact]=(custSpend[x.contact]||0)+x.amount; } });
+  const topCustomers = Object.entries(custSpend).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  // Average transaction value + debtor exposure
+  const saleCount = (DATA.transactions||[]).filter(x=>x.type==='sale').length;
+  const avgTicket = saleCount ? totalRev/saleCount : 0;
+  const debtorExposure = (DATA.contacts||[]).filter(c=>c.value>0).reduce((s,c)=>s+c.value,0);
+
   document.getElementById('pageContent').innerHTML = `
   <div class="grid-metrics">
     <div class="metric navy"><div class="ml">Total Revenue (7d log)</div><div class="mv">${money(totalRev)}</div></div>
     <div class="metric coral"><div class="ml">Total Expenses</div><div class="mv">${money(totalExp)}</div></div>
     <div class="metric green"><div class="ml">Net</div><div class="mv">${money(totalRev-totalExp)}</div></div>
     <div class="metric amber"><div class="ml">Conversion</div><div class="mv">${DATA.contacts.length?Math.round((DATA.contacts.filter(c=>c.temp==='active').length/DATA.contacts.length)*100):0}%</div><div class="ms">contacts → active</div></div>
+    <div class="metric navy"><div class="ml">Month-on-Month</div><div class="mv">${momGrowth===null?', ':(momGrowth>=0?'+':'')+momGrowth+'%'}</div><div class="ms">vs last month</div></div>
+    <div class="metric ${grossMarginPct===null?'navy':grossMarginPct<20?'coral':'green'}"><div class="ml">Est. Gross Margin</div><div class="mv">${grossMarginPct===null?', ':grossMarginPct+'%'}</div><div class="ms">from priced items sold</div></div>
+    <div class="metric navy"><div class="ml">Avg Ticket</div><div class="mv">${money(avgTicket)}</div><div class="ms">${saleCount} sale${saleCount===1?'':'s'} logged</div></div>
+    <div class="metric coral"><div class="ml">Debtor Exposure</div><div class="mv">${money(debtorExposure)}</div><div class="ms" style="cursor:pointer" onclick="navTo('invoicing')">view debtors →</div></div>
   </div>
   <div class="card"><div class="card-title">Revenue vs Expenses by Period</div>
     <div class="scroll-tbl"><table><thead><tr><th></th><th>Today</th><th>Week</th><th>Month</th><th>Quarter</th><th>Year</th></tr></thead><tbody>
@@ -2448,6 +2726,17 @@ function renderRevenue(){
       <div style="font-size:9.5px;color:var(--muted);margin-top:5px">${d.slice(5)}</div>
     </div>`).join('') || '<div class="empty">No sales logged yet</div>'}
     </div>
+  </div>
+  <div class="two-col">
+    <div class="card"><div class="card-title">Where Your Money Goes, Expenses by Category</div>
+      ${expCats.length ? expCats.map(([cat,amt])=>`<div class="list-row"><span>${esc(cat)}</span><span class="mono">${money(amt)} <span style="color:var(--muted);font-size:11px">(${totalExp?Math.round(amt/totalExp*100):0}%)</span></span></div>`).join('') : '<div class="empty">No expenses logged yet</div>'}
+    </div>
+    <div class="card"><div class="card-title">Top Sellers</div>
+      ${topSellers.length ? topSellers.map(([name,s])=>`<div class="list-row"><span>${esc(name)} <span style="color:var(--muted);font-size:11px">× ${s.qty}</span></span><span class="mono">${money(s.revenue)}</span></div>`).join('') : '<div class="empty">No sales logged yet</div>'}
+    </div>
+  </div>
+  <div class="card"><div class="card-title">Top Customers by Spend</div>
+    ${topCustomers.length ? topCustomers.map(([name,amt])=>`<div class="list-row"><span>${esc(name)}</span><span class="mono">${money(amt)}</span></div>`).join('') : '<div class="empty">No customer sales linked yet, pick a customer at checkout to track this</div>'}
   </div>`;
 }
 
@@ -2457,8 +2746,8 @@ function renderMessages(){
   document.getElementById('pageContent').innerHTML = `
   <div class="tab-row" id="msgTabs"></div>
   <div class="card" id="msgLib"></div>`;
-  document.getElementById('msgTabs').innerHTML = ['cold','warm','close','objection'].map(k=>
-    `<button class="tab-pill ${msgCat===k?'active':''}" onclick="setMsgCat('${k}')">${{cold:'Cold Outreach',warm:'Warm Re-engage',close:'Closing',objection:'Objections'}[k]}</button>`).join('');
+  document.getElementById('msgTabs').innerHTML = ['cold','warm','close','objection','reconnect'].map(k=>
+    `<button class="tab-pill ${msgCat===k?'active':''}" onclick="setMsgCat('${k}')">${TEMPLATE_CATEGORY_LABELS[k]}</button>`).join('');
   const t = getTemplates()[msgCat];
   document.getElementById('msgLib').innerHTML = t.map((m,i)=>`
     <div class="list-row" style="align-items:flex-start;flex-direction:column;gap:6px">
@@ -2843,6 +3132,9 @@ function aiAnswer(q){
     if(!due.length) return 'Nothing outstanding right now, good time to reach out to a cold lead instead, or ask a happy customer for a referral.';
     return 'Priority order:\n' + due.map((f,i)=>`${i+1}. ${f.contactName}, ${f.detail} (due ${fmtDate(f.due)})`).join('\n');
   }
+  if(ql.includes('more sales') || ql.includes('more customers') || ql.includes('grow my business') || ql.includes('help me grow') || ql.includes('increase revenue') || ql.includes('grow the business') || (ql.includes('grow') && ql.includes('business'))){
+    return answerGoalQuestion(q);
+  }
   if(ql.includes('revenue') || ql.includes('sales') || ql.includes('income')){
     const t=todayStr(); const rev=(DATA.transactions||[]).filter(x=>x.date===t).reduce((s,x)=>s+x.amount,0);
     const week=(DATA.transactions||[]).reduce((s,x)=>s+x.amount,0);
@@ -2886,6 +3178,74 @@ function relevantKnowledge(query, limit){
   }).filter(x=>x.score>0);
   scored.sort((a,b)=> b.score-a.score || (a.f.date < b.f.date ? 1 : -1));
   return scored.slice(0, limit).map(x=>x.f);
+}
+// This is what turns "I want more sales" into a real, sourced answer
+// instead of a canned line: it pulls the business's own goal and any
+// owner-typed Business Brain notes, checks live numbers (hot leads,
+// stale follow-ups, low conversion), and matches against the Growth
+// Library so the answer points at specific, actionable guides, not
+// generic advice.
+function answerGoalQuestion(q){
+  const brain = searchBrain(q, 3);
+  const parts = [];
+  if(DATA.knowledge?.goal) parts.push(`Your stated goal: "${DATA.knowledge.goal}". Keeping that in view, here's what your own numbers and the Growth Library point to right now:`);
+  else parts.push(`Here's what your own numbers and the Growth Library point to right now:`);
+  const hotLeads = (DATA.contacts||[]).filter(c=>c.temp==='hot').length;
+  const dueFollowups = (DATA.followups||[]).filter(f=>!f.done).length;
+  const custCount = (DATA.contacts||[]).length;
+  const activeCount = (DATA.contacts||[]).filter(c=>c.temp==='active').length;
+  const conv = custCount ? Math.round((activeCount/custCount)*100) : 0;
+  const findings = [];
+  if(hotLeads>0) findings.push(`you have ${hotLeads} hot lead${hotLeads===1?'':'s'} who haven't closed yet, the fastest new revenue is usually already sitting in your own pipeline, not a stranger`);
+  if(dueFollowups>0) findings.push(`${dueFollowups} follow-up${dueFollowups===1?' is':'s are'} outstanding, every one of those is a conversation that's gone quiet on its own`);
+  if(custCount>0 && conv<30) findings.push(`only ${conv}% of your contacts have reached "active" status, that gap between interested and buying is usually where growth is leaking`);
+  if(findings.length) parts.push('From your live data: ' + findings.join('; ') + '.');
+  if(brain.notes.length) parts.push('From what you\'ve told the Business Brain: ' + brain.notes.map(f=>`"${f.text}"`).join(' · '));
+  if(brain.guides.length){
+    parts.push('Worth reading in your Growth Library right now: ' + brain.guides.map(g=>`"${g.t}" (${g.cat})`).join(', ') + '.');
+  } else {
+    parts.push('Start with "The 5 Levels of a Customer" and "The Sales Playbook, Give Value First" in your Growth Library, both are built exactly for this.');
+  }
+  parts.push(hotLeads>0 ? `Concrete next step: message your ${hotLeads} hot lead${hotLeads===1?'':'s'} today with a direct closing question, see Message Templates → Closing.` : dueFollowups>0 ? `Concrete next step: clear your ${dueFollowups} outstanding follow-up${dueFollowups===1?'':'s'} first, that's the closest revenue you have.` : `Concrete next step: add 3 new leads to your CRM this week and set a follow-up date for each, growth starts with pipeline volume.`);
+  addKnowledgeFact(`Asked how to get more sales/customers, pointed toward ${brain.guides.length?brain.guides.map(g=>g.t).join(', '):'core sales guides'}.`, 'system');
+  return parts.join('\n\n');
+}
+// The Business Brain search: this is what makes "I want more sales" or
+// "help me get more customers" pull a real, sourced answer instead of a
+// canned line. It searches everything the business has fed TecXFRA
+// (owner-typed brain notes, persona, audit result, journal, system-learned
+// facts) AND everything TecXFRA already knows (the Growth Library guides,
+// message template categories), scores every source by keyword overlap
+// with the question, and returns the strongest matches from each so the
+// AI Assistant can weave them into one answer.
+function searchBrain(query, limit){
+  limit = limit || 4;
+  const words = query.toLowerCase().split(/\W+/).filter(w=>w.length>2);
+  if(!words.length) return {notes:[], guides:[]};
+  const scoreText = (t)=> words.reduce((s,w)=>s+(t.toLowerCase().includes(w)?1:0),0);
+  const facts = DATA.knowledge?.facts || [];
+  const notes = facts.map(f=>({f, score:scoreText(f.text)})).filter(x=>x.score>0)
+    .sort((a,b)=>b.score-a.score || (a.f.date<b.f.date?1:-1)).slice(0,limit).map(x=>x.f);
+  const guides = GUIDES.map(g=>({g, score:scoreText(g.t+' '+g.cat+' '+g.full.slice(0,300))})).filter(x=>x.score>0)
+    .sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.g);
+  return {notes, guides};
+}
+async function addBrainNote(text){
+  text = (text||'').trim().slice(0,1000);
+  if(!text) return;
+  await addKnowledgeFact(text, 'owner');
+  showToast('Added to the Business Brain');
+  renderSettings();
+}
+async function removeBrainNote(id){
+  if(!DATA.knowledge?.facts) return;
+  DATA.knowledge.facts = DATA.knowledge.facts.filter(f=>f.id!==id);
+  await saveData(); showToast('Removed'); renderSettings();
+}
+async function saveBusinessGoal(val){
+  if(!DATA.knowledge) DATA.knowledge = {facts:[], questionsAsked:0, goal:''};
+  DATA.knowledge.goal = (val||'').trim().slice(0,300);
+  await saveData(); showToast('Goal saved');
 }
 function sendAI(){
   const inp = document.getElementById('aiInput'); const q=inp.value.trim(); if(!q) return;
@@ -2957,7 +3317,7 @@ function drawGuideStore(){
 }
 
 /* ---------- GUIDES / GROWTH LIBRARY ---------- */
-const GUIDE_CATEGORIES = ['Customer Growth','Visibility & Digital','Sales','Customer Service','Referrals & Retention','Daily Operating System'];
+const GUIDE_CATEGORIES = ['Starting Out','Customer Growth','Visibility & Digital','Sales','Customer Service','Referrals & Retention','Money Mindset','Daily Operating System'];
 const GUIDES = [
   {cat:'Customer Growth', t:'The 5 Levels of a Customer', b:70, full:`Most owners think a "customer" is someone who buys once and leaves, that's only Level 1. The more people you move up these levels, the less you have to chase new customers every day.\n\nLevel 1, The Customer: buys once, no loyalty yet. Came because you were close by or the price was right that day.\n\nLevel 2, The Client: buys again and again, trusts your quality, but hasn't told anyone else yet.\n\nLevel 3, The Affiliate: a client you've asked to bring you more customers, usually for something small in return. "Bring me two friends, your next one is half price."\n\nLevel 4, The Ambassador: talks about your business unprompted and unpaid, because using you makes them look good.\n\nLevel 5, The Partner: another business owner who joins forces with you so you both grow together instead of working alone.\n\nTry this today: think of 3 customers who already buy from you often (Level 2). Pick one and offer a small reward if they bring a new customer (moves them to Level 3). Ask one happy customer to share a photo or review on their own page (can turn them into Level 4).`},
   {cat:'Customer Growth', t:'Network vs. Net Worth', b:55, full:`Many owners open shop, sit behind the counter, and wait for people to walk past, the Old Way. The problem: you only reach whoever happens to walk by that day.\n\nThe New Way is working as a team: partner with nearby businesses that serve the same kind of customer but sell something different. When you combine audiences, everyone gets more business.\n\nExample: a barber, a shoe seller and a food vendor on the same street. Every guy getting a haircut also cares about his shoes. The barber doesn't sell shoes but meets style-conscious men daily, a small card or QR code at his station sends that traffic to the shoe seller for free.\n\nA weekly food deal ("Friday special") isn't about profit on the food, it's about pulling more people past both shops on the same day.\n\nTry this today: list 3 nearby businesses that serve your kind of customer but don't sell what you sell. Pick one and suggest a simple swap, you display their flyer, they display yours. Agree on one joint offer you can promote together.`},
@@ -2973,7 +3333,10 @@ const GUIDES = [
   {cat:'Starting Out', t:'Start Smart, Finding & Testing a Business Idea', b:65, full:`This one is for someone who hasn't started yet, or started without a real plan. No big English, no laptop required, just observation, sense, and consistency.\n\nThe real question isn't "what's the best business?" It's "what can I sell consistently, where I already am?" Look for what people ask for constantly, complain they can't find nearby, or keep buying even when money is tight. If people buy it weekly or daily, it's a good business, food, phone repair, hair and barbering, delivery, cleaning, printing, provisions and clothing all pass this test in most local markets.\n\nMatch the idea to yourself: can you do this every day, talk about it confidently, and keep improving at it? You don't need passion on day one, you need tolerance for it while the skill and love for it grow.\n\nStart small on purpose. No big shop, no full stock, no perfect branding required, one product, one service, one location is enough to begin. Small start is not small thinking; it's how you test before you commit real money.\n\nDo market research the low-tech way: watch who's busy and who's empty and at what time, ask simple direct questions ("what do you sell most?", "what do customers ask for that you don't have?"), and copy what's clearly working, then improve it, don't just repeat it. Before buying big stock, sell small, offer a sample, run it for one week. If people buy without you having to beg, you're onto something real.\n\nYour business plan only needs to answer 6 questions: what am I selling, who am I selling to, where will they find me, how much does it cost me, how much will I sell it for, and how will people know me. That's the whole plan, write it down, nothing more elaborate needed to start.\n\nOn pricing: too low and you suffer, too high and you get ignored, check what's already being charged nearby and price close to it, not at either extreme.\n\nOn registration: you don't need to register before you start. Test first, formalise once you want contracts, bigger trust, or to scale, starting is more important than being fully formal on day one.\n\nOn marketing: WhatsApp is your shop window (post consistently, clear pictures, price and location included), being findable matters as much as being good (people give up fast when they "saw it but don't know where you are"), and word of mouth still rules, one happy customer becomes several referrals if you're polite, consistent, and don't oversell.`},
   {cat:'Money Mindset', t:'Money & Pricing Without Stress', b:70, full:`This is for anyone who sells daily but still isn't sure if they're actually making money, not written for accountants, written for market sellers, shop owners and service providers.\n\nThe honest problem most small businesses have isn't effort, it's structure: business money and personal money get mixed, prices get guessed instead of calculated, sales live in memory instead of on paper, and profit gets assumed instead of confirmed. Busy is not the same as profitable.\n\nKnow the difference between cash and profit. Cash is what's in your hand or your mobile money balance right now. Profit is what's left after ALL costs, stock, transport, data, food, small expenses. You can have cash in hand today and still be losing money if you spend it all.\n\nThe pricing formula is simple: Price = Cost + Profit, but "cost" has to include transport, data, small losses, and your own time, not just the stock price. Common pricing mistakes: pricing low hoping volume will save you, copying competitors blindly, forgetting hidden costs, and being afraid to lose a customer over price. Cheap pricing doesn't build a business, it builds stress. People pay more for reliability, convenience and respect, so instead of racing to the bottom, add a little value and explain the difference simply.\n\nThe 3-bucket rule for daily money: split every day's income into Stock Money (for restocking), Profit Money (your actual gain), and Personal Money (living expenses), and never mix them. Envelopes work fine if that's all you have.\n\nThe 10-minute end-of-day habit: how much did I sell, how much did I spend, what remains, write it down. That single habit is business maturity.\n\nMoney doesn't only leave through expenses, it leaks through spoilage, theft, breakage and free "dash." Control it without stress: count stock weekly, reduce unnecessary credit, learn to say no politely, and track your fast-moving items.\n\nWhen deciding whether to reinvest or "chop" (spend personally): reinvest when stock finishes fast, customers are asking for more, and demand is clearly there. Only spend personally once you've restocked, a real emergency exists, and profit is actually confirmed, business money isn't lottery money.\n\nTrack only 5 numbers weekly and it's enough to grow: total sales, total expenses, best-selling item, worst-selling item, and your profit estimate.`},
   {cat:'Visibility & Digital', t:'Visibility, Location & Trust', b:65, full:`"If my work is good, customers will come" is the biggest lie in small business. The truth: if people can't find you, they can't buy from you, being good is necessary but never sufficient.\n\nPeople don't search the way textbooks describe. They ask friends, check WhatsApp groups, search Google, walk around, or call a number they've seen somewhere. If your business isn't present in those exact places, you get skipped entirely, someone needing a plumber, tailor or phone repair simply asks "who knows someone around?", and if your name doesn't come up, you don't exist to them in that moment.\n\nLocation talks before you ever speak. Vague directions ("around Kasoa," "close to the junction," "ask when you get there") cost you customers who simply give up or go elsewhere rather than deal with the uncertainty, transport cost and time both make people prefer the option they can find fast. A clear name, phone number, location and short description is enough to be found; no website required.\n\nTrust is the real currency. People rarely buy from total strangers, they buy from people they recognise, people recommended to them, and people who "look real." What builds trust fast: clear and consistent contact details, visible reviews or feedback, professional appearance, and stability (same number, same name, every time). What kills it just as fast: wrong directions, numbers that don't connect, inconsistent business names, and no visible online presence at all.\n\nGet reviews the natural way: deliver well, then simply ask, "if you're happy, please tell others." Even a verbal review or a shared voice note counts. One good review can outweigh ten adverts.\n\nVisibility isn't noise or shouting, it's consistency, clarity and availability. Use the same business name and phone number everywhere, share your location often, and keep a regular presence online. People trust what they see repeatedly, not what they see once.\n\nWhen customers compare similar options, they choose in this order: who they can find easily, who they can reach easily, and who looks trustworthy, price comes after all three, not before. Run the 30-second test on your own business: can a stranger find me in 30 seconds, can they call me immediately, do I look real and stable? If yes to all three, you're already ahead of most competitors.`},
-  {cat:'Sales', t:'The WhatsApp Sales Flow', b:70, full:`In most local markets, WhatsApp already functions as the website, the shop, and the customer service desk. The problem is almost never the platform, it's that most sellers run it like a personal chat instead of a sales system, so serious buyers get lost in the noise, follow-ups get forgotten, and price gets argued over instead of anchored.\n\nEvery sale on WhatsApp should move through the same 5 steps, in order: Attention (something, a status, a listing, a post, made them reach out), Clarity (immediately answer what it is, the price, the location and availability, confusion kills interest fast), Confidence (clear language, no unnecessary apologising, a professional tone, confidence sells more than perfect grammar), Direction (tell them exactly what to do next: "call me," "come now," "send your location"), and Close (ask directly, "should I reserve it for you?", don't be shy about asking for the sale).\n\nTreat your status like a billboard, not a diary. Post at least once daily with a clear picture, the price, the location, and a call to action, a picture alone with no words is a wasted post. A status like "Available today, GHS 50, Madina Zongo, Call 05…" does far more work than a photo on its own.\n\nKeep 3 reply templates ready so you never start from a blank screen: a price-inquiry reply (greeting, price, availability, location, a way to call for directions), a location reply (a clear landmark plus an offer to send the map pin), and a follow-up ("just checking if you're still interested so I can reserve it for you"). Simple and professional beats long and apologetic every time.\n\nWhen someone says the price is too high, never argue, explain once, calmly: "I understand. Mine is this price because of quality and reliability." If they value that, they stay; if not, they were never going to be a good customer anyway, and chasing them costs more than it's worth.\n\nMost sales actually die in the gap between chat and arrival, not in the chat itself, usually from poor directions, no map, or the buyer losing confidence on the way. Fix it permanently by always sending an exact location, a clickable call option, and a map pin, this removes the excuses that let a warm lead go cold on the walk over.\n\nRun a simple 15-minute daily routine: morning, post status, check messages; afternoon, reply promptly, share location when asked; evening, follow up on anyone who went quiet, update your status. Consistency here beats intensity every time.`}
+  {cat:'Sales', t:'The WhatsApp Sales Flow', b:70, full:`In most local markets, WhatsApp already functions as the website, the shop, and the customer service desk. The problem is almost never the platform, it's that most sellers run it like a personal chat instead of a sales system, so serious buyers get lost in the noise, follow-ups get forgotten, and price gets argued over instead of anchored.\n\nEvery sale on WhatsApp should move through the same 5 steps, in order: Attention (something, a status, a listing, a post, made them reach out), Clarity (immediately answer what it is, the price, the location and availability, confusion kills interest fast), Confidence (clear language, no unnecessary apologising, a professional tone, confidence sells more than perfect grammar), Direction (tell them exactly what to do next: "call me," "come now," "send your location"), and Close (ask directly, "should I reserve it for you?", don't be shy about asking for the sale).\n\nTreat your status like a billboard, not a diary. Post at least once daily with a clear picture, the price, the location, and a call to action, a picture alone with no words is a wasted post. A status like "Available today, GHS 50, Madina Zongo, Call 05…" does far more work than a photo on its own.\n\nKeep 3 reply templates ready so you never start from a blank screen: a price-inquiry reply (greeting, price, availability, location, a way to call for directions), a location reply (a clear landmark plus an offer to send the map pin), and a follow-up ("just checking if you're still interested so I can reserve it for you"). Simple and professional beats long and apologetic every time.\n\nWhen someone says the price is too high, never argue, explain once, calmly: "I understand. Mine is this price because of quality and reliability." If they value that, they stay; if not, they were never going to be a good customer anyway, and chasing them costs more than it's worth.\n\nMost sales actually die in the gap between chat and arrival, not in the chat itself, usually from poor directions, no map, or the buyer losing confidence on the way. Fix it permanently by always sending an exact location, a clickable call option, and a map pin, this removes the excuses that let a warm lead go cold on the walk over.\n\nRun a simple 15-minute daily routine: morning, post status, check messages; afternoon, reply promptly, share location when asked; evening, follow up on anyone who went quiet, update your status. Consistency here beats intensity every time.`},
+  {cat:'Money Mindset', t:'Money Mindset, Habits That Build Wealth', b:75, full:`Wealth isn't built by one big lucky sale, it's built by a stack of small, boring, repeated decisions. These are the habits that separate business owners who are still standing in ten years from those who aren't.\n\nHow you think about money: play the long game, decide today what your business looks like in 3 years, not just this week. Believe there's enough for everyone, competitors doing well doesn't mean less for you, it usually means the market itself is growing. Treat setbacks as tuition, a bad month teaches you something a good month never will. Keep learning, about pricing, about your industry, about money itself, nobody stays sharp on autopilot. Delay the reward, the profit you don't withdraw today is the stock you don't run out of next month. Stay humble and stay focused, flashy spending doesn't grow a business, reinvestment does.\n\nPlanning your money: write down where the business needs to be this year, not just "make more." Know exactly where every cedi goes, budgets aren't restrictive, they're what tells you where the leaks are. Pay the business first, before you pay yourself extra, keep something back for stock, rent, and slow months. Keep 3 months of basic operating costs somewhere safe, that's what survives a slow season without panic. Review your numbers on a fixed schedule, weekly if you can, monthly at minimum, in TecXFRA that's your Revenue & Analytics page.\n\nEarning more: never depend on one single income source if you can help it, a second stream is insurance, not greed. Your time is worth something too, price it in, don't give away hours you could be selling. Keep upgrading your skills, a better skill sells at a better price. Take risks you've actually thought through, not blind ones, calculate the downside before you jump.\n\nSpending with intent: spend on things that bring the business real, lasting value, not things that just look good. Negotiate every recurring bill, rent, supplier rates, data, nobody offers a discount you don't ask for. Plan big purchases in advance instead of reacting to them, panic-buying is expensive buying. Protect what you've built, keep insurance current, keep contracts in writing, keep debt on a short leash and only for things that grow the business, never for things that just get consumed.\n\nTry this today: open Revenue & Analytics and look at your expense breakdown by category, one number in there is bigger than it should be, find it. This week, set one number aside as untouchable, an emergency float, even a small one. This month, write down one skill or habit from this list you're weakest at, and fix that one thing before moving to the next.`},
+  {cat:'Money Mindset', t:'Building More Than One Income Stream', b:65, full:`Most businesses rely on one product, one service, one customer type, and one season. That's not stability, that's one shock away from a very bad month. Diversifying income doesn't mean starting five businesses, it means finding a few honest ways for what you already have to earn in more than one direction.\n\nThe four kinds of income worth knowing: Active income, you trade time or stock directly for money, this is most small businesses today, reliable but it stops the moment you stop. Leveraged income, you build something once (a course, a template, a recipe, a system) and sell it repeatedly with far less ongoing effort per sale. Passive-ish income, rent from a spare space, commission from referring customers to a trusted partner business, affiliate income from recommending products you already believe in. Portfolio income, money your savings themselves earn over time, interest, a savings plan, small investments, this only exists once the other three are stable.\n\nWhere small business owners usually find a second stream without starting over: sell what you already know as a mini-guide or short course to people earlier in the journey than you. Add a complementary product or service that your existing customers already need (the barber and the shoe-shine example). Take a referral fee for pointing customers toward a trusted partner business when you can't serve their exact need yourself. Rent out equipment, space, or skills during the hours they'd otherwise sit idle.\n\nHow to add a stream without breaking the main business: never let stream two distract from stream one until stream one is actually stable, protect the business that pays the bills first. Start the smallest possible version, test it on your existing customers before building anything elaborate. Track it separately in Revenue & Analytics so you actually know if it's working, not just guessing.\n\nTry this today: write down one thing you already know, make, or have access to that a customer would pay for on its own. This week, offer it to 5 existing customers at a simple test price. This month, if 2 or more say yes, decide whether it's worth building into a proper second stream.`},
+  {cat:'Money Mindset', t:'Beating the Fear of Success', b:45, full:`Everyone talks about fear of failure. Fewer talk about the fear that quietly stalls just as many businesses, the fear of success itself, of what happens if this actually works. More customers, more responsibility, more visibility, more to lose. It shows up as self-sabotage: the marketing that never quite gets posted, the price that's set too low to attract "too many" customers, the growth that gets talked about constantly but never actually pursued.\n\nHow it usually shows up: procrastinating on the exact steps that would bring in more customers, undercharging so growth stays "manageable," avoiding visibility (no photo on the profile, no video, no name on the sign), or quietly believing that if this gets big, something will go wrong, or that you don't deserve it to.\n\nWhy it happens: success changes your identity, and that's genuinely uncomfortable even when it's good. It comes with new pressure, staff to manage, bigger promises to keep, more eyes watching. And for many people, the environment around them, family, friends, community, wasn't built to celebrate someone pulling ahead, so some part of the brain quietly protects against standing out.\n\nWhat to do about it: name it. The moment you notice yourself avoiding the exact thing that would grow your business, that's usually not laziness, it's this fear, wearing a disguise. Take the next step at a size that doesn't feel like a leap, one new customer this week, not fifty. Get comfortable being visible in small doses before doing it in big ones. Surround yourself with at least one person who wants to see you win, not everyone will, that's fine, you only need a few.\n\nA thought worth keeping close: discipline shows up long before results do, and confidence is built by the small promises you kept to yourself, not the ones you're waiting to feel ready for. Waiting to feel ready is often just fear, wearing patience as a disguise.\n\nTry this today: name one thing you've been putting off that would actually grow the business. This week, do the smallest possible version of it. This month, track how many times you did the uncomfortable thing anyway, that number is your real growth metric.`},
 ];
 let guideCatFilter = 'All';
 let guidesMainTab = 'library';
@@ -3085,8 +3448,8 @@ function renderSettings(){
   document.getElementById('pageContent').innerHTML = `
   <div class="settings-tabs" id="setTabs"></div>
   <div id="setBody"></div>`;
-  document.getElementById('setTabs').innerHTML = ['business','plan','branding','industry','modules','team','data','account'].map(k=>
-    `<button class="tab-pill ${settingsTab===k?'active':''}" onclick="setSettingsTab('${k}')">${{business:'Business',plan:'Plan',branding:'Branding',industry:'Industry',modules:'Modules',team:'Team & Roles',data:'Data & Storage',account:'Account'}[k]}</button>`).join('');
+  document.getElementById('setTabs').innerHTML = ['business','brain','plan','branding','industry','modules','team','data','account'].map(k=>
+    `<button class="tab-pill ${settingsTab===k?'active':''}" onclick="setSettingsTab('${k}')">${{business:'Business',brain:'Business Brain 🧠',plan:'Plan',branding:'Branding',industry:'Industry',modules:'Modules',team:'Team & Roles',data:'Data & Storage',account:'Account'}[k]}</button>`).join('');
   drawSettingsBody();
 }
 function setSettingsTab(k){ settingsTab=k; renderSettings(); }
@@ -3119,6 +3482,31 @@ function drawSettingsBody(){
         <label class="lbl">Payroll note (your own scheme, overrides the default above)</label><textarea class="inp" id="setPayrollNote" rows="2" placeholder="${ci.payroll}">${CFG.customPayrollNote||''}</textarea>
       </div>
       <button class="btn btn-primary" onclick="saveBusinessSettings()">Save Changes</button>
+    </div>`;
+  } else if(settingsTab==='brain'){
+    const facts = (DATA.knowledge?.facts||[]).slice().reverse();
+    const ownerNotes = facts.filter(f=>f.source==='owner');
+    const systemNotes = facts.filter(f=>f.source!=='owner');
+    b.innerHTML = `
+    <div class="card">
+      <div class="card-title">The Business Brain <span class="sub">this is what your AI Assistant actually knows about ${esc(CFG.bizName)}</span></div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.7;margin-bottom:14px">Tell TecXFRA anything about your business, your goals, your products, your customers, what's working, what isn't. The AI Assistant searches everything here, plus your Persona, Audit, Journal, and the whole Growth Library, before it answers. The more you add, the sharper and more specific its answers get.</div>
+      <label class="lbl">What are you trying to achieve right now?</label>
+      <input class="inp" id="brainGoal" value="${esc(DATA.knowledge?.goal||'')}" placeholder="e.g. Hit GHS 10,000 a month by December">
+      <button class="btn btn-ghost" style="margin-top:8px" onclick="saveBusinessGoal(document.getElementById('brainGoal').value)">Save Goal</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Add to the Brain</div>
+      <textarea class="inp" id="brainNoteInput" rows="3" placeholder="e.g. We specialise in wedding cakes, not everyday orders. Our biggest challenge right now is no-shows on custom orders. Our best customers come from Instagram, not walk-ins."></textarea>
+      <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="addBrainNote(document.getElementById('brainNoteInput').value); document.getElementById('brainNoteInput').value='';">＋ Add to Brain</button>
+    </div>
+    <div class="card">
+      <div class="card-title">What You've Told It <span class="sub">${ownerNotes.length} note${ownerNotes.length===1?'':'s'}</span></div>
+      ${ownerNotes.length ? ownerNotes.map(f=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:12.5px;line-height:1.6">${esc(f.text)}<br><span style="color:var(--muted);font-size:10.5px">${fmtDate(f.date)}</span></span><span style="cursor:pointer;color:var(--muted);font-size:11px;white-space:nowrap" onclick="removeBrainNote('${f.id}')">remove</span></div>`).join('') : '<div class="empty">Nothing added yet, use the box above.</div>'}
+    </div>
+    <div class="card">
+      <div class="card-title">What It's Learned On Its Own <span class="sub">${systemNotes.length} observation${systemNotes.length===1?'':'s'}, from your audit, activity and patterns</span></div>
+      ${systemNotes.length ? systemNotes.slice(0,15).map(f=>`<div class="list-row"><span style="font-size:12px;color:var(--ink-dim)">${esc(f.text)}</span><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${fmtDate(f.date)}</span></div>`).join('') : '<div class="empty">Nothing yet, this fills in as you use TecXFRA day to day.</div>'}
     </div>`;
   } else if(settingsTab==='industry'){
     b.innerHTML = `<div class="card">
