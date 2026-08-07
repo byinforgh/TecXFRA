@@ -82,6 +82,7 @@
   .meta{font-size:12px;color:#5b6b6d;margin:4px 0 12px}
   .empty{text-align:center;color:#8a9394;padding:40px 0;font-size:14px}
   select{padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:16px}
+  .legal-foot{position:fixed;left:0;right:0;bottom:0;z-index:150;display:flex;align-items:center;justify-content:center;gap:8px;padding:5px 12px;background:rgba(250,248,243,.92);backdrop-filter:blur(4px);border-top:1px solid var(--line);font-size:10.5px;color:#93a0a1;pointer-events:none;}
   #topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px}
 
   /* ============ DASHBOARD ADD-ONS ============ */
@@ -173,6 +174,18 @@
 </div>
 
 <script>
+// SECURITY: business_name, industry, country and guide_key are all set by
+// the TENANT (via save_tenant_cfg / request_guide_purchase), not the admin.
+// Rendering them into innerHTML unescaped would let any signed-up business
+// run script in the ADMIN's own authenticated session the moment the admin
+// opens this dashboard, a stored-XSS path directly into the highest-privilege
+// account on the platform. Every tenant-supplied string below must go
+// through esc() before it touches innerHTML.
+function esc(s){
+  if(s===null || s===undefined) return '';
+  return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
 const SUPABASE_URL = 'https://bnbcozkrvqforiunwzrz.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_KwKhcg8loLN4Ai0WH7s7PQ_0WPFhcsB';
 let sb = null, SUPABASE_READY = false, SUPABASE_LOAD_FAILED = false;
@@ -305,10 +318,10 @@ async function loadBusinesses(){
       <th>Business</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Status</th><th>Signed up</th>
     </tr></thead><tbody>${data.map(b=>`
       <tr>
-        <td><b>${b.business_name||'Unnamed business'}</b></td>
-        <td>${b.owner_email||'—'}</td>
-        <td>${b.industry||'—'}</td>
-        <td>${b.country||'—'}</td>
+        <td><b>${esc(b.business_name)||'Unnamed business'}</b></td>
+        <td>${esc(b.owner_email)||'—'}</td>
+        <td>${esc(b.industry)||'—'}</td>
+        <td>${esc(b.country)||'—'}</td>
         <td>${planPill(b.plan)}</td>
         <td>${statusPill(b.status)}</td>
         <td>${fmtDate(b.created_at)}</td>
@@ -322,7 +335,7 @@ async function loadAdmins(){
   if(error){ wrap.innerHTML = `<div class="card empty">Could not load admins: ${error.message||error}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No admins found.</div>'; return; }
   wrap.innerHTML = `<table class="biz-table"><thead><tr><th>Email</th><th>Added</th></tr></thead><tbody>${data.map(a=>`
-      <tr><td>${a.email||a.user_id}</td><td>${fmtDate(a.added_at)}</td></tr>`).join('')}</tbody></table>`;
+      <tr><td>${esc(a.email||a.user_id)}</td><td>${fmtDate(a.added_at)}</td></tr>`).join('')}</tbody></table>`;
 }
 
 function renderList(rows){
@@ -335,9 +348,9 @@ function renderList(rows){
     const p = r.raw_payload || {};
     return `
     <div class="card pending" data-id="${r.id}">
-      <div class="biz">${(r.business_name||'Unknown business')}</div>
+      <div class="biz">${esc(r.business_name)||'Unknown business'}</div>
       <div class="meta">
-        ${r.provider.toUpperCase()} · requested plan: <b>${p.plan||'—'}</b> ·
+        ${esc(r.provider.toUpperCase())} · requested plan: <b>${esc(p.plan)||'—'}</b> ·
         ${new Date(r.created_at).toLocaleString()}
       </div>
       <div class="row">
@@ -384,9 +397,9 @@ function renderGuideList(rows){
     const p = r.raw_payload || {};
     return `
     <div class="card pending" data-id="${r.id}">
-      <div class="biz">${(r.business_name||'Unknown business')}</div>
+      <div class="biz">${esc(r.business_name)||'Unknown business'}</div>
       <div class="meta">
-        ${r.provider.toUpperCase()} · guide: <b>${p.guide_key||'—'}</b> ·
+        ${esc(r.provider.toUpperCase())} · guide: <b>${esc(p.guide_key)||'—'}</b> ·
         ${new Date(r.created_at).toLocaleString()}
       </div>
       <div class="row">
@@ -428,5 +441,8 @@ async function signOutAdmin(){
   if(session) await afterLogin();
 })();
 </script>
+
+<div class="legal-foot">TecXFRA<span style="vertical-align:super;font-size:8px">©</span> Admin · a BYINFORGH product · internal use only</div>
+
 </body>
 </html>
