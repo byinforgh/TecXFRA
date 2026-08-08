@@ -217,7 +217,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
    since it lives at the end of <body> rather than inside any one screen's
    container, so it never needs to be duplicated or gets wiped out when
    #pageContent or #wizard get re-rendered. */
-.legal-foot{position:fixed; left:0; right:0; bottom:0; z-index:150; display:flex; align-items:center; justify-content:center; gap:10px; padding:5px 12px; background:rgba(250,248,243,.92); backdrop-filter:blur(4px); border-top:1px solid var(--line); font-size:10.5px; color:var(--muted); pointer-events:none;}
+.legal-foot{position:fixed; left:0; right:0; bottom:0; z-index:150; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 10px; padding:5px 12px; background:rgba(250,248,243,.92); backdrop-filter:blur(4px); border-top:1px solid var(--line); font-size:10.5px; color:var(--muted); pointer-events:none; text-align:center;}
 .legal-foot > *{pointer-events:auto;}
 .legal-foot button{background:none; border:none; padding:0; font:inherit; color:var(--muted); text-decoration:underline; cursor:pointer;}
 .legal-foot button:hover{color:var(--teal-dim);}
@@ -2224,6 +2224,228 @@ function showTerms(){
   </div></div>`;
 }
 
+/* ---------- PRIVACY POLICY ----------
+   Same modalRoot pattern as Terms. Covers what we collect, why, where it
+   lives, and a country-by-country rights section matching COUNTRIES[]. */
+const PRIVACY_HTML = `
+  <h4>1. Who We Are</h4>
+  <p>TecXFRA is a business operating system built and owned by BYINFORGH ("we", "us", "our"). This Privacy Policy explains what personal data we collect through TecXFRA, why we collect it, how it is protected, and the rights you and your customers have over it. It applies to the business owner using TecXFRA ("you") and, where relevant, to the customer and staff data you enter into it.</p>
+
+  <h4>2. What We Collect</h4>
+  <ul>
+    <li><b>Account data:</b> your name, business name, email, phone number, country, and login credentials.</li>
+    <li><b>Business data you enter:</b> contacts and customers, staff records, transactions, expenses, inventory, calendar events, follow-ups, journal entries, and similar records you choose to add.</li>
+    <li><b>Payment data:</b> for card payments, Paystack processes and stores your card details directly, we never see or store full card numbers. For Mobile Money, Invoice, or Cash, we record the reference/confirmation details you or our team enter, not your mobile money PIN.</li>
+    <li><b>Usage data:</b> basic technical information such as browser type and general activity within the app, used to keep the service working and to fix bugs.</li>
+  </ul>
+
+  <h4>3. Why We Collect It</h4>
+  <ul>
+    <li>To provide the TecXFRA service you signed up for and keep your account working.</li>
+    <li>To keep your business's data separate, secure, and accessible only to you.</li>
+    <li>To process payments and manage your plan/subscription.</li>
+    <li>To contact you about your account, support requests, or material changes to the service.</li>
+    <li>To fix bugs, improve reliability, and understand how the product is used at a general level.</li>
+  </ul>
+
+  <h4>4. Whose Data Lives Inside TecXFRA</h4>
+  <p>Beyond your own account, TecXFRA lets you store data about your own customers, clients, and staff (names, phone numbers, notes, transaction history). That data is entered and controlled by you, the business. You act as the "data controller" for that information under most data protection laws, and BYINFORGH acts as the "data processor," storing it securely on your behalf. You are responsible for having a lawful basis to collect and store your customers' and staff's information, and for honouring any requests they make to you about their own data.</p>
+
+  <h4>5. Where Your Data Lives & Who Can See It</h4>
+  <ul>
+    <li>Your data is stored on Supabase (a hosted PostgreSQL database provider) with Row Level Security enforced, meaning our systems check every request so one business can never read or write another business's data.</li>
+    <li>Connections between your browser and our servers are encrypted (HTTPS/TLS).</li>
+    <li>We use a small number of service providers to run TecXFRA: Supabase (database & authentication), Resend (transactional email delivery), and Paystack (card payment processing, once active). These providers only receive the minimum data needed to perform their function, and are bound by their own security and confidentiality obligations. We do not sell your data, or your customers' data, to anyone, ever.</li>
+    <li>BYINFORGH staff only access your business data to provide support you request, investigate a fault, or as required by law.</li>
+  </ul>
+
+  <h4>6. How Long We Keep It</h4>
+  <p>We keep your data for as long as your account is active. If you cancel or downgrade, your historical data is retained (not deleted) so you can pick back up later. If you want your account and data permanently deleted, contact us and we will action it, subject to any legal or accounting record-keeping requirements that apply to your country.</p>
+
+  <h4>7. Your Rights & Choices</h4>
+  <ul>
+    <li><b>Access:</b> you can view and export most of your business data from inside TecXFRA at any time.</li>
+    <li><b>Correction:</b> you can edit or correct your account and business data directly in the app.</li>
+    <li><b>Deletion:</b> you can archive records inside the app, or request full account deletion by contacting us.</li>
+    <li><b>Objection / restriction:</b> you can ask us to stop a specific processing activity that isn't essential to running the service.</li>
+  </ul>
+
+  <h4>8. Your Rights By Country</h4>
+  <p>Depending on where your business (or your customers) are located, you and they may have specific rights under local data protection law. This section is a general guide, not legal advice, always check with your local regulator for the current position:</p>
+  <ul>
+    <li><b>Ghana:</b> Data Protection Act, 2012 (Act 843), overseen by the Data Protection Commission. Covers the right to access, correct, and object to processing of personal data.</li>
+    <li><b>Nigeria:</b> Nigeria Data Protection Act, 2023 (NDPA), overseen by the Nigeria Data Protection Commission (NDPC). Covers rights of access, correction, erasure, and data portability.</li>
+    <li><b>Kenya:</b> Data Protection Act, 2019, overseen by the Office of the Data Protection Commissioner (ODPC). Covers rights of access, correction, deletion, and objection to processing.</li>
+    <li><b>South Africa:</b> Protection of Personal Information Act (POPIA), overseen by the Information Regulator. Covers rights of access, correction, deletion, and objection to processing.</li>
+    <li><b>United Kingdom:</b> UK GDPR and the Data Protection Act 2018, overseen by the Information Commissioner's Office (ICO). Covers rights of access, rectification, erasure ("right to be forgotten"), and data portability.</li>
+    <li><b>Germany / Eurozone:</b> EU General Data Protection Regulation (GDPR), overseen by your national/state data protection authority. Covers the same core rights as the UK GDPR, plus the right to lodge a complaint with your local supervisory authority.</li>
+    <li><b>United States:</b> no single federal privacy law; several states (e.g. California's CCPA/CPRA) give residents rights to know, delete, and opt out of the sale of personal data. We do not sell personal data in any state.</li>
+    <li><b>Canada:</b> Personal Information Protection and Electronic Documents Act (PIPEDA), overseen by the Office of the Privacy Commissioner of Canada. Covers rights of access and correction, and requires consent for collection and use.</li>
+    <li><b>India:</b> Digital Personal Data Protection Act, 2023 (DPDPA), overseen by the Data Protection Board of India. Covers rights of access, correction, erasure, and grievance redressal.</li>
+    <li><b>United Arab Emirates:</b> Federal Decree-Law No. 45 of 2021 on the Protection of Personal Data (PDPL), overseen by the UAE Data Office. Covers rights of access, correction, and objection to processing.</li>
+    <li><b>Other / not listed:</b> if your country isn't listed above, we still apply the general privacy principles in this policy, and will do our best to honour any local rights that apply to you on request.</li>
+  </ul>
+  <p>To exercise any of these rights, contact us using the details in Section 12 below. We will respond within the timeframe required by the applicable law, or within 30 days where no specific timeframe applies.</p>
+
+  <h4>9. Cookies & Local Storage</h4>
+  <p>TecXFRA uses essential browser storage (such as session tokens) to keep you logged in and remember your preferences. We do not use third-party advertising trackers or sell browsing data.</p>
+
+  <h4>10. Children's Data</h4>
+  <p>TecXFRA is a business tool intended for business owners, staff, and their adult customers. It is not directed at children, and we do not knowingly collect personal data from anyone under 18 as an account holder.</p>
+
+  <h4>11. Security</h4>
+  <p>We take reasonable technical and organisational measures to protect your data, see our full <a href="javascript:void(0)" onclick="closeModal();showSecurity()" style="color:var(--teal-dim);font-weight:600">Security Policy</a> for details. No system connected to the internet can be guaranteed 100% secure, but we work continuously to reduce risk and respond quickly to any issue.</p>
+
+  <h4>12. Changes to This Policy</h4>
+  <p>We may update this Privacy Policy as TecXFRA grows or as laws change. Material changes will be communicated within the app where reasonably possible.</p>
+
+  <h4>13. Contact Us</h4>
+  <p>Questions, data requests, or concerns about this Privacy Policy can be sent to <b>solutions@byinforgh.com</b>.</p>
+
+  <p style="margin-top:16px;font-size:11px;color:var(--muted)">Last updated: August 2026. This policy is provided for general information and does not constitute legal advice. TecXFRA is a product of BYINFORGH. All rights reserved.</p>
+`;
+function showPrivacy(){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px;max-height:80vh">
+    <div class="modal-head"><h3>Privacy Policy</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="terms-body">${PRIVACY_HTML}</div>
+  </div></div>`;
+}
+
+/* ---------- SECURITY POLICY ---------- */
+const SECURITY_HTML = `
+  <h4>1. Our Approach</h4>
+  <p>TecXFRA holds real business data for real businesses, income, customers, staff, and daily operations, so security is treated as a foundation, not an afterthought. This page explains, in plain language, how your data is protected and what you can do to help keep your own account secure.</p>
+
+  <h4>2. Your Data Is Isolated From Every Other Business</h4>
+  <p>TecXFRA is multi-tenant software: many businesses share the same platform, but never the same data. Every table in our database enforces Row Level Security (RLS), a database-level rule that only lets a request through if it belongs to your business. This is checked on every single request, not just in the app's interface, so it can't be bypassed by, for example, opening a browser's developer console.</p>
+
+  <h4>3. Encryption</h4>
+  <p>All traffic between your browser and TecXFRA's servers is encrypted using HTTPS/TLS. Your data is stored on infrastructure that encrypts data at rest.</p>
+
+  <h4>4. Account & Access Controls</h4>
+  <ul>
+    <li>Login is protected by your email and password. We recommend a strong, unique password, and never sharing your login with anyone outside your business.</li>
+    <li>Only authenticated, verified members of your own business can see your business's dashboard and data.</li>
+    <li>Administrative access to the underlying platform is restricted to authorised BYINFORGH personnel, and is used only for support, maintenance, or legal compliance.</li>
+  </ul>
+
+  <h4>5. Payments</h4>
+  <p>TecXFRA never stores your full card number. Card payments are handled by Paystack, a PCI-compliant payment processor, once card payments are active on your account. Mobile Money, Invoice, and Cash payments are recorded as references and confirmed manually by our team, we do not collect mobile money PINs or banking passwords.</p>
+
+  <h4>6. Ongoing Monitoring & Hardening</h4>
+  <p>We regularly review the platform for security and performance issues, including database-level security advisories, and apply fixes as they're identified. This is a continuous process as the platform grows, not a one-time check.</p>
+
+  <h4>7. Backups</h4>
+  <p>Your data is stored on infrastructure that maintains regular backups, so accidental data loss on our side can be recovered.</p>
+
+  <h4>8. If Something Goes Wrong</h4>
+  <p>If we become aware of a data breach affecting your business's information, we will investigate promptly and notify affected businesses without undue delay, in line with the notification requirements of the data protection laws that apply, once the nature and scope of the issue is understood.</p>
+
+  <h4>9. What You Can Do</h4>
+  <ul>
+    <li>Use a strong, unique password for your TecXFRA account.</li>
+    <li>Don't share your login details, add teammates as their own staff users instead where possible.</li>
+    <li>Log out on shared or public devices.</li>
+    <li>Let us know immediately if you suspect unauthorised access to your account.</li>
+  </ul>
+
+  <h4>10. Reporting a Security Concern</h4>
+  <p>If you discover a possible security issue or vulnerability in TecXFRA, please report it to <b>solutions@byinforgh.com</b> rather than sharing it publicly. We take every report seriously and will investigate promptly.</p>
+
+  <p style="margin-top:16px;font-size:11px;color:var(--muted)">Last updated: August 2026. Security is an ongoing programme, this page describes our current measures and will be updated as they evolve. TecXFRA is a product of BYINFORGH. All rights reserved.</p>
+`;
+function showSecurity(){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px;max-height:80vh">
+    <div class="modal-head"><h3>Security</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="terms-body">${SECURITY_HTML}</div>
+  </div></div>`;
+}
+
+/* ---------- FAQ ---------- */
+const FAQ_HTML = `
+  <h4>What is TecXFRA?</h4>
+  <p>TecXFRA is a Business Operating System built by BYINFORGH. It brings your daily tasks, expenses, customers, calendar, follow-ups, revenue, and accountability into one dashboard, so you're not juggling separate apps and spreadsheets to run your business.</p>
+
+  <h4>Who owns my business data?</h4>
+  <p>You do. The contacts, transactions, journal entries, and everything else you enter belongs to your business. TecXFRA stores it securely on your behalf to run the service, we don't sell it, and every other business on the platform is fully blocked from seeing it. See our <a href="javascript:void(0)" onclick="closeModal();showPrivacy()" style="color:var(--teal-dim);font-weight:600">Privacy Policy</a> for details.</p>
+
+  <h4>What are the pricing plans?</h4>
+  <p>TecXFRA offers three tiers, Starter, Growth, and Enterprise. Starter is an affordable entry point with pay-as-you-grow module unlocks, Growth is the standard plan for most SMEs, and Enterprise unlocks everything for businesses running their full operation from the platform. Upgrading never removes anything you already have, it only adds to it.</p>
+
+  <h4>What is the founding member offer?</h4>
+  <p>The first 10 businesses to sign up receive their chosen plan free, permanently: 2 Enterprise, 3 Growth, and 5 Starter spots. It's limited, one-time, and non-transferable. Once all 10 spots are claimed, new signups move to paid plans.</p>
+
+  <h4>How can I pay?</h4>
+  <p>Mobile Money, Invoice, and Cash are currently supported, manually reviewed and activated by our team. Card payments via Paystack are coming soon.</p>
+
+  <h4>Can I cancel or downgrade my plan?</h4>
+  <p>Yes, at any time from Settings → Account. Cancelling moves you back to the Starter plan and keeps your historical data intact, nothing is deleted.</p>
+
+  <h4>Is my data safe if I stop paying or downgrade?</h4>
+  <p>Yes. Your data is retained, not deleted, when you cancel or downgrade. You only lose access to the extra modules of the higher plan, the underlying data stays exactly where it was.</p>
+
+  <h4>Which countries does TecXFRA support?</h4>
+  <p>TecXFRA is built Ghana-first and currently supports Ghana, Nigeria, Kenya, South Africa, the United Kingdom, the United States, Canada, India, the United Arab Emirates, and Germany/Eurozone, with a general "Other" option for anywhere else. Each supported country has its own tax and payroll terminology built in.</p>
+
+  <h4>Does TecXFRA give tax or legal advice?</h4>
+  <p>No. Tax rates and payroll notes inside TecXFRA are provided as general guidance to help you understand your country's system. Always verify current rates and requirements with your local tax authority before filing or making financial decisions.</p>
+
+  <h4>Can other businesses on TecXFRA see my data?</h4>
+  <p>No. Every business's data is isolated at the database level using Row Level Security, one business can never read or write another business's data. See our <a href="javascript:void(0)" onclick="closeModal();showSecurity()" style="color:var(--teal-dim);font-weight:600">Security</a> page for details.</p>
+
+  <h4>How do I get support?</h4>
+  <p>Contact us at <b>solutions@byinforgh.com</b> with your business name and a description of the issue, and our team will respond as soon as possible.</p>
+
+  <h4>Can I become a BYINFORGH Affiliate or Partner?</h4>
+  <p>Yes. Businesses who use TecXFRA successfully can apply to become official BYINFORGH Affiliates or Certified Implementation Partners, earning commissions for introducing new businesses to the ecosystem. Affiliates and partners never gain ownership of the underlying platform, name, or code.</p>
+
+  <p style="margin-top:16px;font-size:11px;color:var(--muted)">Last updated: August 2026. TecXFRA is a product of BYINFORGH. All rights reserved.</p>
+`;
+function showFAQ(){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px;max-height:80vh">
+    <div class="modal-head"><h3>Frequently Asked Questions</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="terms-body">${FAQ_HTML}</div>
+  </div></div>`;
+}
+
+/* ---------- COOKIE NOTICE ----------
+   Kept thin on purpose: TecXFRA only sets essential session/auth storage,
+   no ad trackers, no third-party analytics pixels, so this is a disclosure
+   notice rather than a consent-gate. If that ever changes (analytics,
+   marketing pixels added), this page AND the opt-in flow both need
+   revisiting, essential-only cookies don't need a consent banner under
+   GDPR/PECR, non-essential ones do. */
+const COOKIES_HTML = `
+  <p>TecXFRA keeps this simple: we don't use advertising cookies, tracking pixels, or sell browsing data to anyone. Here's exactly what we do use.</p>
+
+  <h4>1. Essential Cookies & Storage (Always On)</h4>
+  <p>These are required for TecXFRA to work and can't be switched off, they don't track you across other websites, and no consent banner is required for these under data protection law:</p>
+  <ul>
+    <li><b>Session/auth tokens</b> — keep you logged in between visits, so you're not asked to sign in on every click.</li>
+    <li><b>Local app preferences</b> — such as your last-viewed module or sidebar state, stored on your own device.</li>
+  </ul>
+
+  <h4>2. Analytics Cookies</h4>
+  <p>TecXFRA does not currently use third-party analytics (e.g. Google Analytics) or marketing pixels. If this changes in future, this notice will be updated first, and, where required by law (for example for visitors in the UK/EU), we will ask for your consent before any non-essential cookie is set.</p>
+
+  <h4>3. Third-Party Cookies</h4>
+  <p>Card payments, once enabled, are handled by Paystack on a page they control, which may set its own cookies under its own privacy policy. WhatsApp deep links open WhatsApp's own app or site, governed by WhatsApp's own policies, not ours.</p>
+
+  <h4>4. Managing Cookies</h4>
+  <p>You can clear cookies and local storage at any time through your browser settings. Doing so will simply log you out of TecXFRA, it won't affect any data already saved to your business account.</p>
+
+  <h4>5. Questions</h4>
+  <p>Contact <b>solutions@byinforgh.com</b> with any questions about this notice. See also our <a href="javascript:void(0)" onclick="closeModal();showPrivacy()" style="color:var(--teal-dim);font-weight:600">Privacy Policy</a>.</p>
+
+  <p style="margin-top:16px;font-size:11px;color:var(--muted)">Last updated: August 2026. TecXFRA is a product of BYINFORGH. All rights reserved.</p>
+`;
+function showCookies(){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px;max-height:80vh">
+    <div class="modal-head"><h3>Cookie Notice</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="terms-body">${COOKIES_HTML}</div>
+  </div></div>`;
+}
+
 /* ---------- FOLLOW-UPS ---------- */
 function renderFollowups(){
   const t = todayStr();
@@ -3945,6 +4167,12 @@ async function toggleLiveModule(el, key){
   <span>TecXFRA<span style="vertical-align:super;font-size:8px">©</span> · a BYINFORGH product</span>
   <span aria-hidden="true">·</span>
   <button onclick="showTerms()">Terms &amp; Conditions</button>
+  <span aria-hidden="true">·</span>
+  <button onclick="showPrivacy()">Privacy Policy</button>
+  <span aria-hidden="true">·</span>
+  <button onclick="showSecurity()">Security</button>
+  <span aria-hidden="true">·</span>
+  <button onclick="showFAQ()">FAQ</button>
 </div>
 
 </body>
