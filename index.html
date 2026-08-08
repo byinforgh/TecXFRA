@@ -14,10 +14,24 @@
   --amber:#c98a2e; --amber-tint:#fbf1e2; --coral:#c0584a; --coral-tint:#f8ebe8; --green:#3f8f5f; --green-tint:#eaf5ee;
   --r-sm:8px; --r-md:12px; --r-lg:18px;
   --shadow:0 1px 2px rgba(18,54,66,.04), 0 8px 24px -12px rgba(18,54,66,.10);
+  --legalfoot-h:24px; /* reserved height of the fixed legal footer, kept in
+    sync with .legal-foot's real height so .sidebar can subtract it and its
+    bottom item never sits underneath the footer overlay */
 }
 *{box-sizing:border-box; margin:0; padding:0;}
 html{scroll-behavior:smooth;}
 body{background:var(--cream); color:var(--ink); font-family:'Inter',sans-serif; min-height:100vh; -webkit-font-smoothing:antialiased;}
+/* Only lock page-level scroll once the dashboard shell (#app) is active,
+   the wizard/auth screens still rely on natural body scroll when their
+   content is taller than a short phone's viewport (min-height:100vh, not
+   a fixed height), so this must NOT be a blanket rule or those screens
+   lose the ability to scroll. Scoped with :has(), same pattern already
+   used for #modalRoot below. This is the fix for "left/sidebar scroll
+   gets stuck, needs a refresh": without it, a touch-scroll gesture could
+   occasionally be captured by <body> instead of the intended internal
+   scroll container (.sb-nav / .content), which reads as a frozen scroll
+   until reload. */
+body:has(#app.active){overflow:hidden; height:100vh; height:100dvh;}
 .disp{font-family:'Space Grotesk',sans-serif;}
 .mono{font-family:'IBM Plex Mono',monospace;}
 a{color:inherit;}
@@ -117,13 +131,13 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 /* ============ APP SHELL ============ */
 #app{display:none; min-height:100vh;}
 #app.active{display:flex;}
-.sidebar{width:236px; flex-shrink:0; background:var(--navy); color:#eaf3f4; display:flex; flex-direction:column; height:100vh; height:100dvh; position:sticky; top:0;}
+.sidebar{width:236px; flex-shrink:0; background:var(--navy); color:#eaf3f4; display:flex; flex-direction:column; height:calc(100vh - var(--legalfoot-h)); height:calc(100dvh - var(--legalfoot-h)); position:sticky; top:0;}
 .sb-brand{display:flex; align-items:center; gap:10px; padding:20px 18px; border-bottom:1px solid rgba(255,255,255,.08);}
 .sb-brand .name{font-weight:700; font-size:15px; letter-spacing:-.2px; color:#fff;}
 .sb-brand .biz{font-size:10.5px; color:#9fc3ca; letter-spacing:.5px;}
 .sb-slogan{padding:7px 18px 11px; font-size:9px; letter-spacing:1.6px; text-transform:uppercase; color:var(--teal); font-weight:800; border-bottom:1px solid rgba(255,255,255,.08); cursor:pointer;}
 .sb-slogan:hover{color:#fff;}
-.sb-nav{flex:1; overflow-y:auto; padding:14px 10px;}
+.sb-nav{flex:1; overflow-y:auto; padding:14px 10px; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;}
 .sb-group-label{font-size:9.5px; letter-spacing:1.6px; text-transform:uppercase; color:#5f8890; font-weight:700; padding:14px 10px 6px;}
 .sb-letter{display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:4px; background:var(--teal); color:#fff; font-family:'IBM Plex Mono',monospace; font-size:9px; font-weight:800; margin-right:4px; letter-spacing:0; text-transform:none;}
 .sb-item{display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:9px; font-size:13px; font-weight:500; color:#c9e0e3; cursor:pointer; margin-bottom:2px; position:relative;}
@@ -155,7 +169,7 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 .top-actions{display:flex; align-items:center; gap:10px;}
 .icon-btn{width:36px; height:36px; border-radius:9px; border:1.5px solid var(--line); background:var(--paper); display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--ink-dim);}
 .icon-btn:hover{border-color:var(--teal); color:var(--teal-dim);}
-.content{padding:24px 26px 60px; max-width:1400px; width:100%; margin:0 auto; flex:1; overflow-y:auto; overflow-x:hidden; min-height:0;}
+.content{padding:24px 26px 60px; max-width:1400px; width:100%; margin:0 auto; flex:1; overflow-y:auto; overflow-x:hidden; min-height:0; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;}
 
 /* ============ SHARED UI ============ */
 .grid-metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:20px;}
@@ -216,12 +230,21 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
    Fixed, sits on top of every screen (boot loader / auth / wizard / app)
    since it lives at the end of <body> rather than inside any one screen's
    container, so it never needs to be duplicated or gets wiped out when
-   #pageContent or #wizard get re-rendered. */
-.legal-foot{position:fixed; left:0; right:0; bottom:0; z-index:150; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 10px; padding:5px 12px; background:rgba(250,248,243,.92); backdrop-filter:blur(4px); border-top:1px solid var(--line); font-size:10.5px; color:var(--muted); pointer-events:none; text-align:center;}
-.legal-foot > *{pointer-events:auto;}
+   #pageContent or #wizard get re-rendered.
+   Deliberately flex-wrap:NOWRAP + horizontal scroll instead of wrapping:
+   this footer is an overlay on top of the sidebar (see --legalfoot-h),
+   not part of normal document flow, so letting it wrap to a 2nd line
+   silently grows its height and starts covering the sidebar's bottom
+   item. Nowrap + scroll-x guarantees it is always exactly one line tall,
+   no matter how many links get added later, mobile users can swipe it
+   sideways if it doesn't all fit, desktop users will simply never
+   notice since it fits comfortably at that width. */
+.legal-foot{position:fixed; left:0; right:0; bottom:0; z-index:150; height:var(--legalfoot-h); display:flex; flex-wrap:nowrap; align-items:center; justify-content:center; gap:8px 10px; padding:0 12px; background:rgba(250,248,243,.92); backdrop-filter:blur(4px); border-top:1px solid var(--line); font-size:10.5px; color:var(--muted); pointer-events:none; overflow-x:auto; scrollbar-width:none;}
+.legal-foot::-webkit-scrollbar{display:none;}
+.legal-foot > *{pointer-events:auto; white-space:nowrap; flex-shrink:0;}
 .legal-foot button{background:none; border:none; padding:0; font:inherit; color:var(--muted); text-decoration:underline; cursor:pointer;}
 .legal-foot button:hover{color:var(--teal-dim);}
-@media (max-width:520px){.legal-foot{font-size:9.5px; gap:6px; padding:4px 8px;}}
+@media (max-width:520px){.legal-foot{font-size:9.5px; gap:6px; padding:0 8px;}}
 #app .legal-foot, #app ~ .legal-foot{position:fixed;}
 .terms-body{font-size:12.5px; line-height:1.75; color:var(--ink-dim); max-height:60vh; overflow-y:auto; padding-right:4px;}
 .terms-body h4{font-family:'Space Grotesk',sans-serif; color:var(--navy); font-size:13.5px; margin:18px 0 6px;}
@@ -2317,7 +2340,7 @@ const SECURITY_HTML = `
   <p>TecXFRA holds real business data for real businesses, income, customers, staff, and daily operations, so security is treated as a foundation, not an afterthought. This page explains, in plain language, how your data is protected and what you can do to help keep your own account secure.</p>
 
   <h4>2. Your Data Is Isolated From Every Other Business</h4>
-  <p>TecXFRA is multi-tenant software: many businesses share the same platform, but never the same data. Every table in our database enforces Row Level Security (RLS), a database-level rule that only lets a request through if it belongs to your business. This is checked on every single request, not just in the app's interface, so it can't be bypassed by, for example, opening a browser's developer console.</p>
+  <p>TecXFRA is multi-tenant software: many businesses share the same platform, but never the same data. Every table in our database enforces Row Level Security (RLS), a database-level rule that only lets a request through if it belongs to your business. This is checked on every single request, not just in the app's interface, so it can't be bypassed by, for example, opening a browser's developer console. On top of RLS, every read and write to your business data is routed through dedicated server-side functions that are hard-locked to your own logged-in identity, there is no code path, anywhere in the app, that accepts another business's ID as an input. Both layers were independently reviewed and confirmed on the live database, not just designed to work this way in theory.</p>
 
   <h4>3. Encryption</h4>
   <p>All traffic between your browser and TecXFRA's servers is encrypted using HTTPS/TLS. Your data is stored on infrastructure that encrypts data at rest.</p>
@@ -2326,20 +2349,20 @@ const SECURITY_HTML = `
   <ul>
     <li>Login is protected by your email and password. We recommend a strong, unique password, and never sharing your login with anyone outside your business.</li>
     <li>Only authenticated, verified members of your own business can see your business's dashboard and data.</li>
-    <li>Administrative access to the underlying platform is restricted to authorised BYINFORGH personnel, and is used only for support, maintenance, or legal compliance.</li>
+    <li>Administrative access to the underlying platform is restricted to authorised BYINFORGH personnel, every admin action is checked against a server-side admin list before it's allowed to run, and is used only for support, maintenance, or legal compliance.</li>
   </ul>
 
   <h4>5. Payments</h4>
   <p>TecXFRA never stores your full card number. Card payments are handled by Paystack, a PCI-compliant payment processor, once card payments are active on your account. Mobile Money, Invoice, and Cash payments are recorded as references and confirmed manually by our team, we do not collect mobile money PINs or banking passwords.</p>
 
   <h4>6. Ongoing Monitoring & Hardening</h4>
-  <p>We regularly review the platform for security and performance issues, including database-level security advisories, and apply fixes as they're identified. This is a continuous process as the platform grows, not a one-time check.</p>
+  <p>We regularly review the platform for security and performance issues, including database-level security advisories, and apply fixes as they're identified. This is a continuous process as the platform grows, not a one-time check. In line with Ghana's Cybersecurity Act, 2020 (Act 1038), which requires reasonable cyber hygiene and data protection practices for commercial applications operating in Ghana, TecXFRA follows the same continuous-review discipline described on this page regardless of which country a business is signing up from.</p>
 
   <h4>7. Backups</h4>
   <p>Your data is stored on infrastructure that maintains regular backups, so accidental data loss on our side can be recovered.</p>
 
   <h4>8. If Something Goes Wrong</h4>
-  <p>If we become aware of a data breach affecting your business's information, we will investigate promptly and notify affected businesses without undue delay, in line with the notification requirements of the data protection laws that apply, once the nature and scope of the issue is understood.</p>
+  <p>If we become aware of a data breach affecting your business's information, we follow a documented internal incident response process: contain the issue, assess what was affected, fix the cause, and notify affected businesses without undue delay, in line with the notification requirements of the data protection laws that apply, once the nature and scope of the issue is understood.</p>
 
   <h4>9. What You Can Do</h4>
   <ul>
@@ -4166,11 +4189,13 @@ async function toggleLiveModule(el, key){
 <div class="legal-foot">
   <span>TecXFRA<span style="vertical-align:super;font-size:8px">©</span> · a BYINFORGH product</span>
   <span aria-hidden="true">·</span>
-  <button onclick="showTerms()">Terms &amp; Conditions</button>
+  <button onclick="showTerms()">Terms</button>
   <span aria-hidden="true">·</span>
-  <button onclick="showPrivacy()">Privacy Policy</button>
+  <button onclick="showPrivacy()">Privacy</button>
   <span aria-hidden="true">·</span>
   <button onclick="showSecurity()">Security</button>
+  <span aria-hidden="true">·</span>
+  <button onclick="showCookies()">Cookies</button>
   <span aria-hidden="true">·</span>
   <button onclick="showFAQ()">FAQ</button>
 </div>
