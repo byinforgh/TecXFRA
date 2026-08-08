@@ -155,7 +155,7 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 .top-actions{display:flex; align-items:center; gap:10px;}
 .icon-btn{width:36px; height:36px; border-radius:9px; border:1.5px solid var(--line); background:var(--paper); display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--ink-dim);}
 .icon-btn:hover{border-color:var(--teal); color:var(--teal-dim);}
-.content{padding:24px 26px 60px; max-width:1400px; width:100%; margin:0 auto; flex:1; overflow-y:auto; min-height:0;}
+.content{padding:24px 26px 60px; max-width:1400px; width:100%; margin:0 auto; flex:1; overflow-y:auto; overflow-x:hidden; min-height:0;}
 
 /* ============ SHARED UI ============ */
 .grid-metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:20px;}
@@ -193,7 +193,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 .list-row:last-child{border-bottom:none;}
 .toast{position:fixed; bottom:24px; right:24px; background:var(--navy); color:#fff; padding:11px 18px; border-radius:10px; font-size:12.5px; font-weight:600; opacity:0; transform:translateY(14px); transition:.28s; z-index:999; box-shadow:var(--shadow);}
 .toast.show{opacity:1; transform:translateY(0);}
-.calendar-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px;}
+.calendar-grid{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px;}
 .cal-dow{font-size:9.5px; font-weight:700; letter-spacing:1px; color:var(--muted); text-align:center; padding:4px 0; text-transform:uppercase;}
 .cal-cell{background:var(--cream); border:1px solid var(--line); border-radius:8px; min-height:78px; padding:6px; display:flex; flex-direction:column; gap:3px;}
 .cal-cell.empty2{background:transparent; border:none;}
@@ -202,6 +202,16 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 .cal-pill{font-size:9px; padding:2px 6px; border-radius:5px; background:var(--paper); border:1px solid var(--line); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;}
 .chip{display:inline-flex; align-items:center; gap:5px; background:var(--teal-tint); color:var(--teal-dim); padding:5px 11px; border-radius:20px; font-size:11px; font-weight:700; margin:2px 4px 2px 0;}
 .modal-overlay{display:none; position:fixed; inset:0; background:rgba(12,38,47,.55); z-index:200; align-items:flex-start; justify-content:center; padding:50px 16px; overflow-y:auto;}
+/* FIX (Aug 2026 audit): #modalRoot is itself class="modal-overlay" (display:none) and
+   every open*Modal() function writes a NESTED .modal-overlay.show div inside it. A
+   display:none ancestor hides its entire subtree regardless of a child's own display
+   value, so every modal in the app (17 call sites: calendar, contacts, inventory,
+   debtors, expenses, staff, terms, guides, plans, industry change) was rendering with
+   zero width/height, invisible and unclickable. Fix is CSS-only and touches none of
+   the 17 call sites: make #modalRoot itself become visible whenever it contains a
+   populated .show child. closeModal() already empties #modalRoot's innerHTML, which
+   removes the .show descendant and lets this rule stop matching automatically. */
+#modalRoot:has(.modal-overlay.show){display:flex; align-items:flex-start; justify-content:center; padding:50px 16px; overflow-y:auto;}
 /* ---------- LEGAL FOOTER ----------
    Fixed, sits on top of every screen (boot loader / auth / wizard / app)
    since it lives at the end of <body> rather than inside any one screen's
@@ -1936,8 +1946,8 @@ function openEventModal(id){
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
     <div class="modal-head"><h3>Edit Event</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <label class="lbl">Title</label><input class="inp" value="${esc(e.title||'')}" onchange="updateEvent('${id}','title',this.value)">
-    <label class="lbl">Date</label><input class="inp" type="date" value="${e.date||''}" onchange="updateEvent('${id}','date',this.value)">
-    <label class="lbl">Time</label><input class="inp" type="time" value="${e.time||''}" onchange="updateEvent('${id}','time',this.value)">
+    <label class="lbl">Date</label><input class="inp" type="date" value="${esc(e.date||'')}" onchange="updateEvent('${id}','date',this.value)">
+    <label class="lbl">Time</label><input class="inp" type="time" value="${esc(e.time||'')}" onchange="updateEvent('${id}','time',this.value)">
     <label class="lbl">Location</label><input class="inp" value="${esc(e.location||'')}" onchange="updateEvent('${id}','location',this.value)">
     <label class="lbl">Phone number</label><input class="inp" value="${esc(e.phone||'')}" onchange="updateEvent('${id}','phone',this.value)">
     <label class="lbl">Note</label><textarea class="inp" rows="3" onchange="updateEvent('${id}','note',this.value)">${esc(e.note||'')}</textarea>
@@ -2119,12 +2129,12 @@ function openContactModal(id){
     <div class="modal-head"><h3>${esc(c.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <label class="lbl">Temperature</label>
     <select class="inp" onchange="updateContact('${id}','temp',this.value)">${TEMPS.map(t=>`<option value="${t.key}" ${t.key===c.temp?'selected':''}>${t.label}</option>`).join('')}</select>
-    <label class="lbl">Stage</label><input class="inp" value="${c.stage||''}" onchange="updateContact('${id}','stage',this.value)">
-    <label class="lbl">Phone</label><input class="inp" value="${c.phone||''}" onchange="updateContact('${id}','phone',this.value)">
-    <label class="lbl">Next follow-up</label><input class="inp" type="date" value="${c.nextFollowUp||''}" onchange="updateContact('${id}','nextFollowUp',this.value)">
+    <label class="lbl">Stage</label><input class="inp" value="${esc(c.stage||'')}" onchange="updateContact('${id}','stage',this.value)">
+    <label class="lbl">Phone</label><input class="inp" value="${esc(c.phone||'')}" onchange="updateContact('${id}','phone',this.value)">
+    <label class="lbl">Next follow-up</label><input class="inp" type="date" value="${esc(c.nextFollowUp||'')}" onchange="updateContact('${id}','nextFollowUp',this.value)">
     <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateContact('${id}','notes',this.value)">${esc(c.notes||'')}</textarea>
     <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
-      ${c.phone?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" href="https://wa.me/${c.phone.replace(/\\D/g,'')}">💬 WhatsApp</a>`:''}
+      ${c.phone?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" rel="noopener noreferrer" href="https://wa.me/${c.phone.replace(/\\D/g,'')}">💬 WhatsApp</a>`:''}
       <button class="btn btn-ghost" style="flex:1" onclick="openJournalFor('${id}','${c.name.replace(/'/g,"\\'")}')">📓 Journal Note</button>
       <button class="btn btn-ghost" style="flex:1" onclick="archiveContact('${id}')">🗄️ Archive</button>
     </div>
@@ -2396,10 +2406,10 @@ function openItemModal(id){
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
     <div class="modal-head"><h3>${esc(it.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <label class="lbl">Name</label><input class="inp" value="${esc(it.name||'')}" onchange="updateItem('${id}','name',this.value)">
-    <label class="lbl">Stock on hand</label><input class="inp" type="number" value="${it.stock||0}" onchange="updateItem('${id}','stock',parseFloat(this.value)||0)">
-    <label class="lbl">Par level</label><input class="inp" type="number" value="${it.par||0}" onchange="updateItem('${id}','par',parseFloat(this.value)||0)">
-    <label class="lbl">Cost per unit</label><input class="inp" type="number" value="${it.cost||0}" onchange="updateItem('${id}','cost',parseFloat(this.value)||0)">
-    <label class="lbl">Sale price</label><input class="inp" type="number" value="${it.price||0}" onchange="updateItem('${id}','price',parseFloat(this.value)||0)">
+    <label class="lbl">Stock on hand</label><input class="inp" type="number" value="${esc(it.stock||0)}" onchange="updateItem('${id}','stock',parseFloat(this.value)||0)">
+    <label class="lbl">Par level</label><input class="inp" type="number" value="${esc(it.par||0)}" onchange="updateItem('${id}','par',parseFloat(this.value)||0)">
+    <label class="lbl">Cost per unit</label><input class="inp" type="number" value="${esc(it.cost||0)}" onchange="updateItem('${id}','cost',parseFloat(this.value)||0)">
+    <label class="lbl">Sale price</label><input class="inp" type="number" value="${esc(it.price||0)}" onchange="updateItem('${id}','price',parseFloat(this.value)||0)">
     <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateItem('${id}','notes',this.value)">${esc(it.notes||'')}</textarea>
     <button class="btn btn-ghost btn-full" style="margin-top:10px;color:var(--coral)" onclick="removeItem('${id}')">Remove Item</button>
   </div></div>`;
@@ -2458,8 +2468,8 @@ function openDebtorModal(id){
   const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
     <div class="modal-head"><h3>${esc(c.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <label class="lbl">Amount owed</label><input class="inp" type="number" value="${c.value||0}" onchange="updateDebtor('${id}','value',parseFloat(this.value)||0)">
-    <label class="lbl">Due date</label><input class="inp" type="date" value="${c.dueDate||''}" onchange="updateDebtor('${id}','dueDate',this.value)">
+    <label class="lbl">Amount owed</label><input class="inp" type="number" value="${esc(c.value||0)}" onchange="updateDebtor('${id}','value',parseFloat(this.value)||0)">
+    <label class="lbl">Due date</label><input class="inp" type="date" value="${esc(c.dueDate||'')}" onchange="updateDebtor('${id}','dueDate',this.value)">
     <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="confirmMarkDebtPaid('${id}')">Mark Fully Paid</button>
   </div></div>`;
 }
@@ -2556,8 +2566,8 @@ function openExpenseModal(id){
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">Changes here affect your revenue and expense totals immediately.</div>
     <label class="lbl">What</label><input class="inp" id="eeItem" value="${esc(e.item||'')}">
     <label class="lbl">Category</label><select class="inp" id="eeCat">${['Cost of Goods','Overheads','Marketing','Payroll','Other'].map(c=>`<option ${c===e.category?'selected':''}>${c}</option>`).join('')}</select>
-    <label class="lbl">Amount</label><input class="inp" id="eeAmt" type="number" value="${e.amount||0}">
-    <label class="lbl">Date</label><input class="inp" id="eeDate" type="date" value="${e.date||todayStr()}">
+    <label class="lbl">Amount</label><input class="inp" id="eeAmt" type="number" value="${esc(e.amount||0)}">
+    <label class="lbl">Date</label><input class="inp" id="eeDate" type="date" value="${esc(e.date||todayStr())}">
     <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="confirmEditExpense('${id}')">Save Changes</button>
     <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--coral)" onclick="archiveExpense('${id}');closeModal()">Archive This Expense</button>
   </div></div>`;
@@ -2637,7 +2647,7 @@ function openStaffModal(id){
     <label class="lbl">Role</label><input class="inp" value="${esc(s.role||'')}" onchange="updateStaff('${id}','role',this.value)">
     <label class="lbl">Department</label><input class="inp" value="${esc(s.dept||'')}" onchange="updateStaff('${id}','dept',this.value)">
     <label class="lbl">Pay type</label><select class="inp" onchange="updateStaff('${id}','payType',this.value)">${['Monthly','Daily','Weekly','Commission','Owner'].map(p=>`<option ${p===s.payType?'selected':''}>${p}</option>`).join('')}</select>
-    <label class="lbl">Pay rate</label><input class="inp" type="number" value="${s.payRate||0}" onchange="updateStaff('${id}','payRate',parseFloat(this.value)||0)">
+    <label class="lbl">Pay rate</label><input class="inp" type="number" value="${esc(s.payRate||0)}" onchange="updateStaff('${id}','payRate',parseFloat(this.value)||0)">
     <button class="btn btn-ghost btn-full" style="margin-top:10px;color:var(--coral)" onclick="removeStaff('${id}')">Remove Staff Member</button>
   </div></div>`;
 }
@@ -2828,7 +2838,7 @@ function drawRefBody(){
         <option>Priority / early access</option>
         <option>Personal thank-you voice note only</option>
       </select>
-      <label class="lbl">Details</label><textarea class="inp" id="rewardDetails" rows="2" placeholder="e.g. 20 GHS per successful referral, paid via MoMo within 24 hours">${DATA.referralReward||''}</textarea>
+      <label class="lbl">Details</label><textarea class="inp" id="rewardDetails" rows="2" placeholder="e.g. 20 GHS per successful referral, paid via MoMo within 24 hours">${esc(DATA.referralReward||'')}</textarea>
       <button class="btn btn-primary btn-full" onclick="saveRewardPlan()">Save Reward Plan</button>
     </div>`;
   }
@@ -3566,11 +3576,11 @@ function drawSettingsBody(){
       <div style="font-size:11.5px;color:var(--ink-dim);margin:4px 0 14px;line-height:1.6">Default for ${CFG.country}: <b style="color:var(--navy)">${countryBase.tax}</b> · Payroll: <b style="color:var(--navy)">${countryBase.payroll}</b>, edit your own details below.</div>
       <div style="border-top:1px solid var(--line);margin:14px 0 12px;padding-top:14px">
         <div class="card-title" style="margin-bottom:10px">Tax &amp; Payroll</div>
-        <label class="lbl">Employer / Business Tax ID (TIN)</label><input class="inp" id="setTaxId" value="${CFG.taxId||''}" placeholder="e.g. C0012345678X">
-        <label class="lbl">Employer registration no. (e.g. SSNIT / PAYE employer no.)</label><input class="inp" id="setEmployerRegNo" value="${CFG.employerRegNo||''}" placeholder="e.g. SS123456789">
-        <label class="lbl">Number of employees</label><input class="inp" id="setEmployeeCount" type="number" min="0" value="${CFG.employeeCount!=null?CFG.employeeCount:''}" placeholder="e.g. 3">
-        <label class="lbl">Tax note (your own rate / terms, overrides the default above)</label><textarea class="inp" id="setTaxNote" rows="2" placeholder="${ci.taxNote}">${CFG.customTaxNote||''}</textarea>
-        <label class="lbl">Payroll note (your own scheme, overrides the default above)</label><textarea class="inp" id="setPayrollNote" rows="2" placeholder="${ci.payroll}">${CFG.customPayrollNote||''}</textarea>
+        <label class="lbl">Employer / Business Tax ID (TIN)</label><input class="inp" id="setTaxId" value="${esc(CFG.taxId||'')}" placeholder="e.g. C0012345678X">
+        <label class="lbl">Employer registration no. (e.g. SSNIT / PAYE employer no.)</label><input class="inp" id="setEmployerRegNo" value="${esc(CFG.employerRegNo||'')}" placeholder="e.g. SS123456789">
+        <label class="lbl">Number of employees</label><input class="inp" id="setEmployeeCount" type="number" min="0" value="${esc(CFG.employeeCount!=null?CFG.employeeCount:'')}" placeholder="e.g. 3">
+        <label class="lbl">Tax note (your own rate / terms, overrides the default above)</label><textarea class="inp" id="setTaxNote" rows="2" placeholder="${esc(ci.taxNote)}">${esc(CFG.customTaxNote||'')}</textarea>
+        <label class="lbl">Payroll note (your own scheme, overrides the default above)</label><textarea class="inp" id="setPayrollNote" rows="2" placeholder="${esc(ci.payroll)}">${esc(CFG.customPayrollNote||'')}</textarea>
       </div>
       <button class="btn btn-primary" onclick="saveBusinessSettings()">Save Changes</button>
     </div>`;
@@ -3683,8 +3693,8 @@ function drawSettingsBody(){
     b.innerHTML = `<div class="card" style="max-width:480px">
       <div class="card-title">White-Label Branding ${locked?'<span class=\"pill pill-warm\">Enterprise only</span>':''}</div>
       ${locked?'<div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px">Upgrade to Enterprise to customise your brand colour and logo across the whole app.</div>':''}
-      <label class="lbl">Brand colour</label><input class="inp" id="setBrandColor" type="color" value="${CFG.brandColor||'#4aa8b8'}" ${locked?'disabled':''} style="height:44px;padding:4px">
-      <label class="lbl">Logo (emoji or initials, e.g. 🏨 or HB)</label><input class="inp" id="setLogoEmoji" value="${CFG.logoEmoji||''}" maxlength="4" ${locked?'disabled':''} placeholder="Leave blank to use the default TecXFRA mark">
+      <label class="lbl">Brand colour</label><input class="inp" id="setBrandColor" type="color" value="${esc(CFG.brandColor||'#4aa8b8')}" ${locked?'disabled':''} style="height:44px;padding:4px">
+      <label class="lbl">Logo (emoji or initials, e.g. 🏨 or HB)</label><input class="inp" id="setLogoEmoji" value="${esc(CFG.logoEmoji||'')}" maxlength="4" ${locked?'disabled':''} placeholder="Leave blank to use the default TecXFRA mark">
       <button class="btn btn-primary" ${locked?'disabled':''} onclick="saveBranding()">Save Branding</button>
     </div>`;
   } else if(settingsTab==='account'){
