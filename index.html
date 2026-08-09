@@ -4,6 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>TecXFRA, Complete Total Control</title>
+<meta name="description" content="TecXFRA is the complete Business OS for SME owners, Today, Expenses, CRM, Execution, Follow-Ups, Revenue, Accountability. Built in Ghana, for Ghana, run your entire business from your phone.">
+<link rel="canonical" href="https://www.tecxfra.com/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TecXFRA">
+<meta property="og:title" content="TecXFRA, Complete Total Control">
+<meta property="og:description" content="The complete Business OS for SME owners. Today, Expenses, CRM, Execution, Follow-Ups, Revenue, Accountability, in one place, run from your phone.">
+<meta property="og:url" content="https://www.tecxfra.com/">
+<meta property="og:image" content="https://www.tecxfra.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="TecXFRA, Complete Total Control">
+<meta name="twitter:description" content="The complete Business OS for SME owners. Run your entire business from your phone.">
+<meta name="twitter:image" content="https://www.tecxfra.com/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -31,7 +43,16 @@ body{background:var(--cream); color:var(--ink); font-family:'Inter',sans-serif; 
    occasionally be captured by <body> instead of the intended internal
    scroll container (.sb-nav / .content), which reads as a frozen scroll
    until reload. */
-body:has(#app.active){overflow:hidden; height:100vh; height:100dvh;}
+body:has(#app.active){overflow:hidden; height:100vh; height:100svh;}
+/* FIX (Aug 2026, topbar/sidebar freeze §4c): 100dvh recalculates live as the
+   mobile browser's address bar hides/shows during scroll. Because .content
+   and .sb-nav are the ONLY things that actually scroll (body itself is
+   locked above), every recalculation forces the fixed outer shell to
+   resize and repaint, which is what "freezes" the screen on mobile mid-
+   scroll. 100svh (small viewport height) is a fixed value, the height
+   with browser chrome fully shown, so it never recalculates. Trade-off:
+   a few extra px of background peeking under the chrome when it hides,
+   which is invisible in practice and far better than a frozen shell. */
 .disp{font-family:'Space Grotesk',sans-serif;}
 .mono{font-family:'IBM Plex Mono',monospace;}
 a{color:inherit;}
@@ -131,7 +152,7 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 /* ============ APP SHELL ============ */
 #app{display:none; min-height:100vh;}
 #app.active{display:flex;}
-.sidebar{width:236px; flex-shrink:0; background:var(--navy); color:#eaf3f4; display:flex; flex-direction:column; height:calc(100vh - var(--legalfoot-h)); height:calc(100dvh - var(--legalfoot-h)); position:sticky; top:0;}
+.sidebar{width:236px; flex-shrink:0; background:var(--navy); color:#eaf3f4; display:flex; flex-direction:column; height:calc(100vh - var(--legalfoot-h)); height:calc(100svh - var(--legalfoot-h)); position:sticky; top:0;}
 .sb-brand{display:flex; align-items:center; gap:10px; padding:20px 18px; border-bottom:1px solid rgba(255,255,255,.08);}
 .sb-brand .name{font-weight:700; font-size:15px; letter-spacing:-.2px; color:#fff;}
 .sb-brand .biz{font-size:10.5px; color:#9fc3ca; letter-spacing:.5px;}
@@ -162,7 +183,7 @@ input,select,textarea{font-family:inherit; font-size:16px;}
    scroll" looks like. Making the topbar structurally outside the
    scrolling element removes the possibility entirely, it can't scroll
    away because it was never part of the scroll in the first place. */
-.main{flex:1; min-width:0; display:flex; flex-direction:column; height:100vh; height:100dvh; overflow:hidden;}
+.main{flex:1; min-width:0; display:flex; flex-direction:column; height:100vh; height:100svh; overflow:hidden;}
 .topbar{background:var(--paper); border-bottom:1px solid var(--line); padding:14px 26px; display:flex; align-items:center; justify-content:space-between; gap:14px; position:sticky; top:0; z-index:40;}
 .topbar .th{font-size:19px; font-weight:700; letter-spacing:-.3px;}
 .topbar .ts{font-size:12px; color:var(--muted); margin-top:1px;}
@@ -281,7 +302,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 .settings-tabs{display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap;}
 .industry-badge{display:inline-flex; align-items:center; gap:6px; background:var(--teal-tint); color:var(--teal-dim); padding:5px 12px; border-radius:20px; font-size:11px; font-weight:700;}
 @media(max-width:860px){
-  .sidebar{position:fixed; left:-236px; z-index:100; transition:.2s; height:100vh; height:100dvh;} .sidebar.open{left:0;}
+  .sidebar{position:fixed; left:-236px; z-index:100; transition:.2s; height:100vh; height:100svh;} .sidebar.open{left:0;}
   html, body{overflow-x:hidden;}
   .content{padding:18px 14px 50px;}
   .plan-grid{grid-template-columns:1fr !important;}
@@ -572,6 +593,20 @@ window.addEventListener('pageshow', function(e){
 // purpose, checkout will visibly fail with this test string rather
 // than silently charging a real card to the wrong account.
 const PAYSTACK_PUBLIC_KEY = 'pk_test_REPLACE_ME';
+
+// ⚠️ TODO(business, BEFORE GO-LIVE): your real WhatsApp Business number,
+// digits only, country code first, no +, no spaces (e.g. Ghana number
+// 024 123 4567 becomes '233241234567'). Every MoMo/Invoice/Cash request
+// opens WhatsApp with this number pre-filled so you're notified instantly,
+// no separate WhatsApp API integration needed while Paystack is paused.
+const ADMIN_WHATSAPP_NUMBER = '233000000000';
+
+// ⚠️ TODO(business): flip to true once an SMS/phone provider is connected
+// and the reminder-sending Edge Function is deployed (see Reminders &
+// Renewals module). Keeping this false doesn't hide the feature, it just
+// disables the checkbox with an honest "not connected yet" label instead
+// of silently accepting a preference that can't be honoured.
+const SMS_PROVIDER_READY = false;
 
 // ⚠️ TODO(business): only needed if you turn on "Enable Captcha protection"
 // in Supabase Dashboard → Authentication → Attack Protection. Get this
@@ -901,6 +936,7 @@ const MODULES = [
   {key:'audit', name:'Business Audit', ic:'🧭', desc:'Deep diagnostic, where you are, where you\'re going', core:true},
   {key:'accountability', name:'Daily Accountability', ic:'✅', desc:'Daily/weekly/monthly checklist & score', core:true},
   {key:'journal', name:'Journal & Notes', ic:'📓', desc:'Diary for you and every client', core:true},
+  {key:'reminders', name:'Reminders & Renewals', ic:'⏰', desc:'Licenses, contracts, subscriptions, anything with a due date', core:true},
   {key:'ai', name:'AI Assistant', ic:'✨', desc:'Ask about your business, get suggestions', core:true},
   {key:'guides', name:'Growth Library', ic:'📖', desc:'Guides, SOPs & daily tips for your team', core:true},
   {key:'archive', name:'Archive', ic:'🗄️', desc:'Nothing deleted, everything restorable', core:true},
@@ -909,18 +945,18 @@ const MODULES = [
 ];
 
 const INDUSTRY_DEFAULTS = {
-  hospitality:['today','calendar','crm','followups','pos','bookings','inventory','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
-  retail:['today','calendar','crm','followups','pos','inventory','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
-  salon:['today','calendar','crm','followups','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
-  services:['today','calendar','crm','followups','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
-  realestate:['today','calendar','crm','followups','bookings','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
-  logistics:['today','calendar','crm','followups','bookings','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
-  manufacturing:['today','calendar','crm','followups','bookings','inventory','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
-  education:['today','calendar','crm','followups','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
-  healthcare:['today','calendar','crm','followups','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
-  nonprofit:['today','calendar','crm','followups','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
-  events:['today','calendar','crm','followups','pos','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings'],
-  general:['today','calendar','crm','followups','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','ai','guides','archive','system','settings']
+  hospitality:['today','calendar','crm','followups','pos','bookings','inventory','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings'],
+  retail:['today','calendar','crm','followups','pos','inventory','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings'],
+  salon:['today','calendar','crm','followups','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings'],
+  services:['today','calendar','crm','followups','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings'],
+  realestate:['today','calendar','crm','followups','bookings','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings'],
+  logistics:['today','calendar','crm','followups','bookings','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings'],
+  manufacturing:['today','calendar','crm','followups','bookings','inventory','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings'],
+  education:['today','calendar','crm','followups','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings'],
+  healthcare:['today','calendar','crm','followups','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings'],
+  nonprofit:['today','calendar','crm','followups','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings'],
+  events:['today','calendar','crm','followups','pos','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings'],
+  general:['today','calendar','crm','followups','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','reminders','ai','guides','archive','system','settings']
 };
 
 const COUNTRIES = [
@@ -1587,7 +1623,7 @@ const TECXFRA_GROUPS = [
   {letter:'R', label:'Revenue & Invoicing', keys:['revenue','pos','invoicing']},
   {letter:'A', label:'Accountability & AI', keys:['accountability','audit','ai']}
 ];
-const TECXFRA_MORE_KEYS = ['staff','journal','archive','system','settings'];
+const TECXFRA_MORE_KEYS = ['staff','journal','reminders','archive','system','settings'];
 const PLANS = [
   {key:'starter', label:'Starter', price:'Entry', tagline:'Run the daily basics, Tec + F + R',
     desc:'Today, CRM, Calendar, Follow-Ups, Messages, Expenses, Revenue, POS/Bookings, Staff, Guides.',
@@ -1703,6 +1739,7 @@ function renderSidebar(){
   function row(m){
     let badge = '';
     if(m.key==='followups'){ const n=(DATA.followups||[]).filter(f=>!f.done && f.due<=todayStr()).length; if(n) badge=`<span class="badge">${n}</span>`; }
+    if(m.key==='reminders'){ const n=(DATA.reminders||[]).filter(r=>!r.done && r.dueDate<=todayStr()).length; if(n) badge=`<span class="badge">${n}</span>`; }
     if(m.key==='accountability'){ const sc = accountabilityTodayScore(); if(sc.total>0) badge=`<span class="badge">${sc.done}/${sc.total}</span>`; }
     if(isLocked(m.key)) badge = `<span style="margin-left:auto;font-size:11px">🔒</span>`;
     return `<div class="sb-item" data-page="${m.key}" onclick="navTo('${m.key}')"><span class="ic">${m.ic}</span><span>${labelFor(m.key)}</span>${badge}</div>`;
@@ -1781,6 +1818,7 @@ const RENDERERS = {
   pos: renderPOS, bookings: renderBookings, inventory: renderInventory, invoicing: renderInvoicing,
   expenses: renderExpenses, staff: renderStaff, revenue: renderRevenue, messages: renderMessages,
   referrals: renderReferrals, persona: renderPersona, audit: renderAudit, accountability: renderAccountability, journal: renderJournal,
+  reminders: renderReminders,
   ai: renderAI, guides: renderGuides, archive: renderArchive, system: renderSystem, settings: renderSettings
 };
 
@@ -1815,6 +1853,7 @@ function renderToday(){
     <div class="metric coral"><div class="ml">Follow-ups Due</div><div class="mv">${dueFollowups.length}</div><div class="ms">across all ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase()}</div></div>
     <div class="metric amber"><div class="ml">Low Stock</div><div class="mv">${lowStock.length}</div><div class="ms">${CFG.modules.includes('inventory')?'items at/under par':'inventory module off'}</div></div>
     <div class="metric green"><div class="ml">Hot Leads</div><div class="mv">${hotLeads}</div><div class="ms">ready to close</div></div>
+    <div class="metric amber"><div class="ml">Reminders Due</div><div class="mv">${(DATA.reminders||[]).filter(r=>!r.done && r.dueDate<=addDays(t,7)).length}</div><div class="ms">renewals & deadlines, next 7 days</div></div>
   </div>
   <div class="two-col">
     <div>
@@ -3409,6 +3448,113 @@ async function addJournal(){
   await addKnowledgeFact(`Journal note${linkedName?' re: '+linkedName:''}: ${text.slice(0,90)}${text.length>90?'…':''}`);
 }
 
+/* ============================================================
+   REMINDERS & RENEWALS
+   Anything with a due date that isn't a customer follow-up:
+   licenses, contracts, domain/software renewals, insurance,
+   loan repayments, supplier agreements, anything recurring.
+   Delivery: in-app badge + list always works. Email delivery
+   rides on the same Resend account already wired into Supabase
+   Auth; a scheduled Edge Function reads due reminders and sends
+   the email. Text/SMS needs a phone provider selected first
+   (see notifyText below), it stays visually present as an
+   option so nothing has to be rebuilt once one is chosen.
+============================================================ */
+const REMINDER_TYPES = [
+  {key:'subscription', label:'Subscription / Software'},
+  {key:'license', label:'License / Permit'},
+  {key:'contract', label:'Contract / Agreement'},
+  {key:'payment', label:'Loan / Payment Due'},
+  {key:'custom', label:'Other'}
+];
+function renderReminders(){
+  const t = todayStr();
+  const all = (DATA.reminders||[]).slice().sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+  const open = all.filter(r=>!r.done);
+  const overdue = open.filter(r=>r.dueDate<t);
+  const soon = open.filter(r=>r.dueDate>=t && r.dueDate<=addDays(t,14));
+  const later = open.filter(r=>r.dueDate>addDays(t,14));
+  const done = all.filter(r=>r.done).slice(-15).reverse();
+  const smsReady = typeof SMS_PROVIDER_READY!=='undefined' && SMS_PROVIDER_READY;
+  function row(r){
+    const typeLabel = REMINDER_TYPES.find(x=>x.key===r.type)?.label || 'Other';
+    const overdueTag = r.dueDate<t ? `<span style="color:var(--coral);font-weight:700">overdue</span>` : `due ${fmtDate(r.dueDate)}`;
+    return `<div class="list-row" style="align-items:flex-start">
+      <div><b>${esc(r.title)}</b><br><span style="font-size:11.5px;color:var(--ink-dim)">${typeLabel} · ${overdueTag}${r.recurring&&r.recurring!=='none'?' · repeats '+r.recurring:''}</span>
+      ${r.notes?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(r.notes)}</div>`:''}</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-ghost" style="padding:6px 10px" onclick="snoozeReminder('${r.id}')">Snooze 7d</button>
+        <button class="btn btn-primary" style="padding:6px 10px" onclick="doneReminder('${r.id}')">✓ Done</button>
+      </div>
+    </div>`;
+  }
+  document.getElementById('pageContent').innerHTML = `
+  <div class="grid-metrics">
+    <div class="metric coral"><div class="ml">Overdue</div><div class="mv">${overdue.length}</div><div class="ms">needs action now</div></div>
+    <div class="metric amber"><div class="ml">Due in 14 Days</div><div class="mv">${soon.length}</div><div class="ms">coming up</div></div>
+    <div class="metric navy"><div class="ml">Scheduled</div><div class="mv">${later.length}</div><div class="ms">further out</div></div>
+  </div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">Reminders & Renewals <span class="sub">${open.length} open</span></div>
+      ${!overdue.length && !soon.length && !later.length ? '<div class="empty">Nothing tracked yet, add your first renewal or deadline.</div>' : ''}
+      ${overdue.length ? `<div style="font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--coral);margin:6px 0">Overdue</div>${overdue.map(row).join('')}` : ''}
+      ${soon.length ? `<div style="font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--amber);margin:14px 0 6px">Next 14 Days</div>${soon.map(row).join('')}` : ''}
+      ${later.length ? `<div style="font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px">Later</div>${later.map(row).join('')}` : ''}
+      ${done.length ? `<div style="font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px">Recently Cleared</div>${done.map(r=>`<div class="list-row" style="opacity:.6"><div><b>${esc(r.title)}</b><br><span style="font-size:11px;color:var(--muted)">done</span></div></div>`).join('')}` : ''}
+    </div>
+    <div class="card">
+      <div class="card-title">＋ Add a Reminder</div>
+      <label class="lbl">What is it</label><input class="inp" id="remTitle" placeholder="e.g. Domain renewal, business license, supplier contract">
+      <label class="lbl">Type</label><select class="inp" id="remType">${REMINDER_TYPES.map(x=>`<option value="${x.key}">${x.label}</option>`).join('')}</select>
+      <label class="lbl">Due date</label><input class="inp" id="remDue" type="date" value="${t}">
+      <label class="lbl">Repeats</label><select class="inp" id="remRecur">
+        <option value="none">Doesn't repeat</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option>
+      </select>
+      <label class="lbl">Notes (optional)</label><textarea class="inp" id="remNotes" rows="2" placeholder="Reference number, amount, who to contact..."></textarea>
+      <label class="lbl">Notify me by</label>
+      <div style="display:flex;gap:14px;margin-bottom:10px;font-size:12px;color:var(--ink-dim)">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="remEmail" checked> Email</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:${smsReady?'pointer':'not-allowed'};${smsReady?'':'opacity:.5'}"><input type="checkbox" id="remText" ${smsReady?'':'disabled'}> Text/SMS${smsReady?'':' (not connected yet)'}</label>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="addReminder()">＋ Add Reminder</button>
+      <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5">Always shows here and on Today regardless of these choices. Email reminders send automatically the day something is due. Text/SMS turns on once a phone provider is connected on your account.</div>
+    </div>
+  </div>`;
+}
+function addDays(dateStr, n){ return new Date(new Date(dateStr).getTime()+n*86400000).toISOString().slice(0,10); }
+async function addReminder(){
+  const title = document.getElementById('remTitle').value.trim().slice(0,140);
+  if(!title){ showToast('Give it a name first'); return; }
+  const type = document.getElementById('remType').value;
+  const dueDate = document.getElementById('remDue').value || todayStr();
+  const recurring = document.getElementById('remRecur').value;
+  const notes = document.getElementById('remNotes').value.trim().slice(0,300);
+  const notifyEmail = document.getElementById('remEmail').checked;
+  const notifyText = document.getElementById('remText').checked;
+  if(!DATA.reminders) DATA.reminders = [];
+  DATA.reminders.push({id:uid('RM'), title, type, dueDate, recurring, notes, notifyEmail, notifyText, done:false, createdAt:todayStr()});
+  await saveData(); showToast('Reminder added'); renderReminders(); renderSidebar();
+  await addKnowledgeFact(`Set a reminder: ${title}, due ${dueDate}${recurring!=='none'?', repeats '+recurring:''}.`);
+}
+async function doneReminder(id){
+  const r = (DATA.reminders||[]).find(x=>x.id===id);
+  if(!r) return;
+  r.done = true;
+  if(r.recurring && r.recurring!=='none'){
+    const step = {monthly:1, quarterly:3, yearly:12}[r.recurring];
+    const nextDue = new Date(r.dueDate);
+    nextDue.setMonth(nextDue.getMonth()+step);
+    DATA.reminders.push({...r, id:uid('RM'), done:false, dueDate:nextDue.toISOString().slice(0,10)});
+  }
+  await saveData(); renderReminders(); renderSidebar(); showToast('Marked done');
+}
+async function snoozeReminder(id){
+  const r = (DATA.reminders||[]).find(x=>x.id===id);
+  if(r) r.dueDate = addDays(r.dueDate<todayStr()?todayStr():r.dueDate, 7);
+  await saveData(); renderReminders(); showToast('Snoozed 7 days');
+}
+
 /* ---------- AI ASSISTANT (local, offline-safe, learns from your data) ---------- */
 let aiHistory = [];
 function renderAI(){
@@ -3642,8 +3788,11 @@ async function requestGuidePurchase(key, method){
     if(error) throw error;
   }catch(e){ console.error(e); showToast('Could not send request, check your connection and try again.'); return; }
   closeModal();
-  await addKnowledgeFact(`Requested to unlock guide "${GUIDE_STORE.find(g=>g.key===key)?.t||key}" via ${method}.`);
+  const guideTitle = GUIDE_STORE.find(g=>g.key===key)?.t || key;
+  await addKnowledgeFact(`Requested to unlock guide "${guideTitle}" via ${method}.`);
   showToast('Request sent, our team will confirm and unlock it within one business day.');
+  const methodLabel = {momo:'Mobile Money', invoice:'an invoice', cash:'a cash'}[method] || method;
+  notifyAdminWhatsApp(`TecXFRA guide unlock request\nBusiness: ${CFG.bizName}\nGuide: ${guideTitle}\nMethod: ${methodLabel}\nPlease confirm and unlock.`);
 }
 function drawGuideStore(){
   document.getElementById('guideList').innerHTML = `<div class="card-title">Guide Store <span class="sub">one-time unlocks, yours to keep</span></div>
@@ -4098,14 +4247,25 @@ async function payWithPaystack(planKey){
 }
 async function requestMomoInvoice(planKey, method){
   const methodLabel = {momo:'Mobile Money', invoice:'an invoice', cash:'a cash'}[method] || method;
-  await addKnowledgeFact(`Requested ${methodLabel} upgrade to ${PLANS.find(p=>p.key===planKey).label} plan.`);
+  const planLabel = PLANS.find(p=>p.key===planKey).label;
+  await addKnowledgeFact(`Requested ${methodLabel} upgrade to ${planLabel} plan.`);
   try{
     const { error } = await sb.rpc('request_manual_payment', { p_plan: planKey, p_method: method, p_business_name: CFG.bizName });
     if(error) throw error;
   }catch(e){ console.error(e); }
   closeModal();
   const confirmLabel = {momo:'MoMo payment', invoice:'invoice', cash:'cash payment'}[method] || method;
-  showToast(`Request sent, our team will confirm your ${confirmLabel} and activate ${PLANS.find(p=>p.key===planKey).label} within one business day.`);
+  showToast(`Request sent, our team will confirm your ${confirmLabel} and activate ${planLabel} within one business day.`);
+  notifyAdminWhatsApp(`TecXFRA upgrade request\nBusiness: ${CFG.bizName}\nPlan: ${planLabel}\nMethod: ${methodLabel}\nPlease confirm and activate.`);
+}
+// Opens the customer's own WhatsApp with a message pre-addressed to the
+// admin number, this is the "notify me on WhatsApp" path while there's
+// no paid WhatsApp Business API wired in. New tab so it never disrupts
+// the app's own state if it's blocked or the user cancels it.
+function notifyAdminWhatsApp(message){
+  if(!ADMIN_WHATSAPP_NUMBER || /^2330{9}$/.test(ADMIN_WHATSAPP_NUMBER)) return; // placeholder not yet set
+  const url = `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 async function saveBranding(){
   if(!currentPlan().whiteLabel){ showToast('Upgrade to Enterprise first'); return; }
