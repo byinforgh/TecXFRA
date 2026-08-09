@@ -3763,7 +3763,14 @@ const GUIDE_STORE = [
 ];
 let PURCHASED_GUIDES = [];
 function ownsGuide(key){
-  if(CFG && CFG.plan==='enterprise') return true; // Enterprise, every guide unlocked
+  // A guide is owned if (a) the business bought it a la carte, or (b) their
+  // current plan tier includes it for free per that guide's includedInTier
+  // list. Digital Shopfront unlocks progressively (Starter=Part 1, Growth=
+  // Parts 1-2, Enterprise=all 3); WhatsApp Business OS, Referral & Retention,
+  // and the Customer Service Guide are Enterprise-included, purchasable a la
+  // carte on Starter/Growth. Guides with no includedInTier are pure a la carte.
+  const g = GUIDE_STORE.find(x=>x.key===key);
+  if(g && Array.isArray(g.includedInTier) && CFG && g.includedInTier.includes(CFG.plan)) return true;
   return PURCHASED_GUIDES.includes(key);
 }
 async function syncGuidePurchases(){
