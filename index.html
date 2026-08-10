@@ -6,6 +6,14 @@
 <title>TecXFRA, Complete Total Control</title>
 <meta name="description" content="TecXFRA is the complete Business OS for SME owners, Today, Expenses, CRM, Execution, Follow-Ups, Revenue, Accountability. Built in Ghana, for Ghana, run your entire business from your phone.">
 <link rel="canonical" href="https://www.tecxfra.com/">
+<!-- Favicon: same navy/teal drop-pin mark used throughout the app, as an
+     inline SVG data URI so it needs no extra file in the repo. If you'd
+     rather serve a real file (better cross-browser/OS support, e.g. iOS
+     home-screen icons), upload favicon-32.png / favicon-180.png /
+     favicon-512.png (provided alongside this file) to the repo root and
+     swap these two href values for "favicon-32.png" and "favicon-180.png". -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIwIiBmaWxsPSIjMTIzNjQyIi8+PGNpcmNsZSBjeD0iNTAiIGN5PSI0NCIgcj0iMTEiIGZpbGw9IiM0YWE4YjgiLz48cGF0aCBkPSJNNTAgNTUgQzQwIDcwIDQzIDg4IDUwIDEwMCBDNTcgODggNjAgNzAgNTAgNTUgWiIgZmlsbD0iIzRhYThiOCIvPjxjaXJjbGUgY3g9IjQ2LjUiIGN5PSIzOS41IiByPSI4IiBmaWxsPSIjMGMyNjJmIiBmaWxsLW9wYWNpdHk9Ii4zNSIvPjwvc3ZnPg==">
+<link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIwIiBmaWxsPSIjMTIzNjQyIi8+PGNpcmNsZSBjeD0iNTAiIGN5PSI0NCIgcj0iMTEiIGZpbGw9IiM0YWE4YjgiLz48cGF0aCBkPSJNNTAgNTUgQzQwIDcwIDQzIDg4IDUwIDEwMCBDNTcgODggNjAgNzAgNTAgNTUgWiIgZmlsbD0iIzRhYThiOCIvPjxjaXJjbGUgY3g9IjQ2LjUiIGN5PSIzOS41IiByPSI4IiBmaWxsPSIjMGMyNjJmIiBmaWxsLW9wYWNpdHk9Ii4zNSIvPjwvc3ZnPg==">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="TecXFRA">
 <meta property="og:title" content="TecXFRA, Complete Total Control">
@@ -31,7 +39,7 @@
     bottom item never sits underneath the footer overlay */
 }
 *{box-sizing:border-box; margin:0; padding:0;}
-html{scroll-behavior:smooth;}
+html{scroll-behavior:smooth; overscroll-behavior-y:none;}
 body{background:var(--cream); color:var(--ink); font-family:'Inter',sans-serif; min-height:100vh; -webkit-font-smoothing:antialiased;}
 /* Only lock page-level scroll once the dashboard shell (#app) is active,
    the wizard/auth screens still rely on natural body scroll when their
@@ -57,6 +65,14 @@ body:has(#app.active){overflow:hidden; height:100vh; height:100svh;}
 .mono{font-family:'IBM Plex Mono',monospace;}
 a{color:inherit;}
 button{font-family:inherit; cursor:pointer;}
+/* Global affordance fix: many clickable rows/cards (list-row entries,
+   guide items, calendar pills, etc.) are plain divs with an onclick
+   handler rather than real button elements, so they never inherited
+   the cursor:pointer rule above and gave no hover feedback at all,
+   inconsistent with the sidebar/nav items and modal buttons which did
+   have it set explicitly. This one rule covers every onclick target
+   in the app instead of hunting down each template individually. */
+[onclick]:not(input):not(select):not(textarea){cursor:pointer;}
 input,select,textarea{font-family:inherit; font-size:16px;}
 ::-webkit-scrollbar{width:9px; height:9px;}
 ::-webkit-scrollbar-thumb{background:#d8d0bd; border-radius:10px;}
@@ -225,6 +241,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 .empty{text-align:center; padding:34px 10px; color:var(--muted); font-size:12.5px;}
 .temp-dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; vertical-align:middle;}
 .list-row{display:flex; justify-content:space-between; align-items:center; padding:10px 4px; border-bottom:1px solid var(--line-soft); gap:10px;}
+.list-row[onclick]:hover{background:var(--cream);}
 .list-row:last-child{border-bottom:none;}
 .toast{position:fixed; bottom:24px; right:24px; background:var(--navy); color:#fff; padding:11px 18px; border-radius:10px; font-size:12.5px; font-weight:600; opacity:0; transform:translateY(14px); transition:.28s; z-index:999; box-shadow:var(--shadow);}
 .toast.show{opacity:1; transform:translateY(0);}
@@ -302,10 +319,16 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 .settings-tabs{display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap;}
 .industry-badge{display:inline-flex; align-items:center; gap:6px; background:var(--teal-tint); color:var(--teal-dim); padding:5px 12px; border-radius:20px; font-size:11px; font-weight:700;}
 @media(max-width:860px){
-  .sidebar{position:fixed; left:-236px; z-index:100; transition:.2s; height:100vh; height:100svh;} .sidebar.open{left:0;}
+  /* height matches the desktop rule (100svh minus the fixed legal footer)
+     instead of a bare 100svh, so the sb-foot owner/settings row never sits
+     underneath the fixed legal-foot bar (z-index 150) at the bottom of
+     the screen. */
+  .sidebar{position:fixed; left:-236px; top:0; z-index:100; transition:left .2s; height:calc(100vh - var(--legalfoot-h)); height:calc(100svh - var(--legalfoot-h));} .sidebar.open{left:0;}
   html, body{overflow-x:hidden;}
   .content{padding:18px 14px 50px;}
   .plan-grid{grid-template-columns:1fr !important;}
+  .sidebar-backdrop{display:none; position:fixed; inset:0; z-index:99; background:rgba(12,38,47,.45);}
+  .sidebar-backdrop.show{display:block;}
 }
 </style>
 </head>
@@ -460,6 +483,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 
 <!-- ================= APP SHELL ================= -->
 <div id="app">
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebarUI()"></div>
   <div class="sidebar" id="sidebar">
     <div class="sb-brand">
       <div class="mark"><svg viewBox="0 0 100 100"><circle cx="50" cy="46" r="9" fill="#4aa8b8"/><path d="M50 55 C42 68 44 84 50 96 C56 84 58 68 50 55 Z" fill="#4aa8b8"/><circle cx="47" cy="42" r="6.5" fill="#0c262f" opacity=".35"/></svg></div>
@@ -482,7 +506,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
         <button class="icon-btn" onclick="navTo('calendar')" title="Calendar">📅</button>
         <button class="icon-btn" onclick="navTo('followups')" title="Follow-ups">🔔</button>
         <button class="icon-btn" onclick="navTo('ai')" title="AI Assistant">✨</button>
-        <button class="icon-btn hidden" id="menuToggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+        <button class="icon-btn hidden" id="menuToggle" onclick="toggleSidebarUI()">☰</button>
       </div>
     </div>
     <div class="content" id="pageContent"></div>
@@ -599,7 +623,14 @@ const PAYSTACK_PUBLIC_KEY = 'pk_test_REPLACE_ME';
 // 024 123 4567 becomes '233241234567'). Every MoMo/Invoice/Cash request
 // opens WhatsApp with this number pre-filled so you're notified instantly,
 // no separate WhatsApp API integration needed while Paystack is paused.
-const ADMIN_WHATSAPP_NUMBER = '233000000000';
+// The number given was "+2330509960980" — that's +233 (Ghana country
+// code) with the local leading 0 left in front of 509960980, but wa.me
+// links need the country code plus subscriber number with NO leading 0
+// (that's how Ghana's domestic 0-prefix format converts to
+// international). Using 233509960980 here; if messages don't land on
+// the right phone, double-check this against the number as WhatsApp
+// itself shows it under Settings → Profile on that phone.
+const ADMIN_WHATSAPP_NUMBER = '233509960980';
 
 // ⚠️ TODO(business): flip to true once an SMS/phone provider is connected
 // and the reminder-sending Edge Function is deployed (see Reminders &
@@ -1011,10 +1042,10 @@ async function saveCfg(){
   finally{ SAVES_PENDING--; }
 }
 async function saveData(){
-  if(!CUR_VENUE_ID) return;
+  if(!CUR_VENUE_ID) return false;
   SAVES_PENDING++;
-  try{ const { error } = await sb.rpc('save_tenant_data', { p_data: DATA }); if(error) throw error; }
-  catch(e){ console.error('saveData failed', e); showToast('Could not save, check connection'); }
+  try{ const { error } = await sb.rpc('save_tenant_data', { p_data: DATA }); if(error) throw error; return true; }
+  catch(e){ console.error('saveData failed', e); showToast('Could not save, check connection'); return false; }
   finally{ SAVES_PENDING--; }
 }
 async function loadAll(){
@@ -1382,6 +1413,7 @@ function emptyData(){
     expenses:[], events:[], followups:[], archive:[], messageLog:[],
     journal:[], persona:null, auditAnswers:{}, auditScore:null,
     accountability:{daily:{}, log:[]}, referrals:[], monthlyRollups:{},
+    shiftLog:[],
     knowledge:{facts:[], questionsAsked:0, goal:''}};
 }
 // Guarantees every key every renderer expects on DATA actually exists,
@@ -1394,12 +1426,14 @@ function hydrateData(d){
     expenses:[], events:[], followups:[], archive:[], messageLog:[],
     journal:[], persona:null, auditAnswers:{}, auditScore:null,
     accountability:{daily:{}, log:[]}, referrals:[], monthlyRollups:{},
+    shiftLog:[],
     knowledge:{facts:[], questionsAsked:0, goal:''}};
   const out = Object.assign({}, shape, d||{});
   if(!out.accountability || typeof out.accountability !== 'object') out.accountability = {daily:{}, log:[]};
   if(!out.knowledge || typeof out.knowledge !== 'object') out.knowledge = {facts:[], questionsAsked:0, goal:''};
   if(!Array.isArray(out.knowledge.facts)) out.knowledge.facts = [];
   if(typeof out.knowledge.goal !== 'string') out.knowledge.goal = '';
+  if(!Array.isArray(out.shiftLog)) out.shiftLog = [];
   return out;
 }
 function getTemplates(){
@@ -1465,7 +1499,12 @@ function foundingBadge(tierKey){
 }
 function pickWizPlan(k){
   wizPlan = k;
-  document.querySelectorAll('.plan-pick').forEach(el=>el.classList.toggle('sel', el.dataset.k===k));
+  // Full re-render (not just a class toggle) because the selected/unselected
+  // border colour and the founding-slot badge are baked into each card's
+  // inline style at render time. Only toggling a class had no visual
+  // effect, so clicking a plan looked like nothing happened even though
+  // wizPlan was updating correctly underneath.
+  renderWizPlanStep();
 }
 function renderWizPlanStep(){
   const grid = document.getElementById('wizPlanGrid');
@@ -1553,7 +1592,15 @@ async function finishSetup(setup){
     tone: setup.tone,
     industry: setup.industry,
     modules: setup.modules,
+    // Real module/feature access always starts on Starter until an active
+    // subscription exists (payment clears, or a founding slot is claimed
+    // below) — that part is correct by design. What was missing is any
+    // record of which plan the owner actually chose in the wizard, so
+    // Settings could tell them "you picked Growth, here's how to activate
+    // it" instead of silently showing Starter with zero explanation, which
+    // is what read as "the plan picker doesn't work."
     plan: 'starter',
+    intendedPlan: setup.plan,
     brandColor: '#4aa8b8',
     logoEmoji: '',
     digestPhone: '',
@@ -1562,7 +1609,11 @@ async function finishSetup(setup){
   DATA = emptyData();
   await saveCfg(); await saveData();
   await claimFoundingSlotIfChosen(setup.plan);
-  boot();
+  await boot();
+  if(CFG && CFG.plan === 'starter' && setup.plan && setup.plan !== 'starter'){
+    const wanted = PLANS.find(p=>p.key===setup.plan);
+    showToast(`You're set up on Starter for now, you picked ${wanted ? wanted.label : setup.plan}. Head to Settings → Plan to activate it.`);
+  }
 }
 // Tries to grant one of the 10 permanent founding-member free spots
 // (2 Enterprise / 3 Growth / 5 Starter) for the plan the person picked
@@ -1766,7 +1817,7 @@ function navTo(page){
   if(!CFG.modules.includes(page) && page!=='settings') page='today';
   CUR_PAGE = page;
   document.querySelectorAll('.sb-item').forEach(el=>el.classList.toggle('active', el.dataset.page===page));
-  document.getElementById('sidebar').classList.remove('open');
+  closeSidebarUI();
   const m = MODULES.find(x=>x.key===page);
   document.getElementById('pageTitle').textContent = labelFor(page);
   document.getElementById('pageSub').textContent = m.desc;
@@ -2903,8 +2954,8 @@ function renderStaff(){
   document.getElementById('pageContent').innerHTML = `
   <div class="two-col">
     <div class="card"><div class="card-title">Team <span class="sub">click anyone to edit</span></div>
-      ${(DATA.staff||[]).map(s=>`<div class="list-row" style="cursor:pointer" onclick="openStaffModal('${s.id}')"><span><b>${esc(s.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(s.role)} · ${esc(s.dept)}</span></span>
-        <button class="btn ${s.onDuty?'btn-primary':'btn-ghost'}" style="padding:6px 12px" onclick="event.stopPropagation();toggleDuty('${s.id}')">${s.onDuty?'● On Duty':'Check In'}</button></div>`).join('') || '<div class="empty">No staff yet</div>'}
+      ${(DATA.staff||[]).map(s=>`<div class="list-row" style="cursor:pointer;align-items:flex-start" onclick="openStaffModal('${s.id}')"><span><b>${esc(s.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(s.role)} · ${esc(s.dept)}</span>${s.onDuty && s.shiftStart ? `<br><span style="color:var(--teal-dim);font-size:10.5px">On duty since ${fmtTime(s.shiftStart)} · ${hoursSince(s.shiftStart)}</span>` : ''}</span>
+        <button class="btn ${s.onDuty?'btn-primary':'btn-ghost'}" style="padding:6px 12px" onclick="event.stopPropagation();toggleDuty('${s.id}')">${s.onDuty?'⏱ Check Out':'Check In'}</button></div>`).join('') || '<div class="empty">No staff yet</div>'}
     </div>
     <div class="card"><div class="card-title">Add Staff</div>
       <label class="lbl">Name</label><input class="inp" id="stName">
@@ -2914,9 +2965,38 @@ function renderStaff(){
       <label class="lbl">Pay rate (optional)</label><input class="inp" id="stRate" type="number" placeholder="e.g. 1500">
       <button class="btn btn-primary btn-full" onclick="addStaff()">＋ Add</button>
     </div>
+  </div>
+  <div class="card" style="margin-top:16px"><div class="card-title">Recent Shifts <span class="sub">today's check-ins and check-outs</span></div>
+    ${recentShiftsToday().length ? recentShiftsToday().map(sh=>`<div class="list-row"><span>${esc(sh.staffName)}</span><span style="color:var(--ink-dim);font-size:12px">${fmtTime(sh.checkIn)} → ${sh.checkOut?fmtTime(sh.checkOut):'still on duty'} ${sh.checkOut?`· ${sh.hours}h`:''}</span></div>`).join('') : '<div class="empty">No shifts logged yet today.</div>'}
   </div>`;
 }
-async function toggleDuty(id){ const s=DATA.staff.find(x=>x.id===id); if(s) s.onDuty=!s.onDuty; await saveData(); renderStaff(); }
+function fmtTime(iso){ if(!iso) return ''; try{ return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }catch(e){ return ''; } }
+function hoursSince(iso){ if(!iso) return ''; const ms = Date.now() - new Date(iso).getTime(); const h = ms/3600000; return h < 1 ? `${Math.round(ms/60000)} min` : `${h.toFixed(1)}h`; }
+function recentShiftsToday(){
+  const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+  return (DATA.shiftLog||[]).filter(sh=>new Date(sh.checkIn) >= startOfDay).slice().reverse().slice(0,20);
+}
+async function toggleDuty(id){
+  const s = DATA.staff.find(x=>x.id===id); if(!s) return;
+  const now = new Date().toISOString();
+  if(!s.onDuty){
+    // Checking in: record the start time so we can show "on duty since"
+    // and calculate a real duration when they check out.
+    s.onDuty = true; s.shiftStart = now;
+  } else {
+    // Checking out: close the shift and log it, this is what makes
+    // "check in and on shift needs time checking and check out" actually
+    // work, previously this was just an on/off flag with no time data
+    // at all.
+    s.onDuty = false;
+    if(!Array.isArray(DATA.shiftLog)) DATA.shiftLog = [];
+    const checkIn = s.shiftStart || now;
+    const hours = Math.max(0, (new Date(now) - new Date(checkIn)) / 3600000);
+    DATA.shiftLog.push({id:uid('SH'), staffId:s.id, staffName:s.name, checkIn, checkOut:now, hours: Math.round(hours*10)/10});
+    s.shiftStart = null;
+  }
+  await saveData(); renderStaff();
+}
 async function addStaff(){
   if(capHit('staff')){ showUpgradeNudge('staff', 'team members'); return; }
   const name=document.getElementById('stName').value.trim();
@@ -3736,7 +3816,13 @@ async function removeBrainNote(id){
 async function saveBusinessGoal(val){
   if(!DATA.knowledge) DATA.knowledge = {facts:[], questionsAsked:0, goal:''};
   DATA.knowledge.goal = (val||'').trim().slice(0,300);
-  await saveData(); showToast('Goal saved');
+  const ok = await saveData();
+  if(ok){ showToast('Goal saved'); }
+  // Re-render from the in-memory DATA either way (even on failure the
+  // field should keep showing what you just typed rather than snapping
+  // back to whatever was last successfully saved, that's what made a
+  // failed save look like the goal box was simply broken/empty).
+  if(settingsTab==='brain') renderSettings();
 }
 function sendAI(){
   const inp = document.getElementById('aiInput'); const q=inp.value.trim(); if(!q) return;
@@ -3831,16 +3917,26 @@ function openGuidePurchaseModal(key){
   </div></div>`;
 }
 async function requestGuidePurchase(key, method){
+  // Same popup-blocking fix as the plan-upgrade WhatsApp notify: open the
+  // tab synchronously before any await breaks the click's user-gesture
+  // context, then point it at the real URL once the request is logged.
+  const waTab = notifyAdminWhatsAppSetup();
   try{
     const { error } = await sb.rpc('request_guide_purchase', { p_guide_key: key, p_method: method, p_business_name: CFG.bizName });
     if(error) throw error;
-  }catch(e){ console.error(e); showToast('Could not send request, check your connection and try again.'); return; }
+  }catch(e){
+    console.error(e);
+    if(waTab && !waTab.closed) waTab.close();
+    showToast('Could not send request, check your connection and try again.');
+    return;
+  }
   closeModal();
   const guideTitle = GUIDE_STORE.find(g=>g.key===key)?.t || key;
   await addKnowledgeFact(`Requested to unlock guide "${guideTitle}" via ${method}.`);
-  showToast('Request sent, our team will confirm and unlock it within one business day.');
+  showToast('Request logged, our team will confirm and unlock it within one business day.');
   const methodLabel = {momo:'Mobile Money', invoice:'an invoice', cash:'a cash'}[method] || method;
-  notifyAdminWhatsApp(`TecXFRA guide unlock request\nBusiness: ${CFG.bizName}\nGuide: ${guideTitle}\nMethod: ${methodLabel}\nPlease confirm and unlock.`);
+  const waSent = notifyAdminWhatsAppFinish(waTab, `TecXFRA guide unlock request\nBusiness: ${CFG.bizName}\nGuide: ${guideTitle}\nMethod: ${methodLabel}\nPlease confirm and unlock.`);
+  if(!waSent) showToast(`Note: WhatsApp notification to our team didn't send, your request is still logged and will be actioned.`);
 }
 function drawGuideStore(){
   const ownedGuides = GUIDE_STORE.filter(g=>ownsGuide(g.key));
@@ -4105,7 +4201,12 @@ function drawSettingsBody(){
           return `<div style="font-size:12px;color:var(--ink-dim)"><b style="color:var(--navy)">${label}:</b> ${s.remaining>0? `${s.remaining} of ${s.cap} left` : 'All claimed'}</div>`; }).join('')}
       </div>
     </div>` : '';
-    b.innerHTML = foundingRow + `<div class="card" style="margin-bottom:14px">
+    const intendedNudge = (CFG.intendedPlan && CFG.intendedPlan !== cur.key && cur.key === 'starter')
+      ? `<div class="card" style="margin-bottom:14px;border-color:var(--teal)">
+          <div style="font-size:12.5px;color:var(--ink-dim)">You picked <b style="color:var(--navy)">${(PLANS.find(p=>p.key===CFG.intendedPlan)||{}).label || CFG.intendedPlan}</b> during setup. Complete payment below to activate it, until then you're on Starter.</div>
+        </div>`
+      : '';
+    b.innerHTML = foundingRow + intendedNudge + `<div class="card" style="margin-bottom:14px">
       <div class="card-title">Your usage on ${cur.label}</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:8px">
         ${['contacts','staff','monthlyTransactions'].map(r=>{
@@ -4308,15 +4409,45 @@ async function payWithPaystack(planKey){
 async function requestMomoInvoice(planKey, method){
   const methodLabel = {momo:'Mobile Money', invoice:'an invoice', cash:'a cash'}[method] || method;
   const planLabel = PLANS.find(p=>p.key===planKey).label;
+  const waMessage = `TecXFRA upgrade request\nBusiness: ${CFG.bizName}\nPlan: ${planLabel}\nMethod: ${methodLabel}\nPlease confirm and activate.`;
+  // Open the WhatsApp tab FIRST, synchronously, still inside the click's
+  // original user-gesture context. Every await below (addKnowledgeFact,
+  // the RPC) breaks that gesture chain, so a window.open() placed after
+  // them gets silently blocked as a popup by Safari/Chrome on mobile,
+  // the button LOOKS like it worked (the "Request sent" toast still
+  // fires) but no WhatsApp tab ever actually opens. Opening a blank tab
+  // now and pointing it at the real URL once ready avoids that.
+  const waTab = notifyAdminWhatsAppSetup();
   await addKnowledgeFact(`Requested ${methodLabel} upgrade to ${planLabel} plan.`);
+  let requestSaved = true;
   try{
     const { error } = await sb.rpc('request_manual_payment', { p_plan: planKey, p_method: method, p_business_name: CFG.bizName });
     if(error) throw error;
-  }catch(e){ console.error(e); }
+  }catch(e){ console.error(e); requestSaved = false; }
   closeModal();
   const confirmLabel = {momo:'MoMo payment', invoice:'invoice', cash:'cash payment'}[method] || method;
-  showToast(`Request sent, our team will confirm your ${confirmLabel} and activate ${planLabel} within one business day.`);
-  notifyAdminWhatsApp(`TecXFRA upgrade request\nBusiness: ${CFG.bizName}\nPlan: ${planLabel}\nMethod: ${methodLabel}\nPlease confirm and activate.`);
+  if(requestSaved){
+    showToast(`Request logged, our team will confirm your ${confirmLabel} and activate ${planLabel} within one business day.`);
+  } else {
+    showToast(`Could not log your request, check your connection and try again.`);
+    if(waTab && !waTab.closed) waTab.close();
+    return;
+  }
+  const waSent = notifyAdminWhatsAppFinish(waTab, waMessage);
+  if(!waSent) showToast(`Note: WhatsApp notification to our team didn't send, your request is still logged and will be actioned.`);
+}
+// Two-step so the popup can be opened synchronously (see comment above)
+// while the message text is still assembled up front, before it's
+// actually addressed and navigated to.
+function notifyAdminWhatsAppSetup(){
+  if(!ADMIN_WHATSAPP_NUMBER || /^2330{9}$/.test(ADMIN_WHATSAPP_NUMBER)) return null; // placeholder not yet set
+  try{ return window.open('', '_blank', 'noopener,noreferrer'); }catch(e){ return null; }
+}
+function notifyAdminWhatsAppFinish(waTab, message){
+  if(!ADMIN_WHATSAPP_NUMBER || /^2330{9}$/.test(ADMIN_WHATSAPP_NUMBER)) return false; // placeholder not yet set, nothing to send
+  const url = `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+  if(waTab && !waTab.closed){ waTab.location = url; return true; }
+  try{ window.open(url, '_blank', 'noopener,noreferrer'); return true; }catch(e){ return false; }
 }
 // Opens the customer's own WhatsApp with a message pre-addressed to the
 // admin number, this is the "notify me on WhatsApp" path while there's
@@ -4371,6 +4502,42 @@ async function toggleLiveModule(el, key){
 /* ============================================================
    INIT
 ============================================================ */
+/* ---------- Mobile sidebar controls ----------
+   openSidebarUI/closeSidebarUI/toggleSidebarUI keep the sidebar and its
+   backdrop in sync (tapping the dimmed backdrop over the page closes the
+   drawer, same as tapping the hamburger). A left-swipe gesture on the
+   open sidebar also closes it, matching standard mobile drawer behaviour. */
+function openSidebarUI(){
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebarBackdrop').classList.add('show');
+}
+function closeSidebarUI(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarBackdrop').classList.remove('show');
+}
+function toggleSidebarUI(){
+  document.getElementById('sidebar').classList.contains('open') ? closeSidebarUI() : openSidebarUI();
+}
+(function setupSidebarSwipe(){
+  const sb = document.getElementById('sidebar');
+  let touchStartX = 0, touchStartY = 0, tracking = false;
+  sb.addEventListener('touchstart', (e)=>{
+    if(!sb.classList.contains('open')) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    tracking = true;
+  }, {passive:true});
+  sb.addEventListener('touchend', (e)=>{
+    if(!tracking) return;
+    tracking = false;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    // require a mostly-horizontal leftward swipe so vertical scrolling
+    // inside the nav list is never mistaken for a close gesture
+    if(dx < -60 && Math.abs(dx) > Math.abs(dy) * 1.5) closeSidebarUI();
+  }, {passive:true});
+})();
+
 (async function init(){
   // These two are pure client-side UI (no network needed), render them
   // first and unconditionally so the wizard is always usable even if
