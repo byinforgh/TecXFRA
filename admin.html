@@ -315,10 +315,12 @@ async function loadBusinesses(){
   if(error){ wrap.innerHTML = `<div class="card empty">Could not load businesses: ${error.message||error}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No businesses signed up yet.</div>'; return; }
   wrap.innerHTML = `<table class="biz-table"><thead><tr>
-      <th>Business</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Status</th><th>Signed up</th>
+      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Status</th><th>Signed up</th>
     </tr></thead><tbody>${data.map(b=>`
       <tr>
         <td><b>${esc(b.business_name)||'Unnamed business'}</b></td>
+        <td>${esc(b.owner_name)||'—'}</td>
+        <td>${b.owner_phone?`<a href="https://wa.me/${esc(b.owner_phone).replace(/\D/g,'')}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">${esc(b.owner_phone)}</a>`:'<span style="color:#b45309">Not provided</span>'}</td>
         <td>${esc(b.owner_email)||'—'}</td>
         <td>${esc(b.industry)||'—'}</td>
         <td>${esc(b.country)||'—'}</td>
@@ -349,6 +351,9 @@ function renderList(rows){
     return `
     <div class="card pending" data-id="${r.id}">
       <div class="biz">${esc(r.business_name)||'Unknown business'}</div>
+      <div class="meta">
+        ${esc(r.owner_name)||'Unknown owner'} · ${r.owner_phone?`<a href="https://wa.me/${esc(r.owner_phone).replace(/\D/g,'')}" target="_blank" rel="noopener noreferrer">${esc(r.owner_phone)}</a>`:'no phone on file'} · ${esc(r.owner_email)||'no email'}
+      </div>
       <div class="meta">
         ${esc(r.provider.toUpperCase())} · requested plan: <b>${esc(p.plan)||'—'}</b> ·
         ${new Date(r.created_at).toLocaleString()}
@@ -398,6 +403,9 @@ function renderGuideList(rows){
     return `
     <div class="card pending" data-id="${r.id}">
       <div class="biz">${esc(r.business_name)||'Unknown business'}</div>
+      <div class="meta">
+        ${esc(r.owner_name)||'Unknown owner'} · ${r.owner_phone?`<a href="https://wa.me/${esc(r.owner_phone).replace(/\D/g,'')}" target="_blank" rel="noopener noreferrer">${esc(r.owner_phone)}</a>`:'no phone on file'} · ${esc(r.owner_email)||'no email'}
+      </div>
       <div class="meta">
         ${esc(r.provider.toUpperCase())} · guide: <b>${esc(p.guide_key)||'—'}</b> ·
         ${new Date(r.created_at).toLocaleString()}
