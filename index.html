@@ -1451,7 +1451,7 @@ function hydrateData(d){
     expenses:[], events:[], followups:[], archive:[], messageLog:[],
     journal:[], persona:null, auditAnswers:{}, auditScore:null,
     accountability:{daily:{}, log:[]}, referrals:[], monthlyRollups:{},
-    shiftLog:[],
+    shiftLog:[], lastActive:null,
     knowledge:{facts:[], questionsAsked:0, goal:''}};
   const out = Object.assign({}, shape, d||{});
   if(!out.accountability || typeof out.accountability !== 'object') out.accountability = {daily:{}, log:[]};
@@ -1782,11 +1782,12 @@ async function checkAnnouncements(){
     if(error) throw error;
     ANNOUNCEMENT_QUEUE = data || [];
     if(ANNOUNCEMENT_QUEUE.length) showNextAnnouncement();
-  }catch(e){ console.error('checkAnnouncements failed', e); }
+    else checkInactivityAccountability();
+  }catch(e){ console.error('checkAnnouncements failed', e); checkInactivityAccountability(); }
 }
 function showNextAnnouncement(){
   const a = ANNOUNCEMENT_QUEUE.shift();
-  if(!a){ closeModal(); return; }
+  if(!a){ closeModal(); checkInactivityAccountability(); return; }
   const kindLabel = {feature:'✨ New Feature', bugfix:'🔧 Fixed For You', maintenance:'📌 Quick Heads Up'}[a.kind] || 'Update';
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show"><div class="modal" style="max-width:420px">
     <div style="font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--teal-dim);margin-bottom:6px">${kindLabel}</div>
@@ -1799,6 +1800,60 @@ async function ackAnnouncement(id){
   try{ await sb.rpc('mark_announcement_read', { p_announcement_id: id }); }
   catch(e){ console.error('mark_announcement_read failed', e); }
   showNextAnnouncement();
+}
+/* ---------- INACTIVITY ACCOUNTABILITY ----------
+   Tracks the last calendar day the owner actually opened the app
+   (DATA.lastActive). On return after a gap of 3+ days, shows exactly one
+   escalating message, gentle at 3 days, blunt and honest at 30+. Never
+   fires twice in the same day, and never fires on a business's very
+   first-ever session (nothing to compare lastActive against yet). Runs
+   after the announcement queue is fully cleared so modals never stack. */
+const INACTIVITY_MESSAGES = {
+  motivation: {
+    3: "It's been 3 days since you were last in here. Small gap, easy to close, get back to today's routine before it becomes a habit of staying away.",
+    5: "5 days quiet. Your follow-ups and revenue don't pause just because you did. Whatever's going on, come back to the basics today.",
+    7: "A full week away. That's 7 days of follow-ups piling up, contacts going cold, and momentum you built slipping. Today is the day you restart it.",
+    14: "Two weeks. Be honest with yourself, is this a busy patch, or is the business drifting because you stepped back? Either way, the fix is the same: show up today.",
+    30: "A full month gone. Whatever the reason, the business hasn't been run for 30 days, that's the truth, not a judgement. You built this system to catch exactly this moment. Use it, starting now."
+  },
+  faith: {
+    3: "It's been 3 days since you were last here. \"Whatever your hand finds to do, do it with all your might.\", Ecclesiastes 9:10. Return to the work today.",
+    5: "5 days away. Faithfulness in small, daily things is what precedes real increase, don't let this gap grow. Come back to the work today.",
+    7: "A full week has passed. \"She sets about her work vigorously.\", Proverbs 31:17. Whatever the season, today is the day to pick this back up.",
+    14: "Two weeks quiet. Rest is not the same as drift, be honest with yourself about which one this has been, then return to faithful daily work today.",
+    30: "A full month away. This isn't condemnation, it's a gentle but honest check-in: the business has gone untended for 30 days. Bring it back into your hands, starting today."
+  },
+  neutral: {
+    3: "It's been 3 days since your last session. Follow-ups and revenue tracking don't pause, worth getting back into today's routine now.",
+    5: "5 days inactive. Check what's built up, follow-ups, expenses, unread contacts, and clear the backlog today.",
+    7: "7 days away, a full week. That's a meaningful gap in tracking and follow-up. Today is the reset point.",
+    14: "14 days inactive. At this point it's worth asking directly: is the business still being actively run day to day? Come back to it today.",
+    30: "30 days since your last session. That's a full month untracked. Whatever the reason, today is the day to pick this back up properly."
+  }
+};
+function inactivityTier(days){
+  if(days>=30) return 30; if(days>=14) return 14; if(days>=7) return 7; if(days>=5) return 5; if(days>=3) return 3; return null;
+}
+async function checkInactivityAccountability(){
+  try{
+    if(!DATA) return;
+    const t = todayStr();
+    const prev = DATA.lastActive;
+    if(!prev){ DATA.lastActive = t; await saveData(); return; }
+    if(prev === t) return; // already logged in today
+    const days = Math.round((new Date(t+'T00:00:00') - new Date(prev+'T00:00:00')) / 86400000);
+    const tier = inactivityTier(days);
+    DATA.lastActive = t; await saveData();
+    if(!tier) return;
+    const tone = CFG.tone || 'motivation';
+    const msg = (INACTIVITY_MESSAGES[tone] && INACTIVITY_MESSAGES[tone][tier]) || INACTIVITY_MESSAGES.motivation[tier];
+    document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show"><div class="modal" style="max-width:420px">
+      <div style="font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:${tier>=14?'var(--coral)':'var(--teal-dim)'};margin-bottom:6px">${tier>=14?'⚠️ Accountability Check':'👋 Welcome Back'}</div>
+      <h3 style="margin-bottom:10px">${days} days away</h3>
+      <div style="font-size:13.5px;line-height:1.7;color:var(--ink-dim);white-space:pre-line">${esc(msg)}</div>
+      <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="closeModal()">I'm back, let's go</button>
+    </div></div>`;
+  }catch(e){ console.error('checkInactivityAccountability failed', e); }
 }
 const TECXFRA_GROUPS = [
   {letter:'T', label:'Today & Tasks', keys:['today']},
@@ -2376,11 +2431,13 @@ async function addContact(){
 function openContactModal(id){
   const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
   const temp = TEMPS.find(t=>t.key===c.temp);
+  const curStage = PIPE_STAGES.includes(c.stage) ? c.stage : 'New';
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal">
     <div class="modal-head"><h3>${esc(c.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <label class="lbl">Temperature</label>
     <select class="inp" onchange="updateContact('${id}','temp',this.value)">${TEMPS.map(t=>`<option value="${t.key}" ${t.key===c.temp?'selected':''}>${t.label}</option>`).join('')}</select>
-    <label class="lbl">Stage</label><input class="inp" value="${esc(c.stage||'')}" onchange="updateContact('${id}','stage',this.value)">
+    <label class="lbl">Stage <span class="sub">tap to move this deal, this is the same stage shown on the ${CUR_INDUSTRY_OBJ.pipelineNoun.toLowerCase()} board</span></label>
+    <div class="tab-row" style="margin-bottom:14px">${PIPE_STAGES.map(s=>`<button class="tab-pill ${s===curStage?'active':''}" onclick="updateContact('${id}','stage','${s}')">${s}</button>`).join('')}</div>
     <label class="lbl">Phone</label><input class="inp" value="${esc(c.phone||'')}" onchange="updateContact('${id}','phone',this.value)">
     <label class="lbl">Next follow-up</label><input class="inp" type="date" value="${esc(c.nextFollowUp||'')}" onchange="updateContact('${id}','nextFollowUp',this.value)">
     <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateContact('${id}','notes',this.value)">${esc(c.notes||'')}</textarea>
@@ -3072,6 +3129,45 @@ function periodTotals(items, dateField, amountField){
   });
   return {today, week, month, qtr, year};
 }
+// Shared by the Expenses and Revenue period drill-downs, matches the exact
+// same boundaries periodTotals() uses above so the number a business owner
+// taps always matches the line items they see behind it.
+function periodDateFilter(dateStr, period){
+  if(!dateStr) return false;
+  const t = todayStr();
+  const now = new Date(t+'T00:00:00');
+  const weekStart = new Date(now); weekStart.setDate(now.getDate()-now.getDay());
+  const monthKey = t.slice(0,7);
+  const quarter = Math.floor(now.getMonth()/3);
+  const yearKey = t.slice(0,4);
+  const dd = new Date(dateStr+'T00:00:00');
+  switch(period){
+    case 'today': return dateStr===t;
+    case 'week': return dd>=weekStart;
+    case 'month': return dateStr.slice(0,7)===monthKey;
+    case 'qtr': return dateStr.slice(0,4)===yearKey && Math.floor(dd.getMonth()/3)===quarter;
+    case 'year': return dateStr.slice(0,4)===yearKey;
+  }
+  return false;
+}
+const PERIOD_LABELS = {today:'Today', week:'This Week', month:'This Month', qtr:'This Quarter', year:'This Year'};
+function openExpensePeriodModal(period){
+  const items = (DATA.expenses||[]).filter(e=>periodDateFilter(e.date, period)).slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const total = items.reduce((s,e)=>s+(e.amount||0),0);
+  const byCat = {};
+  items.forEach(e=>{ byCat[e.category||'Other'] = (byCat[e.category||'Other']||0) + (e.amount||0); });
+  const catRows = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>`<div class="list-row"><span>${esc(cat)}</span><span class="mono">${money(amt)}</span></div>`).join('') || '<div class="empty">No expenses in this period</div>';
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px;max-height:80vh">
+    <div class="modal-head"><h3>Expenses, ${PERIOD_LABELS[period]}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="metric amber" style="margin-bottom:14px"><div class="ml">Total</div><div class="mv">${money(total)}</div></div>
+    <div class="card-title" style="padding:0;margin-bottom:6px;font-size:12px">By Category</div>
+    ${catRows}
+    <div class="card-title" style="padding:0;margin:14px 0 6px;font-size:12px">Line Items <span class="sub">tap to edit</span></div>
+    <div class="scroll-tbl" style="max-height:220px"><table><thead><tr><th>Date</th><th>Item</th><th>Category</th><th>Amount</th></tr></thead><tbody>
+    ${items.map(e=>`<tr style="cursor:pointer" onclick="closeModal();openExpenseModal('${e.id}')"><td>${fmtDate(e.date)}</td><td>${esc(e.item)}</td><td style="color:var(--ink-dim)">${esc(e.category)}</td><td class="mono">${money(e.amount)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">None</td></tr>'}
+    </tbody></table></div>
+  </div></div>`;
+}
 function renderExpenses(){
   const ci = getCountryInfo();
   const pt = periodTotals(DATA.expenses, 'date', 'amount');
@@ -3080,11 +3176,11 @@ function renderExpenses(){
   const oldCount = (DATA.expenses||[]).filter(e=>new Date(e.date+'T00:00:00')<oldCutoff).length;
   document.getElementById('pageContent').innerHTML = `
   <div class="grid-metrics">
-    <div class="metric amber"><div class="ml">Today</div><div class="mv">${money(pt.today)}</div></div>
-    <div class="metric amber"><div class="ml">This Week</div><div class="mv">${money(pt.week)}</div></div>
-    <div class="metric amber"><div class="ml">This Month</div><div class="mv">${money(pt.month)}</div></div>
-    <div class="metric amber"><div class="ml">This Quarter</div><div class="mv">${money(pt.qtr)}</div></div>
-    <div class="metric amber"><div class="ml">This Year</div><div class="mv">${money(pt.year)}</div></div>
+    <div class="metric amber" style="cursor:pointer" onclick="openExpensePeriodModal('today')"><div class="ml">Today</div><div class="mv">${money(pt.today)}</div></div>
+    <div class="metric amber" style="cursor:pointer" onclick="openExpensePeriodModal('week')"><div class="ml">This Week</div><div class="mv">${money(pt.week)}</div></div>
+    <div class="metric amber" style="cursor:pointer" onclick="openExpensePeriodModal('month')"><div class="ml">This Month</div><div class="mv">${money(pt.month)}</div></div>
+    <div class="metric amber" style="cursor:pointer" onclick="openExpensePeriodModal('qtr')"><div class="ml">This Quarter</div><div class="mv">${money(pt.qtr)}</div></div>
+    <div class="metric amber" style="cursor:pointer" onclick="openExpensePeriodModal('year')"><div class="ml">This Year</div><div class="mv">${money(pt.year)}</div></div>
   </div>
   <div class="card" style="border-color:var(--teal-tint)"><div class="card-title">Tax & Payroll, ${esc(CFG.country||', ')} <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change →</span></div>
     <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7">
@@ -3305,6 +3401,206 @@ async function removeStaff(id){
 }
 
 /* ---------- REVENUE / ANALYTICS ---------- */
+let revView = 'overview';
+let revCalMonth = new Date().getMonth(), revCalYear = new Date().getFullYear();
+function setRevView(v){ revView=v; drawRevViewBody(); }
+function revCalNav(d){ revCalMonth+=d; if(revCalMonth<0){revCalMonth=11;revCalYear--;} if(revCalMonth>11){revCalMonth=0;revCalYear++;} drawRevenueCalendar(); }
+function revYearNav(d){ revCalYear+=d; drawRevViewBody(); }
+function dayTotals(dateKey){
+  const rev = (DATA.transactions||[]).filter(x=>x.date===dateKey).reduce((s,x)=>s+(x.amount||0),0);
+  const exp = (DATA.expenses||[]).filter(x=>x.date===dateKey).reduce((s,x)=>s+(x.amount||0),0);
+  return {rev, exp, net: rev-exp};
+}
+function openRevenueDayModal(dateKey){
+  const {rev, exp, net} = dayTotals(dateKey);
+  const sales = (DATA.transactions||[]).filter(x=>x.date===dateKey);
+  const exps = (DATA.expenses||[]).filter(x=>x.date===dateKey);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px;max-height:80vh">
+    <div class="modal-head"><h3>${fmtDate(dateKey)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="grid-metrics" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+      <div class="metric navy"><div class="ml">Revenue</div><div class="mv">${money(rev)}</div></div>
+      <div class="metric coral"><div class="ml">Expenses</div><div class="mv">${money(exp)}</div></div>
+      <div class="metric green"><div class="ml">Net</div><div class="mv">${money(net)}</div></div>
+    </div>
+    <div class="card-title" style="padding:0;margin-bottom:6px;font-size:12px">Sales / Revenue</div>
+    <div class="scroll-tbl" style="max-height:160px"><table><thead><tr><th>Item</th><th>Contact</th><th>Amount</th></tr></thead><tbody>
+    ${sales.map(x=>`<tr><td>${esc(x.item||x.type||', ')}</td><td style="color:var(--ink-dim)">${esc(x.contact||', ')}</td><td class="mono">${money(x.amount)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">None</td></tr>'}
+    </tbody></table></div>
+    <div class="card-title" style="padding:0;margin:14px 0 6px;font-size:12px">Expenses <span class="sub">tap to edit</span></div>
+    <div class="scroll-tbl" style="max-height:160px"><table><thead><tr><th>Item</th><th>Category</th><th>Amount</th></tr></thead><tbody>
+    ${exps.map(e=>`<tr style="cursor:pointer" onclick="closeModal();openExpenseModal('${e.id}')"><td>${esc(e.item)}</td><td style="color:var(--ink-dim)">${esc(e.category)}</td><td class="mono">${money(e.amount)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">None</td></tr>'}
+    </tbody></table></div>
+  </div></div>`;
+}
+function drawRevenueCalendar(){
+  const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const label = document.getElementById('revCalLabel'); if(label) label.textContent = MN[revCalMonth]+' '+revCalYear;
+  const first = new Date(revCalYear,revCalMonth,1); const startDow = first.getDay(); const days = new Date(revCalYear,revCalMonth+1,0).getDate();
+  const tKey = todayStr();
+  let html = ['S','M','T','W','T','F','S'].map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  for(let i=0;i<startDow;i++) html += '<div class="cal-cell empty2"></div>';
+  for(let d=1; d<=days; d++){
+    const key = `${revCalYear}-${String(revCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const {rev, exp} = dayTotals(key);
+    const hasData = rev>0 || exp>0;
+    html += `<div class="cal-cell ${key===tKey?'today':''}" style="cursor:pointer" title="${fmtDate(key)}: Revenue ${money(rev)}, Expenses ${money(exp)}, Net ${money(rev-exp)}" onclick="openRevenueDayModal('${key}')">
+      <div class="cal-daynum">${d}</div>
+      ${hasData?`${rev>0?`<div class="cal-pill" style="background:var(--teal-tint);color:var(--navy);font-size:9px">+${money(rev).replace(/\.00$/,'')}</div>`:''}${exp>0?`<div class="cal-pill" style="background:#f7e4e0;color:var(--coral);font-size:9px">-${money(exp).replace(/\.00$/,'')}</div>`:''}`:''}
+    </div>`;
+  }
+  document.getElementById('revCalGrid').innerHTML = html;
+}
+function isoWeekNumber(d){
+  const start = new Date(d.getFullYear(),0,1);
+  const diff = (d - start) + (start.getTimezoneOffset()-d.getTimezoneOffset())*60000;
+  return Math.min(53, Math.floor(diff/86400000/7)+1);
+}
+function openWeekModal(weekNo, year){
+  const items = [...(DATA.transactions||[]), ...(DATA.expenses||[]).map(e=>({...e, __exp:true}))]
+    .filter(x=>x.date && x.date.slice(0,4)===String(year) && isoWeekNumber(new Date(x.date+'T00:00:00'))===weekNo);
+  const rev = items.filter(x=>!x.__exp).reduce((s,x)=>s+(x.amount||0),0);
+  const exp = items.filter(x=>x.__exp).reduce((s,x)=>s+(x.amount||0),0);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="modal-head"><h3>Week ${weekNo}, ${year}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="grid-metrics" style="grid-template-columns:repeat(3,1fr)">
+      <div class="metric navy"><div class="ml">Revenue</div><div class="mv">${money(rev)}</div></div>
+      <div class="metric coral"><div class="ml">Expenses</div><div class="mv">${money(exp)}</div></div>
+      <div class="metric green"><div class="ml">Net</div><div class="mv">${money(rev-exp)}</div></div>
+    </div>
+    <div class="sub" style="margin-top:10px">Open the Calendar tab and step to this week for day-by-day detail.</div>
+  </div></div>`;
+}
+function drawRevenueWeeks(){
+  const year = revCalYear;
+  const weeks = {};
+  (DATA.transactions||[]).forEach(x=>{ if(x.date && x.date.slice(0,4)===String(year)){ const wn=isoWeekNumber(new Date(x.date+'T00:00:00')); weeks[wn]=weeks[wn]||{rev:0,exp:0}; weeks[wn].rev+=x.amount||0; } });
+  (DATA.expenses||[]).forEach(x=>{ if(x.date && x.date.slice(0,4)===String(year)){ const wn=isoWeekNumber(new Date(x.date+'T00:00:00')); weeks[wn]=weeks[wn]||{rev:0,exp:0}; weeks[wn].exp+=x.amount||0; } });
+  let rows='';
+  for(let w=1; w<=52; w++){
+    const wk = weeks[w] || {rev:0,exp:0};
+    if(!wk.rev && !wk.exp) continue;
+    rows += `<tr style="cursor:pointer" onclick="openWeekModal(${w},${year})"><td>Week ${w}</td><td class="mono">${money(wk.rev)}</td><td class="mono">${money(wk.exp)}</td><td class="mono">${money(wk.rev-wk.exp)}</td></tr>`;
+  }
+  const body = document.getElementById('revWeeksBody');
+  if(body) body.innerHTML = rows || `<tr><td colspan="4" class="empty">No activity logged for ${year} yet</td></tr>`;
+}
+function openMonthModal(mk){
+  const rev = (DATA.transactions||[]).filter(x=>x.date && x.date.slice(0,7)===mk).reduce((s,x)=>s+(x.amount||0),0);
+  const exp = (DATA.expenses||[]).filter(x=>x.date && x.date.slice(0,7)===mk).reduce((s,x)=>s+(x.amount||0),0);
+  const [y,m] = mk.split('-');
+  const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="modal-head"><h3>${MN[parseInt(m,10)-1]} ${y}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="grid-metrics" style="grid-template-columns:repeat(3,1fr)">
+      <div class="metric navy"><div class="ml">Revenue</div><div class="mv">${money(rev)}</div></div>
+      <div class="metric coral"><div class="ml">Expenses</div><div class="mv">${money(exp)}</div></div>
+      <div class="metric green"><div class="ml">Net</div><div class="mv">${money(rev-exp)}</div></div>
+    </div>
+    <div class="sub" style="margin-top:10px">Open the Calendar tab and step to ${MN[parseInt(m,10)-1]} for day-by-day detail.</div>
+  </div></div>`;
+}
+function drawRevenueMonths(){
+  const year = revCalYear;
+  const MNS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  let rows='';
+  for(let m=0;m<12;m++){
+    const mk = `${year}-${String(m+1).padStart(2,'0')}`;
+    const rev = (DATA.transactions||[]).filter(x=>x.date && x.date.slice(0,7)===mk).reduce((s,x)=>s+(x.amount||0),0);
+    const exp = (DATA.expenses||[]).filter(x=>x.date && x.date.slice(0,7)===mk).reduce((s,x)=>s+(x.amount||0),0);
+    rows += `<tr style="cursor:pointer" onclick="openMonthModal('${mk}')"><td>${MNS[m]}</td><td class="mono">${money(rev)}</td><td class="mono">${money(exp)}</td><td class="mono">${money(rev-exp)}</td></tr>`;
+  }
+  const body = document.getElementById('revMonthsBody');
+  if(body) body.innerHTML = rows;
+}
+function openRevenuePeriodModal(period){
+  const items = (DATA.transactions||[]).filter(x=>periodDateFilter(x.date, period)).slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const total = items.reduce((s,x)=>s+(x.amount||0),0);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px;max-height:80vh">
+    <div class="modal-head"><h3>Revenue, ${PERIOD_LABELS[period]}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="metric navy" style="margin-bottom:14px"><div class="ml">Total</div><div class="mv">${money(total)}</div></div>
+    <div class="scroll-tbl" style="max-height:300px"><table><thead><tr><th>Date</th><th>Item</th><th>Contact</th><th>Amount</th></tr></thead><tbody>
+    ${items.map(x=>`<tr><td>${fmtDate(x.date)}</td><td>${esc(x.item||x.type||', ')}</td><td style="color:var(--ink-dim)">${esc(x.contact||', ')}</td><td class="mono">${money(x.amount)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">None</td></tr>'}
+    </tbody></table></div>
+  </div></div>`;
+}
+function openNetPeriodModal(period){
+  const rev = (DATA.transactions||[]).filter(x=>periodDateFilter(x.date, period)).reduce((s,x)=>s+(x.amount||0),0);
+  const exp = (DATA.expenses||[]).filter(x=>periodDateFilter(x.date, period)).reduce((s,x)=>s+(x.amount||0),0);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:400px">
+    <div class="modal-head"><h3>Net, ${PERIOD_LABELS[period]}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="grid-metrics" style="grid-template-columns:repeat(3,1fr)">
+      <div class="metric navy"><div class="ml">Revenue</div><div class="mv">${money(rev)}</div></div>
+      <div class="metric coral"><div class="ml">Expenses</div><div class="mv">${money(exp)}</div></div>
+      <div class="metric green"><div class="ml">Net</div><div class="mv">${money(rev-exp)}</div></div>
+    </div>
+  </div></div>`;
+}
+function openRevenueTotalModal(){
+  const byType = {};
+  (DATA.transactions||[]).forEach(x=>{ const k=x.type||'sale'; byType[k]=(byType[k]||0)+(x.amount||0); });
+  const total = Object.values(byType).reduce((a,b)=>a+b,0);
+  const rows = Object.entries(byType).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="list-row"><span style="text-transform:capitalize">${esc(k)}</span><span class="mono">${money(v)}</span></div>`).join('') || '<div class="empty">No revenue logged yet</div>';
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="modal-head"><h3>Total Revenue, All Time</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="metric navy" style="margin-bottom:14px"><div class="ml">Total</div><div class="mv">${money(total)}</div></div>
+    <div class="card-title" style="padding:0;margin-bottom:6px;font-size:12px">By Type</div>
+    ${rows}
+    <div class="sub" style="margin-top:10px">Use the Calendar, By Week, or By Month tabs above for day-level or period-level detail.</div>
+  </div></div>`;
+}
+function openTotalExpensesModal(){
+  const byCat = {};
+  (DATA.expenses||[]).forEach(e=>{ byCat[e.category||'Other']=(byCat[e.category||'Other']||0)+(e.amount||0); });
+  const total = Object.values(byCat).reduce((a,b)=>a+b,0);
+  const rows = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="list-row"><span>${esc(k)}</span><span class="mono">${money(v)} <span style="color:var(--muted);font-size:11px">(${total?Math.round(v/total*100):0}%)</span></span></div>`).join('') || '<div class="empty">No expenses logged yet</div>';
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="modal-head"><h3>Total Expenses, All Time</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="metric coral" style="margin-bottom:14px"><div class="ml">Total</div><div class="mv">${money(total)}</div></div>
+    <div class="card-title" style="padding:0;margin-bottom:6px;font-size:12px">By Category</div>
+    ${rows}
+  </div></div>`;
+}
+function openNetModal(){
+  const rev = (DATA.transactions||[]).reduce((s,x)=>s+(x.amount||0),0);
+  const exp = (DATA.expenses||[]).reduce((s,e)=>s+(e.amount||0),0);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:400px">
+    <div class="modal-head"><h3>Net, All Time</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="grid-metrics" style="grid-template-columns:repeat(3,1fr)">
+      <div class="metric navy"><div class="ml">Revenue</div><div class="mv">${money(rev)}</div></div>
+      <div class="metric coral"><div class="ml">Expenses</div><div class="mv">${money(exp)}</div></div>
+      <div class="metric green"><div class="ml">Net</div><div class="mv">${money(rev-exp)}</div></div>
+    </div>
+  </div></div>`;
+}
+function drawRevViewBody(){
+  const body = document.getElementById('revViewBody'); if(!body) return;
+  document.querySelectorAll('#revTabs .tab-pill').forEach(el=>el.classList.remove('active'));
+  const active = document.getElementById('revTab_'+revView); if(active) active.classList.add('active');
+  if(revView==='calendar'){
+    body.innerHTML = `<div class="card">
+      <div class="card-title"><span id="revCalLabel">, </span>
+      <span><button class="btn btn-ghost" style="padding:6px 10px" onclick="revCalNav(-1)">←</button> <button class="btn btn-ghost" style="padding:6px 10px" onclick="revCalNav(1)">→</button></span></div>
+      <div class="sub" style="margin-bottom:8px">Hover a day for the full breakdown, tap it to see everything logged that day.</div>
+      <div class="calendar-grid" id="revCalGrid"></div>
+    </div>`;
+    drawRevenueCalendar();
+  } else if(revView==='weeks'){
+    body.innerHTML = `<div class="card"><div class="card-title">Week 1, 52 · ${revCalYear} <span><button class="btn btn-ghost" style="padding:4px 8px" onclick="revYearNav(-1)">←</button> <button class="btn btn-ghost" style="padding:4px 8px" onclick="revYearNav(1)">→</button></span></div>
+    <div class="sub" style="margin-bottom:8px">Tap a week for its total, only weeks with activity are shown.</div>
+    <div class="scroll-tbl" style="max-height:440px"><table><thead><tr><th>Week</th><th>Revenue</th><th>Expenses</th><th>Net</th></tr></thead><tbody id="revWeeksBody"></tbody></table></div>
+    </div>`;
+    drawRevenueWeeks();
+  } else if(revView==='months'){
+    body.innerHTML = `<div class="card"><div class="card-title">Jan, Dec · ${revCalYear} <span><button class="btn btn-ghost" style="padding:4px 8px" onclick="revYearNav(-1)">←</button> <button class="btn btn-ghost" style="padding:4px 8px" onclick="revYearNav(1)">→</button></span></div>
+    <div class="sub" style="margin-bottom:8px">Tap a month for its total.</div>
+    <div class="scroll-tbl"><table><thead><tr><th>Month</th><th>Revenue</th><th>Expenses</th><th>Net</th></tr></thead><tbody id="revMonthsBody"></tbody></table></div>
+    </div>`;
+    drawRevenueMonths();
+  } else {
+    body.innerHTML = REV_OVERVIEW_HTML;
+  }
+}
+let REV_OVERVIEW_HTML = '';
 function renderRevenue(){
   const byDay = {};
   (DATA.transactions||[]).forEach(t=>{ byDay[t.date]=(byDay[t.date]||0)+t.amount; });
@@ -3353,27 +3649,17 @@ function renderRevenue(){
   const avgTicket = saleCount ? totalRev/saleCount : 0;
   const debtorExposure = (DATA.contacts||[]).filter(c=>c.value>0).reduce((s,c)=>s+c.value,0);
 
-  document.getElementById('pageContent').innerHTML = `
-  <div class="grid-metrics">
-    <div class="metric navy"><div class="ml">Total Revenue (7d log)</div><div class="mv">${money(totalRev)}</div></div>
-    <div class="metric coral"><div class="ml">Total Expenses</div><div class="mv">${money(totalExp)}</div></div>
-    <div class="metric green"><div class="ml">Net</div><div class="mv">${money(totalRev-totalExp)}</div></div>
-    <div class="metric amber"><div class="ml">Conversion</div><div class="mv">${DATA.contacts.length?Math.round((DATA.contacts.filter(c=>c.temp==='active').length/DATA.contacts.length)*100):0}%</div><div class="ms">contacts → active</div></div>
-    <div class="metric navy"><div class="ml">Month-on-Month</div><div class="mv">${momGrowth===null?', ':(momGrowth>=0?'+':'')+momGrowth+'%'}</div><div class="ms">vs last month</div></div>
-    <div class="metric ${grossMarginPct===null?'navy':grossMarginPct<20?'coral':'green'}"><div class="ml">Est. Gross Margin</div><div class="mv">${grossMarginPct===null?', ':grossMarginPct+'%'}</div><div class="ms">from priced items sold</div></div>
-    <div class="metric navy"><div class="ml">Avg Ticket</div><div class="mv">${money(avgTicket)}</div><div class="ms">${saleCount} sale${saleCount===1?'':'s'} logged</div></div>
-    <div class="metric coral"><div class="ml">Debtor Exposure</div><div class="mv">${money(debtorExposure)}</div><div class="ms" style="cursor:pointer" onclick="navTo('invoicing')">view debtors →</div></div>
-  </div>
-  <div class="card"><div class="card-title">Revenue vs Expenses by Period</div>
+  const overviewHtml = `
+  <div class="card"><div class="card-title">Revenue vs Expenses by Period <span class="sub">tap a number for the breakdown</span></div>
     <div class="scroll-tbl"><table><thead><tr><th></th><th>Today</th><th>Week</th><th>Month</th><th>Quarter</th><th>Year</th></tr></thead><tbody>
-      <tr><td><b style="color:var(--navy)">Revenue</b></td><td class="mono">${money(revPt.today)}</td><td class="mono">${money(revPt.week)}</td><td class="mono">${money(revPt.month)}</td><td class="mono">${money(revPt.qtr)}</td><td class="mono">${money(revPt.year)}</td></tr>
-      <tr><td><b style="color:var(--navy)">Expenses</b></td><td class="mono">${money(expPt.today)}</td><td class="mono">${money(expPt.week)}</td><td class="mono">${money(expPt.month)}</td><td class="mono">${money(expPt.qtr)}</td><td class="mono">${money(expPt.year)}</td></tr>
-      <tr><td><b style="color:var(--green,#3a7a5d)">Net</b></td><td class="mono">${money(revPt.today-expPt.today)}</td><td class="mono">${money(revPt.week-expPt.week)}</td><td class="mono">${money(revPt.month-expPt.month)}</td><td class="mono">${money(revPt.qtr-expPt.qtr)}</td><td class="mono">${money(revPt.year-expPt.year)}</td></tr>
+      <tr><td><b style="color:var(--navy)">Revenue</b></td>${['today','week','month','qtr','year'].map(p=>`<td class="mono" style="cursor:pointer" onclick="openRevenuePeriodModal('${p}')">${money(revPt[p])}</td>`).join('')}</tr>
+      <tr><td><b style="color:var(--coral)">Expenses</b></td>${['today','week','month','qtr','year'].map(p=>`<td class="mono" style="cursor:pointer" onclick="openExpensePeriodModal('${p}')">${money(expPt[p])}</td>`).join('')}</tr>
+      <tr><td><b style="color:var(--green,#3a7a5d)">Net</b></td>${['today','week','month','qtr','year'].map(p=>`<td class="mono" style="cursor:pointer" onclick="openNetPeriodModal('${p}')">${money(revPt[p]-expPt[p])}</td>`).join('')}</tr>
     </tbody></table></div>
   </div>
   <div class="card"><div class="card-title">Last 7 Days</div>
     <div style="display:flex;align-items:flex-end;gap:10px;height:150px;padding-top:10px">
-    ${days.map(d=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+    ${days.map(d=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer" onclick="openRevenueDayModal('${d}')">
       <div class="mono" style="font-size:9.5px;color:var(--ink-dim);margin-bottom:4px">${money(byDay[d]).replace(/\.00$/,'')}</div>
       <div style="width:100%;background:var(--teal);border-radius:5px 5px 0 0;height:${Math.max(4,(byDay[d]/max)*110)}px"></div>
       <div style="font-size:9.5px;color:var(--muted);margin-top:5px">${d.slice(5)}</div>
@@ -3391,7 +3677,30 @@ function renderRevenue(){
   <div class="card"><div class="card-title">Top Customers by Spend</div>
     ${topCustomers.length ? topCustomers.map(([name,amt])=>`<div class="list-row"><span>${esc(name)}</span><span class="mono">${money(amt)}</span></div>`).join('') : '<div class="empty">No customer sales linked yet, pick a customer at checkout to track this</div>'}
   </div>`;
+
+  document.getElementById('pageContent').innerHTML = `
+  <div class="grid-metrics">
+    <div class="metric navy" style="cursor:pointer" onclick="openRevenueTotalModal()"><div class="ml">Total Revenue</div><div class="mv">${money(totalRev)}</div></div>
+    <div class="metric coral" style="cursor:pointer" onclick="openTotalExpensesModal()"><div class="ml">Total Expenses</div><div class="mv">${money(totalExp)}</div></div>
+    <div class="metric green" style="cursor:pointer" onclick="openNetModal()"><div class="ml">Net</div><div class="mv">${money(totalRev-totalExp)}</div></div>
+    <div class="metric amber"><div class="ml">Conversion</div><div class="mv">${DATA.contacts.length?Math.round((DATA.contacts.filter(c=>c.temp==='active').length/DATA.contacts.length)*100):0}%</div><div class="ms">contacts → active</div></div>
+    <div class="metric navy"><div class="ml">Month-on-Month</div><div class="mv">${momGrowth===null?', ':(momGrowth>=0?'+':'')+momGrowth+'%'}</div><div class="ms">vs last month</div></div>
+    <div class="metric ${grossMarginPct===null?'navy':grossMarginPct<20?'coral':'green'}"><div class="ml">Est. Gross Margin</div><div class="mv">${grossMarginPct===null?', ':grossMarginPct+'%'}</div><div class="ms">from priced items sold</div></div>
+    <div class="metric navy"><div class="ml">Avg Ticket</div><div class="mv">${money(avgTicket)}</div><div class="ms">${saleCount} sale${saleCount===1?'':'s'} logged</div></div>
+    <div class="metric coral"><div class="ml">Debtor Exposure</div><div class="mv">${money(debtorExposure)}</div><div class="ms" style="cursor:pointer" onclick="navTo('invoicing')">view debtors →</div></div>
+  </div>
+  <div class="tab-row" id="revTabs">
+    <button class="tab-pill" id="revTab_overview" onclick="setRevView('overview')">Overview</button>
+    <button class="tab-pill" id="revTab_calendar" onclick="setRevView('calendar')">Calendar</button>
+    <button class="tab-pill" id="revTab_weeks" onclick="setRevView('weeks')">By Week</button>
+    <button class="tab-pill" id="revTab_months" onclick="setRevView('months')">By Month</button>
+  </div>
+  <div id="revViewBody"></div>`;
+  REV_OVERVIEW_HTML = overviewHtml;
+  drawRevViewBody();
 }
+
+
 
 /* ---------- MESSAGES ---------- */
 let msgCat = 'cold';
