@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Invoice, TecXFRA</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root{ --teal:#4aa8b8; --navy:#123642; --cream:#faf8f3; --ink:#0c262f; --line:#e4ded2; --coral:#c0584a; --ok:#3f8f5f; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--cream);color:var(--ink);padding:24px 16px 60px}
+  .wrap{max-width:520px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:8px;margin-bottom:20px}
+  .brand b{font-size:15px;color:var(--navy)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+  .num{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--teal);font-weight:700}
+  .biz{font-size:19px;font-weight:800;color:var(--navy);margin-top:2px}
+  .meta{font-size:12px;color:#6b7a7b;line-height:1.7;margin-top:6px}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px}
+  .pill-unpaid{background:#fbe9e6;color:var(--coral)}
+  .pill-paid{background:#e4f3ea;color:var(--ok)}
+  table{width:100%;border-collapse:collapse;margin:18px 0}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#8a9394;padding:8px 0;border-bottom:1px solid var(--line)}
+  td{padding:10px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .totrow td{border-bottom:none;font-weight:800;font-size:16px;color:var(--navy);padding-top:14px}
+  .foot{margin-top:20px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:#6b7a7b;line-height:1.7}
+  .empty, .loading{text-align:center;color:#8a9394;padding:60px 0;font-size:14px}
+  .err{text-align:center;color:var(--coral);padding:60px 20px;font-size:14px}
+  @media print{ body{background:#fff;padding:0} .card{border:none;border-radius:0} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><b>TecXFRA</b> <span style="font-size:11px;color:#8a9394">· Complete Total Control</span></div>
+  <div id="root" class="card"><div class="loading">Loading invoice…</div></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://bnbcozkrvqforiunwzrz.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_KwKhcg8loLN4Ai0WH7s7PQ_0WPFhcsB';
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function money(n, cur){ return `${cur||'GHS'} ${Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}`; }
+function fmtDate(s){ if(!s) return ''; try{ return new Date(s).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }catch(e){ return s; } }
+
+async function loadInvoice(){
+  const root = document.getElementById('root');
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('id');
+  if(!id){ root.innerHTML = '<div class="err">No invoice was specified in this link.</div>'; return; }
+  try{
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { data, error } = await sb.rpc('get_public_invoice', { p_invoice_id: id });
+    const inv = Array.isArray(data) ? data[0] : data;
+    if(error || !inv || !inv.invoice_number){
+      root.innerHTML = '<div class="err">This invoice link is invalid or has been removed.</div>';
+      return;
+    }
+    const items = Array.isArray(inv.items) ? inv.items : [];
+    root.innerHTML = `
+      <div class="head">
+        <div>
+          <div class="num">Invoice ${esc(inv.invoice_number)}</div>
+          <div class="biz">${esc(inv.business_name || 'Business')}</div>
+          <div class="meta">
+            ${inv.business_address ? esc(inv.business_address) + '<br>' : ''}
+            ${inv.business_phone ? 'Tel: ' + esc(inv.business_phone) + '<br>' : ''}
+            ${inv.business_email ? esc(inv.business_email) + '<br>' : ''}
+            ${inv.business_reg_no ? 'Reg. No: ' + esc(inv.business_reg_no) : ''}
+          </div>
+        </div>
+        <span class="pill ${inv.status==='paid'?'pill-paid':'pill-unpaid'}">${inv.status==='paid'?'Paid':'Unpaid'}</span>
+      </div>
+      <div class="meta">
+        Billed to: <b style="color:var(--navy)">${esc(inv.contact_name)}</b><br>
+        Date: ${fmtDate(inv.created_at)}${inv.due_date ? ' · Due: ' + fmtDate(inv.due_date) : ''}
+      </div>
+      <table>
+        <thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+        <tbody>
+          ${items.map(it=>`<tr><td>${esc(it.desc||'Item')}${it.qty && it.qty>1 ? ` × ${esc(it.qty)}` : ''}</td><td style="text-align:right">${money((it.price||0)*(it.qty||1), inv.currency)}</td></tr>`).join('')}
+          <tr class="totrow"><td>Total</td><td style="text-align:right">${money(inv.amount, inv.currency)}</td></tr>
+        </tbody>
+      </table>
+      ${inv.notes ? `<div class="meta">${esc(inv.notes)}</div>` : ''}
+      <div class="foot">Thank you for your business. This invoice was generated with TecXFRA.</div>`;
+  }catch(e){
+    console.error('invoice load failed', e);
+    root.innerHTML = '<div class="err">Something went wrong loading this invoice. Please ask for a new link.</div>';
+  }
+}
+loadInvoice();
+</script>
+</body>
+</html>
