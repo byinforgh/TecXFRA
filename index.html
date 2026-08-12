@@ -1635,7 +1635,12 @@ async function finishSetup(setup){
     brandColor: '#4aa8b8',
     logoEmoji: '',
     digestPhone: '',
-    digestTime: '18:00'
+    digestTime: '18:00',
+    // Explicit false (not just "missing") is what marks this as a
+    // genuinely brand-new signup, existing businesses loaded through the
+    // normal login path never get this field set here, so boot() only
+    // ever shows the tour to someone who has never seen the app before.
+    walkthroughDone: false
   };
   DATA = emptyData();
   await saveCfg(); await saveData();
@@ -1681,7 +1686,8 @@ async function boot(){
     renderSidebar();
     navTo('today');
     runAutoArchive(); // fire-and-forget housekeeping, at most once/day
-    checkAnnouncements(); // fire-and-forget, shows any unread update banner
+    if(CFG.walkthroughDone === false){ showWalkthrough(); }
+    else{ checkAnnouncements(); } // fire-and-forget, shows any unread update banner
   }catch(e){
     console.error('boot failed', e);
     hideBootLoading();
@@ -1697,6 +1703,71 @@ async function boot(){
       </div>`;
     }
   }
+}
+/* ---------- Welcome Walkthrough (first-run only) ----------
+   Shown once, right after a brand-new signup finishes (never on a
+   returning login, see the walkthroughDone===false check in boot()).
+   Every step has "Skip" (moves straight to the next step) and a
+   permanent "Skip all" in the header (exits the whole tour immediately).
+   Finishing or skipping either way marks it done, on the server, so it
+   never reappears on any device this business logs into. */
+function walkthroughSteps(){
+  const sellingOn = CFG.modules.includes('pos') || CFG.modules.includes('inventory') || CFG.modules.includes('invoicing');
+  const steps = [
+    { icon:'👋', title:`Welcome, ${esc(CFG.ownerName||'').split(' ')[0] || 'there'}`,
+      body:`${esc(CFG.bizName)} is now running on TecXFRA. This takes about a minute, we'll show you where everything lives. Skip any step, or skip the whole thing, whenever you want.` },
+    { icon:'📋', title:'Today is your starting point',
+      body:`Every time you open TecXFRA, Today shows what actually matters right now: money in today, follow-ups due, low stock, and hot leads ready to close. Tap any of those numbers to jump straight into that part of the app.` },
+    { icon:'🤝', title:`Keep track of every ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)}`,
+      body:`${CUR_INDUSTRY_OBJ.crmNoun} tracks everyone you deal with, cold through to closed. Follow-Ups makes sure nobody goes quiet on you, it queues up who to reach out to today and lets you message them on WhatsApp in one tap.` },
+    ...(sellingOn ? [{ icon:'🧾', title:'Selling and getting paid',
+      body:`Add what you sell once, then log sales as they happen. Invoicing turns any balance into a real invoice with a shareable link and a ready WhatsApp message, so getting paid doesn't need a separate app.` }] : [{ icon:'🧾', title:'Selling and getting paid',
+      body:`Selling tools aren't switched on yet, that's fine, nothing is forced on you. The moment you're ready to track items, services, or invoices, there's a one-tap button for it right on your Today page.` }]),
+    { icon:'📈', title:'Revenue, always up to date',
+      body:`Every sale and payment feeds straight into Revenue & Analytics, so you always know where the business actually stands, no separate spreadsheet needed.` },
+    { icon:'🧠', title:'It gets smarter the more you use it',
+      body:`The Business Brain in Settings learns from what you tell it and how you run things, then the AI Assistant uses that to give you answers about your own business, not generic advice. The more you put in, the sharper it gets.` },
+    { icon:'📚', title:'Guides for exactly your situation',
+      body:`Growth Library has practical, step-by-step guides, written for how business works here, not generic theory. Come back whenever you're stuck on something.` },
+    { icon:'⚙️', title:'Grows with you, nothing gets lost',
+      body:`In Settings → Modules you can turn any part on or off, any time. If you're only using the basics today, that's fine, everything else is there waiting for when you need it, and nothing you've already built is ever lost.` },
+  ];
+  return steps;
+}
+let WT_STEP = 0;
+function showWalkthrough(){
+  WT_STEP = 0;
+  renderWalkthroughStep();
+}
+function renderWalkthroughStep(){
+  const steps = walkthroughSteps();
+  const s = steps[WT_STEP];
+  const last = WT_STEP === steps.length - 1;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show"><div class="modal" style="max-width:440px">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:2px">
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="skipWalkthrough()">Skip all ✕</button>
+    </div>
+    <div style="font-size:36px;text-align:center;margin-bottom:6px">${s.icon}</div>
+    <h3 style="text-align:center;margin-bottom:10px">${s.title}</h3>
+    <div style="font-size:13.5px;line-height:1.7;color:var(--ink-dim);text-align:center">${s.body}</div>
+    <div style="display:flex;justify-content:center;gap:6px;margin:16px 0">
+      ${steps.map((_,i)=>`<span style="width:6px;height:6px;border-radius:50%;background:${i===WT_STEP?'var(--teal)':'var(--line)'}"></span>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      ${WT_STEP>0 ? `<button class="btn btn-ghost" onclick="walkthroughBack()">Back</button>` : ''}
+      ${!last ? `<button class="btn btn-ghost" style="flex:1" onclick="walkthroughNext()">Skip</button>` : ''}
+      <button class="btn btn-primary" style="flex:1" onclick="${last?'finishWalkthrough()':'walkthroughNext()'}">${last?'Get Started':'Next'}</button>
+    </div>
+  </div></div>`;
+}
+function walkthroughNext(){ WT_STEP++; renderWalkthroughStep(); }
+function walkthroughBack(){ WT_STEP--; renderWalkthroughStep(); }
+async function skipWalkthrough(){ await finishWalkthrough(); }
+async function finishWalkthrough(){
+  CFG.walkthroughDone = true;
+  try{ await saveCfg(); }catch(e){ console.error('saving walkthroughDone failed', e); }
+  closeModal();
+  checkAnnouncements();
 }
 /* ---------- Announcements (in-app) ----------
    One short, plain-English popup per unread update, shown once after
