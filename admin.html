@@ -123,6 +123,7 @@
     <div class="sub">Owner/admin access only — sign in with your existing TecXFRA login.</div>
     <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="you@example.com"></div>
     <div class="field"><label>Password</label><input id="loginPassword" type="password" placeholder="••••••••"></div>
+    <div id="hcaptchaBox" style="display:none;margin-bottom:12px"></div>
     <div class="err" id="loginErr"></div>
     <button class="btn-primary" onclick="doLogin()">Sign in</button>
   </div>
@@ -204,6 +205,7 @@
   </div>
 </div>
 
+<script src="https://js.hcaptcha.com/1/api.js?render=explicit" async defer></script>
 <script>
 // SECURITY: business_name, industry, country and guide_key are all set by
 // the TENANT (via save_tenant_cfg / request_guide_purchase), not the admin.
@@ -216,6 +218,34 @@ function esc(s){
   if(s===null || s===undefined) return '';
   return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
+
+// ⚠️ TODO(business): only needed while "Enable Captcha protection" is on in
+// Supabase Auth settings. Must match the same sitekey used in index.html —
+// from https://dashboard.hcaptcha.com (Sites → your site → Sitekey, the
+// PUBLIC key, not the secret).
+const HCAPTCHA_SITE_KEY = 'ccdeb32a-fcf6-48ac-9344-cd10e656ad0c';
+const HCAPTCHA_CONFIGURED = HCAPTCHA_SITE_KEY.indexOf('REPLACE_ME')===-1 && HCAPTCHA_SITE_KEY.length>10;
+let HCAPTCHA_WIDGET_ID = null;
+function renderCaptcha(){
+  if(!HCAPTCHA_CONFIGURED) return;
+  const box = document.getElementById('hcaptchaBox');
+  box.style.display = 'block';
+  if(HCAPTCHA_WIDGET_ID !== null) return; // already rendered once, just reuse it
+  if(typeof hcaptcha === 'undefined'){ setTimeout(renderCaptcha, 300); return; } // script still loading
+  try{
+    HCAPTCHA_WIDGET_ID = hcaptcha.render('hcaptchaBox', { sitekey: HCAPTCHA_SITE_KEY });
+  }catch(e){ console.error('hCaptcha render failed', e); }
+}
+function getCaptchaToken(){
+  if(!HCAPTCHA_CONFIGURED) return undefined;
+  if(HCAPTCHA_WIDGET_ID===null || typeof hcaptcha==='undefined') return '';
+  return hcaptcha.getResponse(HCAPTCHA_WIDGET_ID);
+}
+function resetCaptcha(){
+  if(!HCAPTCHA_CONFIGURED || HCAPTCHA_WIDGET_ID===null || typeof hcaptcha==='undefined') return;
+  try{ hcaptcha.reset(HCAPTCHA_WIDGET_ID); }catch(e){}
+}
+renderCaptcha();
 
 const SUPABASE_URL = 'https://bnbcozkrvqforiunwzrz.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_KwKhcg8loLN4Ai0WH7s7PQ_0WPFhcsB';
@@ -272,7 +302,9 @@ async function doLogin(){
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
   if(!email || !password){ loginErr('Enter your email and password.'); return; }
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(HCAPTCHA_CONFIGURED && !getCaptchaToken()){ loginErr('Please complete the "I am human" check above.'); return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password, options: HCAPTCHA_CONFIGURED ? { captchaToken: getCaptchaToken() } : undefined });
+  resetCaptcha();
   if(error){ loginErr(error); return; }
   await afterLogin();
 }
