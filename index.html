@@ -461,7 +461,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
         <div class="field"><label>Country</label>
           <select id="setupCountry" onchange="onWizCountryChange()"></select>
         </div>
-        <div class="field"><label>Currency</label><select id="setupCurrency"></select></div>
+        <div class="field"><label>Currency</label><select id="setupCurrency" onchange="wizCurrencyManuallySet=true"></select></div>
       </div>
       <div class="field"><label>Daily tone, how should TecXFRA talk to you?</label>
           <select id="setupTone">
@@ -495,7 +495,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
     <div class="wiz-step" data-step="4">
       <div class="wiz-eyebrow">Step 4 of 4</div>
       <div class="wiz-h">Choose your plan.</div>
-      <div class="wiz-sub">TecXFRA rewards its first businesses: the very first 10 signups get their chosen plan free, permanently, 2 Enterprise, 3 Growth, 5 Starter spots. After that, every plan is a paid subscription, and Starter is priced to stay within reach of any business, anywhere.</div>
+      <div class="wiz-sub" id="wizPlanSub">TecXFRA rewards its first businesses: the very first 10 signups get their chosen plan free, permanently, 2 Enterprise, 3 Growth, 5 Starter spots. After that, every plan is a paid subscription, and Starter is priced to stay within reach of any business, anywhere.</div>
       <div id="wizPlanGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:6px"></div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">You can change plans anytime after signup in Settings.</div>
       <div class="wiz-nav"><button class="btn btn-ghost" onclick="wizGo(3)">← Back</button><button class="btn btn-primary" onclick="goToAccountCreation()">Continue, create your login →</button></div>
@@ -864,6 +864,7 @@ async function doPhoneVerifyOtp(){
 async function afterAuth(session){
   if(!session){ authErr('Sign-in did not complete, try again.'); return; }
   CUR_VENUE_ID = session.user.id;
+  CUR_USER_EMAIL = (session.user.email || '').toLowerCase().trim();
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('wizard').style.display = 'none';
 
@@ -921,6 +922,7 @@ async function initAuthGate(){
     return;
   }
   CUR_VENUE_ID = session.user.id;
+  CUR_USER_EMAIL = (session.user.email || '').toLowerCase().trim();
   await loadAll();
   if(CFG){ boot(); return; }
 
@@ -1028,19 +1030,57 @@ const COUNTRIES = [
   {country:'Germany / Eurozone', currency:'EUR', sym:'€', tax:'VAT (MwSt/TVA)', taxNote:'Germany\'s standard VAT (MwSt) is 19% (unchanged for 2026, a proposed rise to 21% is under political discussion, not yet decided), reduced rate 7% for food/books/etc. Verify your country\'s rate within the Eurozone.', payroll:'Social security ~19–20% employee-side (pension 18.6% split employer/employee, health 14.6%+~2.9% average add-on, long-term care 3.6%/4.2% childless, unemployment 2.6%) + income tax withholding', updated:'2026'},
   {country:'Other / Not listed', currency:'USD', sym:'$', tax:'Local Tax', taxNote:'Set your own tax terminology and rate in Settings once you know your local requirements.', payroll:'Check your local labour & payroll authority'}
 ];
+// Dial codes for the owner phone / WhatsApp field, purely a UX convenience
+// (auto-prefill + placeholder), never enforced, "Other / Not listed" has no
+// single code so it's intentionally left out of this map.
+const COUNTRY_DIAL_CODES = {
+  'Ghana':'+233', 'Nigeria':'+234', 'Kenya':'+254', 'South Africa':'+27',
+  'United Kingdom':'+44', 'United States':'+1', 'Canada':'+1', 'India':'+91',
+  'United Arab Emirates':'+971', 'Germany / Eurozone':'+49'
+};
+const COUNTRY_PHONE_EXAMPLES = {
+  'Ghana':'+233241234567', 'Nigeria':'+2348012345678', 'Kenya':'+254712345678', 'South Africa':'+27821234567',
+  'United Kingdom':'+447911123456', 'United States':'+14155551234', 'Canada':'+14165551234', 'India':'+919876543210',
+  'United Arab Emirates':'+971501234567', 'Germany / Eurozone':'+491512345678', 'Other / Not listed':'+15551234567'
+};
 function populateWizCountry(){
   const sel = document.getElementById('setupCountry');
   if(!sel || sel.options.length) return;
   sel.innerHTML = COUNTRIES.map(c=>`<option value="${c.country}">${c.country}</option>`).join('');
   onWizCountryChange();
 }
+let wizCurrencyManuallySet = false; // true only once the OWNER touches the
+// currency dropdown directly, distinct from it being set programmatically
+// by onWizCountryChange, this is what fixes the bug where picking a new
+// country silently failed to change the currency: the old code re-applied
+// whatever the currency was previously set to on every single country
+// change, even when that value was only ever set automatically, never
+// chosen by anyone, so it looked like the auto-select had "stuck" forever
+// after the very first country selection.
 function onWizCountryChange(){
   const sel = document.getElementById('setupCountry');
   const c = COUNTRIES.find(x=>x.country===sel.value) || COUNTRIES[0];
   const curSel = document.getElementById('setupCurrency');
   const already = curSel.value;
   curSel.innerHTML = COUNTRIES.map(x=>x.currency).filter((v,i,a)=>a.indexOf(v)===i).map(cur=>`<option value="${cur}" ${cur===c.currency?'selected':''}>${cur}</option>`).join('');
-  if(already && Array.from(curSel.options).some(o=>o.value===already)) curSel.value = already;
+  if(wizCurrencyManuallySet && already && Array.from(curSel.options).some(o=>o.value===already)) curSel.value = already;
+  // else: leave the freshly-rebuilt select on its own "selected" default,
+  // which is always the new country's currency, this is the actual fix.
+  // Phone: update the placeholder to a real example for the selected
+  // country, and prefill the dial code automatically so the owner just
+  // types the rest of the number, never overwrite what they've already
+  // started typing, and never fight a code they've already switched to.
+  const phoneEl = document.getElementById('setupOwnerPhone');
+  if(phoneEl){
+    const dial = COUNTRY_DIAL_CODES[c.country];
+    const example = COUNTRY_PHONE_EXAMPLES[c.country] || '+15551234567';
+    phoneEl.placeholder = `e.g. ${example}`;
+    const cur = phoneEl.value.trim();
+    const curIsBlank = cur === '';
+    const curIsSomeOtherDialCode = cur.startsWith('+') && dial && !cur.startsWith(dial) && Object.values(COUNTRY_DIAL_CODES).some(d=>cur.startsWith(d));
+    if(dial && (curIsBlank || curIsSomeOtherDialCode)) phoneEl.value = dial + ' ';
+  }
+  if(document.getElementById('wizPlanGrid')) renderWizPlanStep();
 }
 
 const TEMPS = [
@@ -1057,6 +1097,10 @@ let CUR_INDUSTRY_OBJ = null;
 let cart = {};
 let calMonth = new Date().getMonth(), calYear = new Date().getFullYear();
 let CUR_VENUE_ID = null;
+let CUR_USER_EMAIL = ''; // cached lowercase email of whoever's logged in, so
+// synchronous render functions (like Settings) can check test-account status
+// without an extra async round trip, kept in sync by afterAuth() and by
+// syncSubscription() on every boot/login.
 let CUR_SUBSCRIPTION = null;
 
 async function saveCfg(){
@@ -1121,7 +1165,41 @@ async function syncSubscription(){
       CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, current_period_end: row.current_period_end };
       if(CFG){ const active = row.status === 'active'; CFG.plan = active ? row.plan : 'starter'; }
     }
+    // Internal test accounts (TECXFRA_TEST_ACCOUNTS) can preview ANY plan
+    // on demand, for demos, screenshots and walkthrough videos, this
+    // deliberately runs AFTER the block above so it overrides it, not the
+    // other way round. CFG.demoPlanOverride is set from the Demo Mode
+    // switcher in Settings → Plan (test accounts only), defaults to
+    // 'prestige' the first time, since that's usually the one that needs
+    // demoing, but any of the four plans can be picked and it sticks
+    // until changed again. This is what makes it self-healing for an
+    // account that already existed before this override was added (e.g.
+    // an internal Ghana test account from an earlier phase), no manual DB
+    // fix needed, it corrects itself the next time that account logs in.
+    // Real businesses are never affected, this only ever matches the
+    // exact whitelisted email(s) below.
+    try{
+      const { data:{ user } } = await sb.auth.getUser();
+      const email = (user && user.email ? user.email : '').toLowerCase().trim();
+      CUR_USER_EMAIL = email;
+      if(CFG && TECXFRA_TEST_ACCOUNTS.includes(email)) CFG.plan = CFG.demoPlanOverride || 'prestige';
+    }catch(e){ /* non-fatal, only affects the whitelisted test account */ }
   }catch(e){ console.error('syncSubscription failed', e); }
+}
+async function setDemoPlan(planKey){
+  // Test-account-only. Instantly switches which plan this whitelisted
+  // account previews, no payment, no founding slot, no page reload,
+  // saved so it sticks on next login too. Guarded again here (not just
+  // hidden in the UI) so this can never be called successfully by
+  // anyone who isn't actually on the whitelist, even from the console.
+  if(!TECXFRA_TEST_ACCOUNTS.includes(CUR_USER_EMAIL)) return;
+  if(!PLANS.some(p=>p.key===planKey)) return;
+  CFG.demoPlanOverride = planKey;
+  CFG.plan = planKey;
+  await saveCfg();
+  renderSidebar();
+  renderSettings();
+  showToast(`Demo Mode, now previewing ${(PLANS.find(p=>p.key===planKey)||{}).label || planKey}.`);
 }
 
 function getCountryInfo(){
@@ -1522,7 +1600,20 @@ function foundingBadge(tierKey){
   if(s.remaining <= 0) return '';
   return `<div style="font-size:10.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:6px;padding:3px 8px;display:inline-block;margin-top:6px">🎉 ${s.remaining} of ${s.cap} founding free spot${s.remaining===1?'':'s'} left</div>`;
 }
+// Countries whose SMEs the three GHS-scaled local tiers (Starter/Growth/
+// Enterprise) are priced and built around. Any country selected in Step 1
+// that is NOT in this list is treated as a global/diaspora market and hard
+// -locked to Prestige at Step 4, no other plan is shown or selectable, this
+// is a deliberate business rule, not a bug, keep this list in sync with the
+// African entries in COUNTRIES above.
+const TECXFRA_AFRICAN_COUNTRIES = ['Ghana','Nigeria','Kenya','South Africa'];
+function wizCountryIsAfrican(){
+  const sel = document.getElementById('setupCountry');
+  const country = sel ? sel.value : '';
+  return TECXFRA_AFRICAN_COUNTRIES.includes(country);
+}
 function pickWizPlan(k){
+  if(!wizCountryIsAfrican() && k!=='prestige') return; // hard lock, see wizCountryIsAfrican
   wizPlan = k;
   // Full re-render (not just a class toggle) because the selected/unselected
   // border colour and the founding-slot badge are baked into each card's
@@ -1535,7 +1626,26 @@ function renderWizPlanStep(){
   const grid = document.getElementById('wizPlanGrid');
   if(!grid) return;
   const wizCurrency = (document.getElementById('setupCurrency')||{}).value || 'USD';
-  grid.innerHTML = PLANS.map(p=>`
+  const isAfrican = wizCountryIsAfrican();
+  const sub = document.getElementById('wizPlanSub');
+  if(sub) sub.textContent = isAfrican
+    ? "TecXFRA rewards its first businesses: the very first 10 signups get their chosen plan free, permanently, 2 Enterprise, 3 Growth, 5 Starter spots. After that, every plan is a paid subscription, and Starter is priced to stay within reach of any business, anywhere."
+    : "Businesses outside Ghana, Nigeria, Kenya and South Africa go straight to Prestige, our global/diaspora tier: the TecXFRA Network, verified directory, direct B2B chat and industry channels, priced for the market you're operating in.";
+  if(!isAfrican){
+    wizPlan = 'prestige';
+    const p = PLANS.find(x=>x.key==='prestige');
+    grid.style.gridTemplateColumns = '1fr';
+    grid.innerHTML = `
+    <div class="plan-pick sel" data-k="prestige" style="border:2px solid var(--teal);border-radius:12px;padding:16px;cursor:default">
+      <div style="font-size:10.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:6px;padding:3px 8px;display:inline-block;margin-bottom:8px">🌐 Global / diaspora market, Prestige is your plan</div>
+      <div style="font-weight:800;font-size:14.5px;color:var(--navy)">${p.label}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${planPriceDisplay('prestige', wizCurrency)}</div>
+      <div style="font-size:11.5px;color:var(--ink-dim);margin:4px 0 6px;line-height:1.5">${p.tagline}</div>
+    </div>`;
+    return;
+  }
+  grid.style.gridTemplateColumns = 'repeat(3,1fr)';
+  grid.innerHTML = PLANS.filter(p=>p.key!=='prestige').map(p=>`
     <div class="plan-pick ${wizPlan===p.key?'sel':''}" data-k="${p.key}" onclick="pickWizPlan('${p.key}')" style="border:2px solid ${wizPlan===p.key?'var(--teal)':'var(--line)'};border-radius:12px;padding:14px;cursor:pointer">
       <div style="font-weight:800;font-size:14.5px;color:var(--navy)">${p.label}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${planPriceDisplay(p.key, wizCurrency)}</div>
@@ -1613,7 +1723,21 @@ function wizGo(step){
   document.querySelector(`.wiz-step[data-step="${step}"]`).classList.add('active');
   [1,2,3,4].forEach(n=>document.getElementById('dot'+n).classList.toggle('on', n===step));
 }
+// Internal accounts that get Prestige granted directly at signup, for
+// testing the tier without needing a live Paystack charge or a real
+// non-African country. Deliberately does NOT touch the country hard-lock
+// in the wizard itself, that rule stays fully intact for every real
+// Ghana business, this overrides only at the final account-creation step,
+// below, after normal signup, so nothing about the wizard's own logic
+// or copy needs to lie to a real Ghana business to make this work.
+const TECXFRA_TEST_ACCOUNTS = ['solutions@byinforgh.com'];
 async function finishSetup(setup){
+  let isTestAccount = false;
+  try{
+    const { data:{ user } } = await sb.auth.getUser();
+    const email = (user && user.email ? user.email : '').toLowerCase().trim();
+    isTestAccount = TECXFRA_TEST_ACCOUNTS.includes(email);
+  }catch(e){ console.error('test-account check failed, defaulting to normal signup', e); }
   CFG = {
     bizName: setup.bizName,
     ownerName: setup.ownerName,
@@ -1630,8 +1754,10 @@ async function finishSetup(setup){
     // Settings could tell them "you picked Growth, here's how to activate
     // it" instead of silently showing Starter with zero explanation, which
     // is what read as "the plan picker doesn't work."
-    plan: 'starter',
-    intendedPlan: setup.plan,
+    // Whitelisted internal test accounts are the one deliberate exception,
+    // granted Prestige live and immediately, no payment, no founding slot.
+    plan: isTestAccount ? 'prestige' : 'starter',
+    intendedPlan: isTestAccount ? 'prestige' : setup.plan,
     brandColor: '#4aa8b8',
     logoEmoji: '',
     digestPhone: '',
@@ -1644,9 +1770,14 @@ async function finishSetup(setup){
   };
   DATA = emptyData();
   await saveCfg(); await saveData();
-  await claimFoundingSlotIfChosen(setup.plan);
+  // Test accounts never touch the founding-slot pool, at all, regardless
+  // of what plan was clicked in the wizard, real founding spots are for
+  // real businesses only.
+  if(!isTestAccount) await claimFoundingSlotIfChosen(setup.plan);
   await boot();
-  if(CFG && CFG.plan === 'starter' && setup.plan && setup.plan !== 'starter'){
+  if(isTestAccount){
+    showToast(`Internal test account, Prestige granted directly. No founding slot used.`);
+  } else if(CFG && CFG.plan === 'starter' && setup.plan && setup.plan !== 'starter'){
     const wanted = PLANS.find(p=>p.key===setup.plan);
     showToast(`You're set up on Starter for now, you picked ${wanted ? wanted.label : setup.plan}. Head to Settings → Plan to activate it.`);
   }
@@ -1859,7 +1990,7 @@ const TECXFRA_GROUPS = [
   {letter:'T', label:'Today & Tasks', keys:['today']},
   {letter:'e', label:'Expenses & Resources', keys:['expenses','inventory']},
   {letter:'c', label:'CRM & Calendar', keys:['crm','calendar','bookings']},
-  {letter:'X', label:'Execution & Growth', keys:['referrals','persona','guides']},
+  {letter:'X', label:'Execution & Growth', keys:['referrals','persona','guides','network']},
   {letter:'F', label:'Follow-Ups & Messaging', keys:['followups','messages']},
   {letter:'R', label:'Revenue & Invoicing', keys:['revenue','pos','invoicing']},
   {letter:'A', label:'Accountability & AI', keys:['accountability','audit','ai']}
@@ -1868,7 +1999,7 @@ const TECXFRA_MORE_KEYS = ['staff','journal','reminders','archive','system','set
 const PLANS = [
   {key:'starter', label:'Starter', price:'Entry', tagline:'Run the daily basics, Tec + F + R',
     desc:'Today, CRM, Calendar, Follow-Ups, Messages, Expenses, Revenue, POS/Bookings, Staff, Guides.',
-    locked:['referrals','persona','audit','accountability','journal'], aiFacts:3, whiteLabel:false, csvImport:false,
+    locked:['referrals','persona','audit','accountability','journal','network'], network:false, aiFacts:3, whiteLabel:false, csvImport:false,
     limits:{contacts:30, staff:3, monthlyTransactions:60},
     features:[
       'Today view, Calendar, CRM & Pipeline',
@@ -1882,7 +2013,7 @@ const PLANS = [
     ]},
   {key:'growth', label:'Growth', price:'Paid', tagline:'Adds the X layer, analytics & retention',
     desc:'Everything in Starter, plus Referrals & Retention, Persona, Business Audit, Accountability.',
-    locked:['journal'], aiFacts:10, whiteLabel:false, csvImport:true,
+    locked:['journal','network'], network:false, aiFacts:10, whiteLabel:false, csvImport:true,
     limits:{contacts:300, staff:15, monthlyTransactions:1000},
     features:[
       'Everything in Starter, no caps at Starter\'s size',
@@ -1896,7 +2027,7 @@ const PLANS = [
     ]},
   {key:'enterprise', label:'Enterprise', price:'Custom', tagline:'Everything unlocked, deepest AI recall',
     desc:'Everything in Growth, plus Journal, full AI knowledge recall, white-label branding, and CSV import.',
-    locked:[], aiFacts:200, whiteLabel:true, csvImport:true,
+    locked:['network'], network:false, aiFacts:200, whiteLabel:true, csvImport:true,
     limits:{contacts:Infinity, staff:Infinity, monthlyTransactions:Infinity},
     features:[
       'Everything in Growth, with no contact/staff/transaction caps',
@@ -1906,9 +2037,23 @@ const PLANS = [
       'Priority support for setup & data questions',
       'The full maturity system, audits, knowledge layer, every guide, unlocked',
       'This is running your whole operation from your phone, priced as the exclusive tier it is'
+    ]},
+  {key:'prestige', label:'Prestige', price:'Premium', tagline:'The TecXFRA Network, verified B2B directory, chat & industry rooms',
+    desc:'Everything in Enterprise, plus the TecXFRA Network: a verified business directory, direct B2B chat, and private industry channels for collaboration, partnerships and investment.',
+    locked:[], network:true, aiFacts:200, whiteLabel:true, csvImport:true,
+    limits:{contacts:Infinity, staff:Infinity, monthlyTransactions:Infinity},
+    features:[
+      'Everything in Enterprise, no caps anywhere',
+      'TecXFRA Network, a verified business directory across every member business',
+      'TecXFRA Connect, direct B2B chat once two businesses accept each other',
+      'Private industry channels, find suppliers, partners & collaborators by sector',
+      'Post exactly what you are looking for: Collaboration, Partnership, Investment, Supply',
+      'A verified badge on your public profile, signals real numbers, real operations',
+      'White-glove onboarding, custom domain, and a direct line for 1:1 coaching / audits',
+      'Built for diaspora-run businesses, multi-location operators, and investment-ready founders'
     ]}
 ];
-const PLAN_LIMITS = { starter: PLANS[0].limits, growth: PLANS[1].limits, enterprise: PLANS[2].limits };
+const PLAN_LIMITS = { starter: PLANS[0].limits, growth: PLANS[1].limits, enterprise: PLANS[2].limits, prestige: PLANS[3].limits };
 function planUsage(){
   return {
     contacts: (DATA?.contacts||[]).length,
@@ -1949,11 +2094,15 @@ const PLAN_PRICING = {
   // Growth: the normal, steady SME price, unchanged from before.
   // Enterprise: a genuinely exclusive price, this runs a whole
   // operation from a phone, so it is priced like the premium tier it is.
-  GHS: { starter: 5000,   growth: 15000,   enterprise: 150000   }, // GH₵50 / GH₵150 / GH₵1,500, CONFIRM
-  NGN: { starter: 500000, growth: 2500000, enterprise: 25000000 }, // ₦5,000 / ₦25,000 / ₦250,000, CONFIRM
-  ZAR: { starter: 6000,   growth: 30000,   enterprise: 300000   }, // R60 / R300 / R3,000, CONFIRM
-  KES: { starter: 40000,  growth: 200000,  enterprise: 2000000  }, // KSh400 / KSh2,000 / KSh20,000, CONFIRM
-  USD: { starter: 500,    growth: 1500,    enterprise: 15000    }  // $5 / $15 / $150, fallback for every other country
+  // Prestige: a flat, deliberately global/diaspora price anchor ($249-349
+  // range), NOT a scaled-down local SME price like the three tiers above.
+  // Anchored at $299 here, CONFIRM before go-live, and update alongside
+  // whatever server-side plan/amount check the Paystack webhook does.
+  GHS: { starter: 5000,   growth: 15000,   enterprise: 150000,   prestige: 450000  }, // GH₵50 / GH₵150 / GH₵1,500 / GH₵4,500, CONFIRM
+  NGN: { starter: 500000, growth: 2500000, enterprise: 25000000, prestige: 45000000 }, // ₦5,000 / ₦25,000 / ₦250,000 / ₦450,000, CONFIRM
+  ZAR: { starter: 6000,   growth: 30000,   enterprise: 300000,   prestige: 540000  }, // R60 / R300 / R3,000 / R5,400, CONFIRM
+  KES: { starter: 40000,  growth: 200000,  enterprise: 2000000,  prestige: 3900000 }, // KSh400 / KSh2,000 / KSh20,000 / KSh39,000, CONFIRM
+  USD: { starter: 500,    growth: 1500,    enterprise: 15000,    prestige: 29900   }  // $5 / $15 / $150 / $299, fallback for every other country
 };
 const PAYSTACK_SUPPORTED_CURRENCIES = ['GHS','NGN','ZAR','USD','KES'];
 function getPaystackCurrency(){
@@ -1974,7 +2123,10 @@ function planPriceDisplay(planKey, overrideCurrency){
   return `${sym}${major.toLocaleString()} / month`;
 }
 function currentPlan(){ return PLANS.find(p=>p.key===(CFG.plan||'enterprise')) || PLANS[2]; }
-function isLocked(moduleKey){ return currentPlan().locked.includes(moduleKey); }
+function isLocked(moduleKey){
+  if(moduleKey==='network') return !currentPlan().network;
+  return currentPlan().locked.includes(moduleKey);
+}
 function renderSidebar(){
   const on = MODULES.filter(m=>CFG.modules.includes(m.key));
   function row(m){
@@ -2038,11 +2190,12 @@ const MODULE_TEASERS = {
   persona: ['A structured profile of your ideal customer, age, income, pain points, objections, where they hang out', 'Your AI assistant and messaging both get sharper once this is filled in, instead of guessing at "everyone"'],
   audit: ['A full diagnostic score across Visibility, Trust, Sales and Authority, same method as the printed BYINFORGH checklist', 'Tells you exactly which chapter of the Growth Library to start with, instead of guessing'],
   accountability: ['Daily/weekly/monthly non-negotiables with a running streak, outreach made, follow-ups cleared, calls done', 'Rolls up to a monthly score so you always know if this month beat last month'],
-  journal: ['A running diary tied to the business or to any individual client, searchable, timestamped', 'Where the AI assistant\'s memory of your business actually grows from, the more you write, the smarter it gets']
+  journal: ['A running diary tied to the business or to any individual client, searchable, timestamped', 'Where the AI assistant\'s memory of your business actually grows from, the more you write, the smarter it gets'],
+  network: ['A verified business directory, browse and search every member business by industry', 'TecXFRA Connect, direct B2B chat once two businesses accept each other, no cold WhatsApp spam', 'Private industry channels to find suppliers, partners, and collaborators by sector', 'Post exactly what you\'re looking for: Collaboration, Partnership, Investment, or Supply']
 };
 function renderUpgradePrompt(page, m){
   const plan = currentPlan();
-  const nextPlan = PLANS.find(p=>!p.locked.includes(page)) || PLANS[PLANS.length-1];
+  const nextPlan = (page==='network') ? (PLANS.find(p=>p.network) || PLANS[PLANS.length-1]) : (PLANS.find(p=>!p.locked.includes(page)) || PLANS[PLANS.length-1]);
   const teasers = MODULE_TEASERS[page] || [];
   document.getElementById('pageContent').innerHTML = `
   <div class="card" style="text-align:center;padding:40px 24px;border-color:var(--amber)">
@@ -2059,10 +2212,517 @@ const RENDERERS = {
   pos: renderPOS, bookings: renderBookings, inventory: renderInventory, invoicing: renderInvoicing,
   expenses: renderExpenses, staff: renderStaff, revenue: renderRevenue, messages: renderMessages,
   referrals: renderReferrals, persona: renderPersona, audit: renderAudit, accountability: renderAccountability, journal: renderJournal,
-  reminders: renderReminders,
+  reminders: renderReminders, network: renderNetwork,
   ai: renderAI, guides: renderGuides, archive: renderArchive, system: renderSystem, settings: renderSettings
 };
 
+/* ============================================================
+   TECXFRA NETWORK  (Prestige-only: verified directory, Connect
+   1:1 B2B chat, and industry channels)
+   Unlike every other module, this reads/writes CROSS-TENANT data,
+   so it does NOT use the CFG/DATA JSON-blob pattern the rest of the
+   app uses. It talks directly to its own Supabase tables:
+     network_profiles, network_connections, network_messages,
+     network_channels, network_channel_messages
+   See network_schema.sql for the table definitions + RLS policies
+   this code assumes. Only LinkedIn and X are referenced anywhere in
+   this module's copy, by design, no other outbound platforms.
+============================================================ */
+
+
+/* ============================================================
+   TECXFRA NETWORK  (Prestige-only: verified directory, Connect
+   1:1 B2B chat, and industry channels)
+   Unlike every other module, this reads/writes CROSS-TENANT data,
+   so it does NOT use the CFG/DATA JSON-blob pattern the rest of the
+   app uses. It talks directly to its own Supabase tables:
+     network_profiles, network_connections, network_messages,
+     network_channels, network_channel_messages
+   See network_schema.sql for the table definitions + RLS policies
+   this code assumes. Only LinkedIn and X are referenced anywhere in
+   this module's copy, by design, no other outbound platforms.
+============================================================ */
+let networkTab = 'directory';
+let networkFilterIndustry = '';
+let networkSearchQ = '';
+let NETWORK_PROFILE = null;        // my own network_profiles row, or null if not set up yet
+let NETWORK_DIRECTORY = [];        // other visible members' profiles
+let NETWORK_CONNECTIONS = [];      // every network_connections row involving me
+let NETWORK_CHANNELS = [];         // seeded industry/topic rooms
+let NETWORK_NEEDS = [];            // the "Seeking" board: structured asks from every member
+let NETWORK_ACTIVE_CONNECTION = null;
+let NETWORK_ACTIVE_CHANNEL = null;
+let NETWORK_ACTIVE_MESSAGES = [];
+let NETWORK_RT = null;             // current realtime subscription handle
+const NETWORK_LOOKING_FOR_OPTIONS = ['Collaboration','Partnership','Investment','Supply Chain','Distribution','Mentorship','Talent / Hire','Marketing / Creative Partner'];
+
+function jsAttr(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' '); }
+
+function renderNetwork(){
+  const pc = document.getElementById('pageContent');
+  pc.innerHTML = `
+    <div class="card" style="margin-bottom:14px;border-color:var(--teal);background:linear-gradient(135deg, var(--teal-tint), var(--paper))">
+      <div class="card-title">TecXFRA Network <span class="pill pill-active" style="margin-left:8px">Prestige</span></div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.7">A verified directory of TecXFRA businesses. Browse, connect, message, and find partners by industry, all inside the platform. Every member here runs their business on the same standard of accountability.</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      ${['directory','seeking','connections','channels','profile'].map(k=>`<button class="tab-pill ${networkTab===k?'active':''}" onclick="setNetworkTab('${k}')">${{directory:'Directory',seeking:'Seeking',connections:'Connect',channels:'Channels',profile:'My Profile'}[k]}</button>`).join('')}
+    </div>
+    <div id="networkBody"><div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:34px">Loading network…</div></div>
+  `;
+  loadNetworkData();
+}
+async function loadNetworkData(){
+  if(!(await requireSupabase())) return;
+  const uid = CUR_VENUE_ID;
+  try{
+    const [mine, others, conns, chans, needs] = await Promise.all([
+      sb.from('network_profiles').select('*').eq('business_id', uid).maybeSingle(),
+      sb.from('network_profiles').select('*').neq('business_id', uid).eq('visible', true).order('updated_at',{ascending:false}),
+      sb.from('network_connections').select('*').or(`requester_id.eq.${uid},recipient_id.eq.${uid}`).order('created_at',{ascending:false}),
+      sb.from('network_channels').select('*').order('label'),
+      sb.from('network_needs').select('*').order('created_at',{ascending:false}).limit(100)
+    ]);
+    if(mine.error) throw mine.error;
+    NETWORK_PROFILE = mine.data || null;
+    NETWORK_DIRECTORY = others.data || [];
+    NETWORK_CONNECTIONS = conns.data || [];
+    NETWORK_CHANNELS = chans.data || [];
+    NETWORK_NEEDS = needs.data || [];
+  }catch(e){
+    console.error('loadNetworkData failed', e);
+    showToast('Could not load the Network, check connection');
+  }
+  drawNetworkBody();
+}
+function unsubscribeNetworkRealtime(){
+  if(NETWORK_RT){ try{ sb.removeChannel(NETWORK_RT); }catch(e){} NETWORK_RT = null; }
+}
+function setNetworkTab(k){
+  networkTab = k;
+  unsubscribeNetworkRealtime();
+  NETWORK_ACTIVE_CONNECTION = null; NETWORK_ACTIVE_CHANNEL = null;
+  drawNetworkBody();
+}
+function drawNetworkBody(){
+  const el = document.getElementById('networkBody');
+  if(!el) return;
+  if(networkTab==='directory'){ el.innerHTML = networkDirectoryHtml(); renderNetworkDirGrid(); }
+  else if(networkTab==='seeking'){ el.innerHTML = networkSeekingHtml(); }
+  else if(networkTab==='connections'){ el.innerHTML = networkConnectionsHtml(); }
+  else if(networkTab==='channels'){ el.innerHTML = networkChannelsHtml(); }
+  else if(networkTab==='profile'){ el.innerHTML = networkProfileFormHtml(); }
+}
+
+/* ---------- DIRECTORY ---------- */
+function networkDirectoryHtml(){
+  if(!NETWORK_PROFILE){
+    return `<div class="card" style="text-align:center;padding:34px 20px">
+      <div style="font-size:32px;margin-bottom:10px">🌐</div>
+      <div class="disp" style="font-size:16px;font-weight:700;margin-bottom:8px">Set up your business profile</div>
+      <div style="font-size:12.5px;color:var(--ink-dim);max-width:380px;margin:0 auto 16px;line-height:1.6">Other verified TecXFRA members can only find and message you once your profile is live.</div>
+      <button class="btn btn-primary" onclick="setNetworkTab('profile')">Set up my profile →</button>
+    </div>`;
+  }
+  return `
+    <div class="card" style="margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input class="inp" style="flex:2;min-width:180px;margin:0" placeholder="Search business, capability, or what they're looking for…" oninput="networkSearchQ=this.value;renderNetworkDirGrid();">
+      <select class="inp" style="flex:1;min-width:150px;margin:0" onchange="networkFilterIndustry=this.value;renderNetworkDirGrid();">
+        <option value="">All industries</option>
+        ${INDUSTRIES.map(i=>`<option value="${i.key}">${i.ic} ${i.label}</option>`).join('')}
+      </select>
+    </div>
+    <div id="networkDirGrid"></div>
+  `;
+}
+function connectionWith(otherId){
+  return NETWORK_CONNECTIONS.find(c => (c.requester_id===CUR_VENUE_ID && c.recipient_id===otherId) || (c.recipient_id===CUR_VENUE_ID && c.requester_id===otherId));
+}
+function renderNetworkDirGrid(){
+  const el = document.getElementById('networkDirGrid');
+  if(!el) return;
+  const q = (networkSearchQ||'').toLowerCase().trim();
+  const list = NETWORK_DIRECTORY.filter(p=>{
+    if(networkFilterIndustry && p.industry!==networkFilterIndustry) return false;
+    if(!q) return true;
+    const hay = [p.display_name, p.bio, p.capabilities, (p.looking_for||[]).join(' ')].join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+  if(!list.length){ el.innerHTML = `<div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:26px">No members match yet, try clearing filters.</div>`; return; }
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">
+    ${list.map(p=>{
+      const conn = connectionWith(p.business_id);
+      const ind = INDUSTRIES.find(i=>i.key===p.industry);
+      let actionBtn;
+      if(!conn) actionBtn = `<button class="btn btn-primary btn-full" onclick="openConnectModal('${p.business_id}','${jsAttr(p.display_name)}')">Connect</button>`;
+      else if(conn.status==='pending' && conn.requester_id===CUR_VENUE_ID) actionBtn = `<button class="btn btn-ghost btn-full" disabled>Request sent</button>`;
+      else if(conn.status==='pending') actionBtn = `<button class="btn btn-primary btn-full" onclick="setNetworkTab('connections')">Respond to request →</button>`;
+      else if(conn.status==='accepted') actionBtn = `<button class="btn btn-primary btn-full" onclick="setNetworkTab('connections');setTimeout(()=>openNetworkChat('${conn.id}'),0)">Message →</button>`;
+      else actionBtn = `<button class="btn btn-ghost btn-full" onclick="openConnectModal('${p.business_id}','${jsAttr(p.display_name)}')">Reconnect</button>`;
+      return `<div class="card" style="display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="width:38px;height:38px;border-radius:10px;background:var(--teal-tint);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${ind?ind.ic:'🏢'}</div>
+          <div style="min-width:0">
+            <div style="font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:5px">${esc(p.display_name)} ${p.verified?'<span title="Verified" style="color:var(--teal)">✔</span>':''}</div>
+            <div style="font-size:10.5px;color:var(--muted)">${ind?ind.label:'General'}${p.hq_location?' · '+esc(p.hq_location):''}</div>
+          </div>
+        </div>
+        ${p.tagline?`<div style="font-size:11.5px;font-weight:600;color:var(--navy);margin-bottom:6px">${esc(p.tagline)}</div>`:''}
+        ${p.bio?`<div style="font-size:11.5px;color:var(--ink-dim);line-height:1.5;margin-bottom:8px">${esc(p.bio).slice(0,140)}${p.bio.length>140?'…':''}</div>`:''}
+        ${(p.founded_year||p.team_size)?`<div style="font-size:10px;color:var(--muted);margin-bottom:8px">${p.founded_year?'Est. '+esc(p.founded_year):''}${p.founded_year&&p.team_size?' · ':''}${p.team_size?esc(p.team_size)+' team':''}</div>`:''}
+        ${(p.looking_for&&p.looking_for.length)?`<div style="margin-bottom:8px">${p.looking_for.map(t=>`<span class="chip">${esc(t)}</span>`).join('')}</div>`:''}
+        ${(p.linkedin_url||p.x_url)?`<div style="margin-bottom:10px;font-size:11px">${p.linkedin_url?`<a href="${esc(p.linkedin_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--teal-dim);margin-right:10px">LinkedIn ↗</a>`:''}${p.x_url?`<a href="${esc(p.x_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--teal-dim)">X ↗</a>`:''}</div>`:''}
+        <div style="margin-top:auto">${actionBtn}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+function openConnectModal(targetId, targetName){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">Connect with ${esc(targetName)}</div>
+    <div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px;line-height:1.6">A short note gets a much better reply. What are you hoping to do together, collaboration, supply, investment?</div>
+    <textarea class="inp" id="connectNote" rows="3" placeholder="e.g. We're looking for a cold-chain logistics partner in Kumasi…" style="margin-bottom:14px"></textarea>
+    <button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="sendConnectRequest('${targetId}')">Send request</button>
+    <button class="btn btn-ghost btn-full" onclick="closeModal()">Cancel</button>
+  </div></div>`;
+}
+async function sendConnectRequest(targetId){
+  if(!(await requireSupabase())) return;
+  const note = document.getElementById('connectNote')?.value?.trim() || '';
+  try{
+    const { error } = await sb.from('network_connections').insert({ requester_id: CUR_VENUE_ID, recipient_id: targetId, status:'pending', note });
+    if(error) throw error;
+    closeModal(); showToast('Request sent');
+    await loadNetworkData();
+  }catch(e){ console.error('sendConnectRequest failed', e); showToast('Could not send request, try again'); }
+}
+
+/* ---------- SEEKING (structured "what I want from another business" board) ---------- */
+function networkSeekingHtml(){
+  if(!NETWORK_PROFILE){
+    return `<div class="card" style="text-align:center;padding:34px 20px">
+      <div style="font-size:32px;margin-bottom:10px">🎯</div>
+      <div class="disp" style="font-size:16px;font-weight:700;margin-bottom:8px">Set up your business profile first</div>
+      <div style="font-size:12.5px;color:var(--ink-dim);max-width:380px;margin:0 auto 16px;line-height:1.6">You need a profile before you can post or respond to a need in the Network.</div>
+      <button class="btn btn-primary" onclick="setNetworkTab('profile')">Set up my profile →</button>
+    </div>`;
+  }
+  const myOpen = NETWORK_NEEDS.filter(n=>n.business_id===CUR_VENUE_ID && n.status==='open');
+  const others = NETWORK_NEEDS.filter(n=>n.business_id!==CUR_VENUE_ID && n.status==='open');
+  function nameFor(id){ if(id===CUR_VENUE_ID) return NETWORK_PROFILE.display_name; const p=NETWORK_DIRECTORY.find(x=>x.business_id===id); return p?p.display_name:'A member'; }
+  function needCard(n, mine){
+    return `<div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">
+        <div>
+          <span class="chip" style="margin:0 8px 0 0">${esc(n.category)}</span>
+          <span style="font-weight:700;font-size:13px">${esc(n.title)}</span>
+        </div>
+        ${mine?`<button class="btn btn-ghost" style="padding:5px 10px;font-size:10.5px" onclick="closeNetworkNeed('${n.id}')">Mark closed</button>`:''}
+      </div>
+      <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.6;margin-bottom:8px">${esc(n.description)}</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:${mine?'0':'10px'}">
+        Posted by ${esc(nameFor(n.business_id))}${n.region?' · '+esc(n.region):''}${n.budget_range?' · '+esc(n.budget_range):''}
+      </div>
+      ${!mine?`<button class="btn btn-primary" style="padding:8px 14px;font-size:11.5px" onclick="openConnectModal('${n.business_id}','${jsAttr(nameFor(n.business_id))}')">Respond to this</button>`:''}
+    </div>`;
+  }
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">Post what you're looking for</div>
+      <div style="font-size:11.5px;color:var(--ink-dim);margin-bottom:12px;line-height:1.6">Tell the Network exactly what you want from another business, collaboration, partnership, investment, or supply, so the right people can find you instead of the other way around.</div>
+      <select class="inp" id="needCategory">
+        ${NETWORK_LOOKING_FOR_OPTIONS.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}
+      </select>
+      <input class="inp" id="needTitle" maxlength="120" placeholder="Short title, e.g. Cold-chain logistics partner in Kumasi">
+      <textarea class="inp" id="needDescription" rows="3" maxlength="600" placeholder="What exactly you need, timeline, scale, and what you bring to the table"></textarea>
+      <div style="display:flex;gap:10px">
+        <input class="inp" id="needRegion" placeholder="Region (optional)" style="flex:1">
+        <input class="inp" id="needBudget" placeholder="Budget range (optional)" style="flex:1">
+      </div>
+      <button class="btn btn-primary" onclick="postNetworkNeed()">Post to the Network</button>
+    </div>
+    ${myOpen.length?`<div class="card-title" style="margin-bottom:10px">Your open posts</div>${myOpen.map(n=>needCard(n,true)).join('')}`:''}
+    <div class="card-title" style="margin:18px 0 10px">What other members are looking for <span class="sub">${others.length}</span></div>
+    ${others.length ? others.map(n=>needCard(n,false)).join('') : `<div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:24px">Nobody's posted a need yet, be the first.</div>`}
+  `;
+}
+async function postNetworkNeed(){
+  const category = document.getElementById('needCategory').value;
+  const title = document.getElementById('needTitle').value.trim();
+  const description = document.getElementById('needDescription').value.trim();
+  const region = document.getElementById('needRegion').value.trim();
+  const budget_range = document.getElementById('needBudget').value.trim();
+  if(!title || !description){ showToast('Add a title and a short description'); return; }
+  try{
+    const { error } = await sb.from('network_needs').insert({ business_id: CUR_VENUE_ID, category, title, description, region, budget_range, status:'open' });
+    if(error) throw error;
+    showToast('Posted to the Network');
+    await loadNetworkData();
+  }catch(e){ console.error('postNetworkNeed failed', e); showToast('Could not post, try again'); }
+}
+async function closeNetworkNeed(id){
+  try{
+    const { error } = await sb.from('network_needs').update({ status:'closed' }).eq('id', id).eq('business_id', CUR_VENUE_ID);
+    if(error) throw error;
+    showToast('Marked closed');
+    await loadNetworkData();
+  }catch(e){ console.error('closeNetworkNeed failed', e); showToast('Could not update, try again'); }
+}
+
+/* ---------- CONNECT (requests + 1:1 chat) ---------- */
+function networkConnectionsHtml(){
+  const incoming = NETWORK_CONNECTIONS.filter(c=>c.status==='pending' && c.recipient_id===CUR_VENUE_ID);
+  const accepted = NETWORK_CONNECTIONS.filter(c=>c.status==='accepted');
+  const sent = NETWORK_CONNECTIONS.filter(c=>c.status==='pending' && c.requester_id===CUR_VENUE_ID);
+  function otherIdOf(c){ return c.requester_id===CUR_VENUE_ID ? c.recipient_id : c.requester_id; }
+  function nameFor(id){ const p = NETWORK_DIRECTORY.find(x=>x.business_id===id); return p ? p.display_name : 'Business'; }
+  return `
+  <div class="network-split">
+    <div>
+      ${incoming.length?`<div class="card" style="margin-bottom:14px">
+        <div class="card-title">Requests waiting on you <span class="sub">${incoming.length}</span></div>
+        ${incoming.map(c=>`<div style="padding:10px 0;border-top:1px solid var(--line-soft)">
+          <div style="font-weight:700;font-size:12.5px;margin-bottom:2px">${esc(nameFor(c.requester_id))}</div>
+          ${c.note?`<div style="font-size:11.5px;color:var(--ink-dim);margin-bottom:8px;line-height:1.5">"${esc(c.note)}"</div>`:''}
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-primary" style="padding:8px 14px;font-size:11.5px" onclick="respondConnection('${c.id}','accepted')">Accept</button>
+            <button class="btn btn-ghost" style="padding:8px 14px;font-size:11.5px" onclick="respondConnection('${c.id}','declined')">Decline</button>
+          </div>
+        </div>`).join('')}
+      </div>`:''}
+      <div class="card">
+        <div class="card-title">Your connections <span class="sub">${accepted.length}</span></div>
+        ${accepted.length ? accepted.map(c=>`<div class="sb-item" style="cursor:pointer;border-radius:8px" onclick="openNetworkChat('${c.id}')"><span class="ic">💬</span><span>${esc(nameFor(otherIdOf(c)))}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted)">No connections yet, accept a request above or connect from the Directory.</div>`}
+        ${sent.length?`<div style="font-size:10.5px;color:var(--muted);margin-top:10px;padding-top:10px;border-top:1px solid var(--line-soft)">${sent.length} request${sent.length===1?'':'s'} sent, waiting on a reply</div>`:''}
+      </div>
+    </div>
+    <div id="networkChatPane"><div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:40px">Pick a connection to open the conversation.</div></div>
+  </div>`;
+}
+async function respondConnection(id, status){
+  try{
+    const { error } = await sb.from('network_connections').update({ status, responded_at: new Date().toISOString() }).eq('id', id);
+    if(error) throw error;
+    showToast(status==='accepted' ? 'Connection accepted' : 'Request declined');
+    await loadNetworkData();
+  }catch(e){ console.error('respondConnection failed', e); showToast('Could not update, try again'); }
+}
+async function openNetworkChat(connectionId){
+  unsubscribeNetworkRealtime();
+  NETWORK_ACTIVE_CHANNEL = null;
+  NETWORK_ACTIVE_CONNECTION = connectionId;
+  const pane = document.getElementById('networkChatPane');
+  if(pane) pane.innerHTML = `<div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:40px">Loading conversation…</div>`;
+  try{
+    const { data, error } = await sb.from('network_messages').select('*').eq('connection_id', connectionId).order('created_at',{ascending:true});
+    if(error) throw error;
+    NETWORK_ACTIVE_MESSAGES = data || [];
+  }catch(e){ console.error('load messages failed', e); NETWORK_ACTIVE_MESSAGES = []; }
+  drawNetworkChatPane();
+  NETWORK_RT = sb.channel('network_msgs_'+connectionId)
+    .on('postgres_changes', {event:'INSERT', schema:'public', table:'network_messages', filter:`connection_id=eq.${connectionId}`}, payload=>{
+      NETWORK_ACTIVE_MESSAGES.push(payload.new);
+      drawNetworkChatPane();
+    }).subscribe();
+}
+function drawNetworkChatPane(){
+  const pane = document.getElementById('networkChatPane');
+  if(!pane || !NETWORK_ACTIVE_CONNECTION) return;
+  const c = NETWORK_CONNECTIONS.find(x=>x.id===NETWORK_ACTIVE_CONNECTION);
+  const otherId = c ? (c.requester_id===CUR_VENUE_ID?c.recipient_id:c.requester_id) : null;
+  const p = NETWORK_DIRECTORY.find(x=>x.business_id===otherId);
+  pane.innerHTML = `<div class="card" style="display:flex;flex-direction:column;height:520px;padding:0;overflow:hidden">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--line-soft);font-weight:700;font-size:13px">${p?esc(p.display_name):'Conversation'}</div>
+    <div id="networkChatMsgs" style="flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:8px"></div>
+    <div style="padding:12px 14px;border-top:1px solid var(--line-soft);display:flex;gap:8px">
+      <input class="inp" id="networkChatInput" placeholder="Message…" style="margin:0;flex:1" onkeydown="if(event.key==='Enter'){sendNetworkMessage();}">
+      <button class="btn btn-primary" onclick="sendNetworkMessage()">Send</button>
+    </div>
+  </div>`;
+  const msgsEl = document.getElementById('networkChatMsgs');
+  msgsEl.innerHTML = NETWORK_ACTIVE_MESSAGES.length ? NETWORK_ACTIVE_MESSAGES.map(m=>{
+    const mine = m.sender_id===CUR_VENUE_ID;
+    return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:76%;background:${mine?'var(--navy)':'var(--cream)'};color:${mine?'#fff':'var(--ink)'};padding:9px 13px;border-radius:14px;font-size:12.5px;line-height:1.5">${esc(m.body)}</div>`;
+  }).join('') : `<div style="font-size:11.5px;color:var(--muted);text-align:center;margin-top:20px">Say hello, this is where the partnership starts.</div>`;
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+async function sendNetworkMessage(){
+  const input = document.getElementById('networkChatInput');
+  const body = (input?.value||'').trim();
+  if(!body || !NETWORK_ACTIVE_CONNECTION) return;
+  input.value = '';
+  try{
+    const { error } = await sb.from('network_messages').insert({ connection_id: NETWORK_ACTIVE_CONNECTION, sender_id: CUR_VENUE_ID, body });
+    if(error) throw error;
+  }catch(e){ console.error('send message failed', e); showToast('Message failed to send'); }
+}
+
+/* ---------- INDUSTRY CHANNELS ---------- */
+function networkChannelsHtml(){
+  return `<div class="network-split">
+    <div class="card">
+      <div class="card-title">Industry rooms</div>
+      ${NETWORK_CHANNELS.length ? NETWORK_CHANNELS.map(ch=>`<div class="sb-item" style="cursor:pointer;border-radius:8px" onclick="openNetworkChannel('${ch.id}')"><span class="ic">${ch.ic||'#'}</span><span>${esc(ch.label)}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted)">No rooms yet.</div>`}
+    </div>
+    <div id="networkChannelPane"><div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:40px">Pick a room to see the conversation.</div></div>
+  </div>`;
+}
+async function openNetworkChannel(channelId){
+  unsubscribeNetworkRealtime();
+  NETWORK_ACTIVE_CONNECTION = null;
+  NETWORK_ACTIVE_CHANNEL = channelId;
+  const pane = document.getElementById('networkChannelPane');
+  if(pane) pane.innerHTML = `<div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:40px">Loading room…</div>`;
+  try{
+    const { data, error } = await sb.from('network_channel_messages').select('*').eq('channel_id', channelId).order('created_at',{ascending:true}).limit(200);
+    if(error) throw error;
+    NETWORK_ACTIVE_MESSAGES = data || [];
+  }catch(e){ console.error('load channel messages failed', e); NETWORK_ACTIVE_MESSAGES = []; }
+  drawNetworkChannelPane();
+  NETWORK_RT = sb.channel('network_ch_'+channelId)
+    .on('postgres_changes', {event:'INSERT', schema:'public', table:'network_channel_messages', filter:`channel_id=eq.${channelId}`}, payload=>{
+      NETWORK_ACTIVE_MESSAGES.push(payload.new);
+      drawNetworkChannelPane();
+    }).subscribe();
+}
+function drawNetworkChannelPane(){
+  const pane = document.getElementById('networkChannelPane');
+  if(!pane || !NETWORK_ACTIVE_CHANNEL) return;
+  const ch = NETWORK_CHANNELS.find(x=>x.id===NETWORK_ACTIVE_CHANNEL);
+  pane.innerHTML = `<div class="card" style="display:flex;flex-direction:column;height:520px;padding:0;overflow:hidden">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--line-soft);font-weight:700;font-size:13px">${ch?(esc(ch.ic||'#')+' '+esc(ch.label)):'Room'}</div>
+    <div id="networkChanMsgs" style="flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:8px"></div>
+    <div style="padding:12px 14px;border-top:1px solid var(--line-soft);display:flex;gap:8px">
+      <input class="inp" id="networkChanInput" placeholder="Post in ${ch?esc(ch.label):'this room'}…" style="margin:0;flex:1" onkeydown="if(event.key==='Enter'){sendNetworkChannelMessage();}">
+      <button class="btn btn-primary" onclick="sendNetworkChannelMessage()">Post</button>
+    </div>
+  </div>`;
+  const msgsEl = document.getElementById('networkChanMsgs');
+  msgsEl.innerHTML = NETWORK_ACTIVE_MESSAGES.length ? NETWORK_ACTIVE_MESSAGES.map(m=>{
+    const mine = m.sender_id===CUR_VENUE_ID;
+    return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
+      ${mine?'':`<div style="font-size:10px;color:var(--muted);margin-bottom:2px;padding-left:2px">${esc(m.sender_name||'Business')}</div>`}
+      <div style="background:${mine?'var(--navy)':'var(--cream)'};color:${mine?'#fff':'var(--ink)'};padding:9px 13px;border-radius:14px;font-size:12.5px;line-height:1.5">${esc(m.body)}</div>
+    </div>`;
+  }).join('') : `<div style="font-size:11.5px;color:var(--muted);text-align:center;margin-top:20px">Be the first to post here.</div>`;
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+async function sendNetworkChannelMessage(){
+  const input = document.getElementById('networkChanInput');
+  const body = (input?.value||'').trim();
+  if(!body || !NETWORK_ACTIVE_CHANNEL) return;
+  input.value = '';
+  try{
+    const { error } = await sb.from('network_channel_messages').insert({ channel_id: NETWORK_ACTIVE_CHANNEL, sender_id: CUR_VENUE_ID, sender_name: (NETWORK_PROFILE && NETWORK_PROFILE.display_name) || CFG.bizName || 'Business', body });
+    if(error) throw error;
+  }catch(e){ console.error('send channel message failed', e); showToast('Message failed to send'); }
+}
+
+/* ---------- MY PROFILE ---------- */
+function networkProfileCompleteness(p){
+  if(!p) return 0;
+  const fields = ['display_name','industry','bio','capabilities','website','whatsapp','tagline','founded_year','team_size','hq_location'];
+  const filled = fields.filter(f=> p[f]!==null && p[f]!==undefined && String(p[f]).trim()!=='').length;
+  const lfBonus = (p.looking_for && p.looking_for.length) ? 1 : 0;
+  return Math.round(((filled+lfBonus) / (fields.length+1)) * 100);
+}
+function networkProfileFormHtml(){
+  const p = NETWORK_PROFILE || {};
+  const lf = p.looking_for || [];
+  const pct = networkProfileCompleteness(NETWORK_PROFILE);
+  return `<div class="card" style="max-width:560px">
+    <div class="card-title">My TecXFRA Network profile</div>
+    <div style="font-size:11.5px;color:var(--ink-dim);margin-bottom:12px;line-height:1.6">This is what other verified members see in the Directory. It's separate from your internal CRM data, only what you choose to share externally.</div>
+    <div style="margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-dim);margin-bottom:6px"><span>Profile completeness</span><span><b style="color:var(--navy)">${pct}%</b></span></div>
+      <div class="progress-track"><div class="progress-fill" style="width:${pct}%;background:${pct>=80?'var(--green,#2e9e6e)':'var(--teal)'}"></div></div>
+      ${pct<100?`<div style="font-size:10.5px;color:var(--muted);margin-top:5px">A fuller profile ranks higher in Directory search and gets far more Connect requests.</div>`:''}
+    </div>
+    <label class="lbl">Display name</label>
+    <input class="inp" id="npName" value="${esc(p.display_name || CFG.bizName || '')}" maxlength="80">
+    <label class="lbl">One-line tagline</label>
+    <input class="inp" id="npTagline" value="${esc(p.tagline||'')}" maxlength="120" placeholder="e.g. Reliable cold-chain logistics across Greater Accra">
+    <label class="lbl">Industry</label>
+    <select class="inp" id="npIndustry">
+      ${INDUSTRIES.map(i=>`<option value="${i.key}" ${(p.industry?p.industry===i.key:i.key===CFG.industry)?'selected':''}>${i.ic} ${i.label}</option>`).join('')}
+    </select>
+    <div style="display:flex;gap:10px">
+      <div style="flex:1">
+        <label class="lbl">Founded (year)</label>
+        <input class="inp" id="npFounded" type="number" min="1900" max="${new Date().getFullYear()}" value="${esc(p.founded_year||'')}" placeholder="e.g. 2019">
+      </div>
+      <div style="flex:1">
+        <label class="lbl">Team size</label>
+        <select class="inp" id="npTeamSize">
+          <option value="">Select…</option>
+          ${['Just me','2-5','6-20','21-50','50+'].map(o=>`<option value="${o}" ${p.team_size===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <label class="lbl">HQ location</label>
+    <input class="inp" id="npLocation" value="${esc(p.hq_location||'')}" placeholder="e.g. Accra, Ghana">
+    <label class="lbl">What you do (short bio)</label>
+    <textarea class="inp" id="npBio" rows="3" maxlength="400" placeholder="What your business does, in a couple of sentences">${esc(p.bio||'')}</textarea>
+    <label class="lbl">Capabilities / what you offer</label>
+    <input class="inp" id="npCapabilities" value="${esc(p.capabilities||'')}" placeholder="e.g. Cold-chain logistics across the Greater Accra region">
+    <label class="lbl">What you're looking for</label>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+      ${NETWORK_LOOKING_FOR_OPTIONS.map(o=>`<label style="display:flex;align-items:center;gap:6px;background:var(--cream);border:1.5px solid var(--line);border-radius:20px;padding:6px 12px;font-size:11.5px;cursor:pointer">
+        <input type="checkbox" value="${esc(o)}" ${lf.includes(o)?'checked':''} style="accent-color:var(--teal)"> ${esc(o)}
+      </label>`).join('')}
+    </div>
+    <label class="lbl">Website (optional)</label>
+    <input class="inp" id="npWebsite" value="${esc(p.website||'')}" placeholder="https://…">
+    <label class="lbl">WhatsApp for direct enquiries (optional)</label>
+    <input class="inp" id="npWhatsapp" value="${esc(p.whatsapp||'')}" placeholder="e.g. 233…">
+    <div style="display:flex;gap:10px">
+      <div style="flex:1">
+        <label class="lbl">LinkedIn (optional)</label>
+        <input class="inp" id="npLinkedin" value="${esc(p.linkedin_url||'')}" placeholder="linkedin.com/company/…">
+      </div>
+      <div style="flex:1">
+        <label class="lbl">X / Twitter (optional)</label>
+        <input class="inp" id="npX" value="${esc(p.x_url||'')}" placeholder="x.com/…">
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin:-8px 0 14px">Only LinkedIn and X are shown on your profile, by design, this Network is for business signal, not general social media.</div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-dim);margin:6px 0 16px">
+      <input type="checkbox" id="npVisible" ${p.visible!==false?'checked':''} style="accent-color:var(--teal)"> Visible in the Directory to other verified members
+    </label>
+    <button class="btn btn-primary" onclick="saveNetworkProfile()">Save profile</button>
+    ${p.verified?'<span class="pill pill-active" style="margin-left:10px">✔ Verified</span>':'<span style="font-size:10.5px;color:var(--muted);margin-left:10px">The verified badge is applied by the TecXFRA team after a quick check</span>'}
+  </div>`;
+}
+async function saveNetworkProfile(){
+  const checks = Array.from(document.querySelectorAll('#networkBody input[type="checkbox"][value]'));
+  const looking_for = checks.filter(c=>c.checked).map(c=>c.value);
+  const foundedVal = document.getElementById('npFounded').value.trim();
+  const payload = {
+    business_id: CUR_VENUE_ID,
+    display_name: document.getElementById('npName').value.trim() || (CFG.bizName || 'Business'),
+    tagline: document.getElementById('npTagline').value.trim(),
+    industry: document.getElementById('npIndustry').value,
+    founded_year: foundedVal ? parseInt(foundedVal,10) : null,
+    team_size: document.getElementById('npTeamSize').value,
+    hq_location: document.getElementById('npLocation').value.trim(),
+    bio: document.getElementById('npBio').value.trim(),
+    capabilities: document.getElementById('npCapabilities').value.trim(),
+    looking_for,
+    website: document.getElementById('npWebsite').value.trim(),
+    whatsapp: document.getElementById('npWhatsapp').value.trim(),
+    linkedin_url: document.getElementById('npLinkedin').value.trim(),
+    x_url: document.getElementById('npX').value.trim(),
+    visible: document.getElementById('npVisible').checked,
+    updated_at: new Date().toISOString()
+  };
+  try{
+    const { error } = await sb.from('network_profiles').upsert(payload, { onConflict:'business_id' });
+    if(error) throw error;
+    showToast('Profile saved');
+    await loadNetworkData();
+    setNetworkTab('directory');
+  }catch(e){ console.error('saveNetworkProfile failed', e); showToast('Could not save profile, try again'); }
+}
 /* ---------- TODAY ---------- */
 function renderToday(){
   const t = todayStr();
@@ -2081,7 +2741,7 @@ function renderToday(){
     <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.6"><b style="color:var(--navy)">Growing fast</b>, you're at ${usage[nearCap]}/${limits[nearCap]} ${capLabel} on the ${currentPlan().label} plan. <a style="color:var(--teal);cursor:pointer;font-weight:600" onclick="setSettingsTab('plan');navTo('settings')">See what Growth unlocks →</a></div>
   </div>` : '';
   html += `<div class="card" style="border-color:var(--teal); background:linear-gradient(135deg, var(--teal-tint), var(--paper))">
-    <div class="card-title">Today's ${toneLabel()} <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change tone →</span></div>
+    <div class="card-title">${currentPlan().network?'Today\'s Prestige '+toneLabel()+' 🌐':'Today\'s '+toneLabel()} <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change tone →</span></div>
     <div style="font-size:13.5px; line-height:1.7; color:var(--navy)">${tip}</div>
   </div>
   <div class="card">
@@ -2165,9 +2825,50 @@ const TIP_LIBRARY = {
     "The gap between what comes in and what goes out is what actually builds a business, check that gap today, not just the revenue number."
   ]
 };
+const PRESTIGE_TIP_LIBRARY = {
+  motivation:[
+    "You didn't build this to still be doing everything yourself. Today, find the one task only you can do, and hand off one that isn't.",
+    "A verified profile and a quiet Network is a wasted asset. Message one connection today, momentum in partnerships works exactly like momentum in sales.",
+    "The businesses that scale aren't the ones with the best product, they're the ones with the best relationships doing the selling for them. Invest in one today.",
+    "Capital follows clarity. If you can't explain your numbers in one sentence, that's today's real work, before the next pitch.",
+    "Every operator you connect with is a shortcut past a mistake you'd otherwise make alone. Use the Network like the asset it is, today.",
+    "Growth stalls when the owner is still the bottleneck. Ask yourself today: what am I still doing that a system or a person should be doing instead?",
+    "The deal you're avoiding because it feels too big is usually the one that changes the trajectory. Take the next small step on it today.",
+    "One well-run channel beats five neglected ones. Check today which of your marketing channels is actually earning its budget.",
+    "Expanding into a new market tests everything you thought you knew about trust, price, and pace. Move deliberately today, not fast.",
+    "A cold message that gets ignored isn't a rejection, it's data. Read it back today and ask what filter it failed.",
+    "The business that survives a platform algorithm change is the one that never depended on just one channel. Diversify one thing today.",
+    "Delegation isn't losing control, it's buying back the hours only you can spend on what actually moves the business. Hand off one thing today."
+  ],
+  faith:[
+    "\"Where there is no counsel, the people fall: but in the multitude of counsellors there is safety.\", Proverbs 11:14. Seek wise counsel from the Network today.",
+    "\"The plans of the diligent lead surely to abundance.\", Proverbs 21:5. Let today's diligence extend beyond your own four walls, into the partnerships you're building.",
+    "\"Iron sharpeneth iron; so a man sharpeneth the countenance of his friend.\", Proverbs 27:17. Reach out to someone in your Network today who sharpens your thinking.",
+    "\"Commit thy works unto the LORD, and thy thoughts shall be established.\", Proverbs 16:3. Commit today's biggest decision to Him before you commit it to a contract.",
+    "Stewardship of a growing business means stewarding relationships as carefully as revenue. Tend to one today.",
+    "\"Two are better than one; because they have a good reward for their labour.\", Ecclesiastes 4:9. Consider today who you're meant to be building alongside, not just serving.",
+    "\"Let all things be done decently and in order.\", 1 Corinthians 14:40. Let today's outreach, in whatever market, reflect order and honesty, not pressure.",
+    "\"A false balance is abomination to the LORD: but a just weight is his delight.\", Proverbs 11:1. Let your pricing and your terms, wherever you trade, be fair enough to stand behind.",
+    "\"The simple believeth every word: but the prudent man looketh well to his going.\", Proverbs 14:15. Move carefully into new markets and new deals today, prudence honours the trust He's given you.",
+    "\"Whatsoever thy hand findeth to do, do it with thy might.\", Ecclesiastes 9:10. Give today's follow-up, today's outreach, today's hire the same care as everything else you've built."
+  ],
+  neutral:[
+    "Review one Network connection today and decide the next concrete step in that relationship.",
+    "Today's target: reduce one process to something someone else could run without you, and write it down.",
+    "Check your unit economics today, not just revenue, what does it actually cost you to acquire and serve your current customers.",
+    "Pick one item from the Prestige Library today and apply it to a real, current decision, not a hypothetical one.",
+    "Today, treat one relationship in the Network as a pipeline, not a contact, what's the next defined step.",
+    "Review what you'd tell an investor about this business today, then close the biggest gap between that answer and reality.",
+    "Check whether retargeting is switched on in your paid advertising today, it's the highest-return channel most businesses forget to leave on.",
+    "If you're operating across more than one country, check today whether your entity structure and your compliance still match reality.",
+    "Sort your last 10 pieces of outreach into what worked and what didn't, today, and adjust the next 10 accordingly.",
+    "Review your payment terms today, are you planning cash flow around when money actually arrives, or when the invoice was sent."
+  ]
+};
 function dailyTip(){
   const tone = CFG.tone || 'motivation';
-  const list = TIP_LIBRARY[tone] || TIP_LIBRARY.motivation;
+  const useprestige = currentPlan().network === true;
+  const list = (useprestige ? PRESTIGE_TIP_LIBRARY[tone] : TIP_LIBRARY[tone]) || TIP_LIBRARY.motivation;
   const dayIndex = Math.floor(Date.now()/86400000) % list.length;
   return list[dayIndex];
 }
@@ -3995,10 +4696,23 @@ const ACCOUNTABILITY_TASKS_TIER3 = [
   {key:'margin_check', label:'Checked margin/profitability on today\'s top-selling item'},
   {key:'systemised_something', label:'Turned a one-off task into a repeatable script, template or checklist'}
 ];
+// Prestige is a plan gate, not a maturity gate, a business pays for the
+// Network so this tier always shows once currentPlan().network is true,
+// independent of audit score or streak. This is the "board-level" layer
+// the brief asked for, thinking in terms of partners, capital and the
+// Network, not just today's till.
+const ACCOUNTABILITY_TASKS_PRESTIGE = [
+  {key:'network_reviewed', label:'Reviewed TecXFRA Network activity, requests, messages or channels'},
+  {key:'network_progressed', label:'Moved a Collaboration, Partnership, Investment or Supply conversation forward'},
+  {key:'profile_maintained', label:'Reviewed or improved my verified Network profile'},
+  {key:'prestige_guide_read', label:'Read one Prestige Growth Library guide'},
+  {key:'channel_reviewed', label:'Reviewed cost-per-acquisition or performance on at least one marketing channel this week'}
+];
 function accountabilityTier(){
   const score = DATA.auditScore;
   const total = getAuditQuestions().length;
   const streak = calcStreak();
+  if(currentPlan().network) return 4;
   if((score!==null && score!==undefined && score > total*0.66) || streak>=30) return 3;
   if((score!==null && score!==undefined && score > total*0.33) || streak>=14) return 2;
   return 1;
@@ -4008,6 +4722,7 @@ function getAccountabilityTasks(){
   let tasks = ACCOUNTABILITY_TASKS.slice();
   if(tier>=2) tasks = tasks.concat(ACCOUNTABILITY_TASKS_TIER2);
   if(tier>=3) tasks = tasks.concat(ACCOUNTABILITY_TASKS_TIER3);
+  if(tier>=4) tasks = tasks.concat(ACCOUNTABILITY_TASKS_PRESTIGE);
   return tasks;
 }
 function accountabilityKeyToday(){ return todayStr(); }
@@ -4506,7 +5221,7 @@ async function toggleGuideProgress(key, type, ev){
   }catch(e){ console.error(e); showToast('Could not save progress, check your connection and try again.'); return; }
   if(done) GUIDE_PROGRESS = GUIDE_PROGRESS.filter(x=>x!==type+':'+key);
   else GUIDE_PROGRESS.push(type+':'+key);
-  if(type==='library') drawGuideList(); else drawGuideStore();
+  if(type==='library') drawGuideList(); else if(type==='prestige') drawPrestigeGuideList(); else drawGuideStore();
 }
 function guideProgressBar(done, total, label){
   const pct = total ? Math.round((done/total)*100) : 0;
@@ -4599,6 +5314,57 @@ function drawGuideStore(){
 }
 
 /* ---------- GUIDES / GROWTH LIBRARY ---------- */
+const PRESTIGE_GUIDES = [
+  {key:'structuring_a_partnership_that_survives_success', cat:'Partnerships', t:'Structuring a Partnership That Survives Success', b:70, full:`Most partnerships don't fail from a bad start, they fail from a good start with nothing written down for when things go well. The handshake deal that felt fine at GHS 10,000 a month gets ugly fast at GHS 200,000 a month, because nobody agreed in advance who owns what, who decides what, and what happens if one side wants out.\n\nBefore you agree to anything, put four things in writing, even informally: what each side actually contributes (capital, contacts, labour, IP, distribution), how profit and decisions get split, and whether that split matches the contribution, not just the relationship. What happens if one side stops contributing, illness, disengagement, a new priority, and how disputes get resolved before either side is angry enough to want a lawyer.\n\nThe clause everyone skips and regrets: an exit plan. Agree upfront how either side can leave, what the other side owes them for what they built, and how you'll value the business if you ever need to buy each other out. Writing this down when you like each other costs an afternoon, writing it down after a falling-out costs a relationship and often the whole venture.\n\nUse TecXFRA Connect to keep the paper trail. Every material agreement discussed over WhatsApp or in person should get a one-line written confirmation sent through Connect afterward, "confirming we agreed X", it's not distrust, it's how professional partnerships actually operate.\n\nTry this today: for your most active current partnership or collaboration, write down what each side actually contributes and check whether the split still matches it, then post one open question in the relevant TecXFRA Network channel about how others structure their splits.`},
+  {key:'what_investors_actually_look_at_before_they_say_yes', cat:'Capital & Investment', t:'What Investors Actually Look At Before They Say Yes', b:65, full:`An investor isn't buying your product, they're buying your numbers and your discipline. Passion and a good story get you the meeting, three things get you the money: clean records, a believable growth plan, and evidence you can be trusted with someone else's cedis.\n\nClean records first. If your Revenue & Analytics can't answer "what did you make last month, and what did it cost you to make it" instantly and accurately, you are not ready to raise, full stop. Investors read inconsistent numbers as a red flag about everything else, not just the accounting.\n\nThe growth plan needs a number and a mechanism, not just ambition. "We'll grow 3x this year" is a wish. "We'll grow from 40 to 120 active clients by adding two salespeople, our current cost-per-client is X, our lifetime value is Y" is a plan, because it shows you understand your own unit economics well enough to scale them on purpose.\n\nWhat "trusted with capital" looks like in practice: you've run the business on a system (not memory), you separate personal and business money completely, you've survived at least one real setback without panicking or hiding it, and you can explain, plainly, exactly what the money will be used for and what specific milestone it unlocks.\n\nThe question to prepare for that most owners fumble: "what happens if this doesn't work?" Investors aren't looking for false confidence, they're looking for whether you've actually thought about downside risk, or whether you're only prepared for the upside.\n\nTry this today: write a one-paragraph answer to "what would GHS 50,000 in growth capital specifically unlock in this business, and by when", if you can't answer it specifically, that's this week's real homework, not the pitch deck.`},
+  {key:'due_diligence_before_you_trust_another_business', cat:'Partnerships', t:'Due Diligence Before You Trust Another Business', b:60, full:`The businesses that get burned in partnerships almost never say they weren't warned, they say they were in a hurry. A good opportunity can absorb a week of checking, a real one won't disappear because you asked reasonable questions first.\n\nBefore committing to any meaningful Collaboration, Partnership, Investment, or Supply relationship found through the TecXFRA Network or anywhere else, check the basics: does their business actually exist the way they describe it (visit, call existing customers, check for a real track record, not just a polished profile). Do their numbers, volumes, capacity, timelines, roughly line up with what's realistic for a business their size. Have they delivered on smaller commitments before you hand them a bigger one.\n\nThe verified badge inside TecXFRA Network means the business passed our checks, not that every deal with them is automatically safe, verification reduces risk, it doesn't replace your own judgement on a specific deal.\n\nStart every new significant relationship small on purpose. A trial order before a bulk contract, a single-city pilot before a national rollout, a 90-day agreement before a 3-year one. This isn't distrust, it's how experienced operators protect both sides while trust is still being built through actual delivery, not just conversation.\n\nWatch for the three warning signs that predict most failed partnerships: they avoid specific numbers when you ask directly, they push hard for you to skip the small pilot and go straight to the big commitment, or they get defensive rather than transparent when you ask basic due-diligence questions any serious operator would expect.\n\nTry this today: for the most promising conversation currently open in your Network connections, write down the smallest possible pilot version of the deal, and propose that instead of the full-size version.`},
+  {key:'cross_border_and_diaspora_expansion_the_real_sequence', cat:'Growth & Expansion', t:'Cross-Border and Diaspora Expansion, the Real Sequence', b:70, full:`Expanding to a new country or serving diaspora customers looks glamorous from the outside and gets expensive fast from the inside if the sequence is wrong. The businesses that expand well do it in a specific order, the ones that struggle usually skipped straight to marketing spend before the foundation was ready.\n\nSequence that actually works: first, prove the demand is real without spending on presence, take orders, referrals, or waitlist signups from the new market using what you already have (a Network channel, a diaspora WhatsApp group, existing customers who relocated). Second, find one local partner or agent in the new market before you commit to infrastructure there, someone who already understands the regulatory, cultural and logistical reality on the ground. Third, run a limited pilot, one product line, one city, one payment method, before building the full operation.\n\nThe costs first-time expanders underestimate: currency conversion and international payment fees eating into margin more than expected, compliance and registration requirements that differ meaningfully by country, and the simple cost of communication delay across time zones slowing every decision down.\n\nThe advantage a verified TecXFRA Network profile gives you here specifically: instead of cold-searching for a partner in a new market, post exactly what you need in the relevant industry channel, "Looking for a logistics partner for UK-to-Ghana shipping" reaches vetted businesses already inside the same accountability standard you're on, not a stranger from a random search.\n\nTry this today: pick the one new market you get asked about most often by existing customers or contacts, and post one specific "looking for" need in the TecXFRA Network for exactly the local partner type that market would require first.`},
+  {key:'building_an_advisory_circle_before_you_need_one', cat:'Leadership', t:'Building an Advisory Circle Before You Need One', b:55, full:`Most owners only look for advice once they're already in trouble, negotiating a deal they don't fully understand, facing a decision with real money on the line, alone. An advisory circle built in advance, even an informal one, means you're never making the biggest decisions solo for the first time under pressure.\n\nYou don't need a formal board to get this benefit. Three or four people, chosen deliberately, who you check in with regularly: someone further along than you in your own industry, someone in a completely different industry who thinks differently about problems, someone who understands numbers and contracts better than you do, and one honest peer who will tell you the truth instead of what you want to hear.\n\nWhere to actually find these people: the TecXFRA Network is built exactly for this, industry channels put you in front of people ahead of you in the same sector, and a direct connection request with a clear, specific reason ("I'd value your view on X, given your experience with Y") gets a far better response than a vague "let's connect."\n\nHow to use them well: bring specific decisions, not vague updates. "Should I take this 5% equity offer or the fixed-fee deal instead" gets a useful answer, "how's my business doing" doesn't. Ask before you've already decided, not after, advice sought to confirm a decision you've already made isn't really advice.\n\nWhat to give back, because this only works as a two-way relationship: be equally useful to at least one other person's circle, share what's actually working for you, not just the polished version, and follow up to tell people what happened after you took their advice, it's rare and it's why people keep helping you.\n\nTry this today: name the one decision currently sitting on your desk that you'd genuinely value outside input on, then send one specific, well-framed message to a Network connection whose experience is relevant to it.`},
+  {key:'negotiating_as_an_operator_not_a_supplier', cat:'Deal-Making', t:'Negotiating as an Operator, Not a Supplier', b:60, full:`There's a specific shift in how negotiations feel once you're dealing business-to-business instead of business-to-customer, the other side is also an operator, they respect confidence and clear terms far more than they respect a discount. Negotiating like you're still trying to win over a walk-in customer, apologetic, quick to lower price, avoiding hard numbers, reads as weakness at this level, not friendliness.\n\nKnow your walk-away point before the conversation starts, not during it. If you don't know the minimum terms you'll actually accept before you sit down, the other side will find that number for you, usually below where you'd have set it yourself.\n\nState terms plainly and let silence do the work. "Our rate for this volume is X, with Y payment terms" said once, calmly, without over-explaining or apologising for the number, outperforms a nervous, padded version of the same offer nearly every time. The first person to fill an uncomfortable silence after stating a number usually gives something away.\n\nSeparate the relationship from the specific deal. You can value a partnership and still decline unfavourable terms on this particular agreement, conflating the two is how operators end up in bad long-term arrangements out of a short-term desire to be liked.\n\nAlways negotiate more than one variable. Price is only one lever, payment timing, volume commitments, exclusivity, duration, who handles logistics, are all negotiable and often matter more to the other side than the headline number, trading on the right variable can get you a better outcome without either side feeling like they lost.\n\nGet it in writing the same day, through TecXFRA Connect if the conversation happened there, or a follow-up message if it didn't. Verbal agreements between operators are where good-faith deals quietly turn into disputes six months later.\n\nTry this today: for your next negotiation, whether it's a Network partnership or a supplier, write down your walk-away point on paper before the conversation, not during it.`},
+  {key:'delegation_hiring_for_the_role_you_re_still_doing_yourself', cat:'Leadership', t:'Delegation, Hiring for the Role You\'re Still Doing Yourself', b:55, full:`The clearest sign a business has outgrown its owner's personal capacity isn't revenue, it's the owner still personally doing something a hire could do at 70% of their own quality for a fraction of the time cost. Perfectionism at this stage is usually just delegation avoidance wearing a respectable disguise.\n\nThe honest audit: list every task you did this week, mark which ones only you could have done (strategic decisions, key relationships, final approval on major spend) and which ones someone else could have done adequately, not perfectly, adequately. The second list is your next hire's job description, hiding in plain sight.\n\nWhy owners resist this longer than they should: it feels slower to train someone than to just do it yourself this one time, again, and it costs money before it saves any, and mistakes made by someone else feel more visible and more painful than mistakes you'd have made yourself quietly.\n\nHire for the next 12 months, not the current moment. A hire who can only do exactly today's version of the role gets outgrown fast, look for someone who can grow into more responsibility as the business does, even if their first few months look overqualified for the immediate task.\n\nBuild the handover as a system, not a memory dump. Document the process once, properly, in TecXFRA's Guides or your own internal notes, so training the next person doesn't require re-explaining everything from scratch, and so the business isn't fragile if any one person, including you, is unavailable for a week.\n\nTry this today: write down the one task you personally did this week that someone else could have done adequately, and write the first three steps of what training someone else to do it would actually look like.`},
+  {key:'franchise_licensing_white_label_growing_without_owning_every', cat:'Deal-Making', t:'Franchise, Licensing & White-Label, Growing Without Owning Everything', b:55, full:`Not every business needs to grow by opening more locations itself or hiring more staff directly. Franchising, licensing your system, or white-labelling your product for another business to sell under their name are all ways to grow revenue and reach using someone else's capital and local knowledge instead of only your own.\n\nThe difference between the three, plainly: franchising sells someone else the right to run your exact business model in their territory, usually for a fee plus ongoing royalty, you're licensing the whole system. Licensing is narrower, you're selling the right to use one specific thing, a recipe, a process, a brand name, a piece of content, without handing over the whole operating model. White-labelling means another business sells your actual product or service under their own brand name, you make it, they sell it, you split the value differently than a normal wholesale relationship.\n\nBefore any of these make sense, the business needs to actually be systemised first, if the "magic" only works because you personally do it a certain way that's never been written down, there's nothing repeatable to sell yet. Document the process fully before you try to sell access to it.\n\nWhat this actually requires upfront: a genuinely documented, repeatable system (not just a good product), legal terms that protect your brand and quality standards while the other side operates it, and a way to check quality without micromanaging, because the whole point is growth without you personally running every new location.\n\nWhere the TecXFRA Network fits: this is exactly the kind of Partnership or Collaboration worth posting specifically, "Looking for a partner to white-label our product in [region]" reaches operators who already understand this model, rather than starting from zero with someone unfamiliar with it.\n\nTry this today: write down the one part of your business that's genuinely systemised enough right now that someone else could run it from documentation alone, that's your actual starting point for any of these three models.`},
+  {key:'building_recurring_high_ticket_b2b_revenue', cat:'Growth & Expansion', t:'Building Recurring, High-Ticket B2B Revenue', b:60, full:`One-off sales to individual consumers and recurring contracts with other businesses are almost different businesses entirely, different sales cycle, different trust requirements, and a completely different payoff once you get it right, predictable monthly revenue instead of hoping enough people walk in today.\n\nWhy B2B recurring revenue changes everything: a single signed contract with another business can be worth what dozens of individual sales are worth, and because it renews, it compounds instead of resetting to zero every month like most consumer sales do. This is the entire logic behind TecXFRA's own Prestige tier, and it's available to your business the same way.\n\nWhat other businesses actually buy, differently from consumers: reliability over excitement, they need to trust you'll deliver the same quality on order 100 as order 1, not just be impressed once. Clear terms over charm, a proper agreement, defined scope, and predictable pricing matter more here than a great pitch. And ROI they can explain internally, a business buyer usually has to justify the purchase to someone else, give them the numbers to do that easily.\n\nThe sales cycle is longer, respect that instead of fighting it. Expect multiple conversations before a decision, involve the right internal stakeholder on their side early, and never treat a slow B2B decision as a lost deal the way you might with a consumer who's gone quiet, it's usually just their normal pace, not disinterest.\n\nWhere to actually start finding these relationships: your existing customer base first, the individual clients you already serve well may represent a business that would value a formal ongoing arrangement instead of one-off purchases, and the TecXFRA Network directly, every accepted Connect relationship is a potential recurring account, not just a one-time referral.\n\nTry this today: pick your single best current customer relationship and ask directly whether they'd value a formal recurring arrangement instead of buying one-off, most owners never ask this simple question and leave real revenue sitting unclaimed.`},
+  {key:'the_seven_marketing_channels_where_to_reach_people', cat:'Marketing & Advertising', t:'The Seven Marketing Channels, Where To Reach People', b:70, full:`A channel just answers one question: how does a stranger become aware of you, and how do you stay in front of them once they are. Prestige-level operators rarely run one channel alone, they run three or four at modest, sustainable levels at the same time, so no single channel's decline ever causes a revenue cliff.\n\nTraditional (newspapers, TV, radio, billboards): blanket local visibility and a trust signal for big-ticket purchases, but the hardest of the seven to measure. Cap it at 15 to 20 percent of a marketing budget unless a specific tactic has an obvious, testable payback. A billboard gets six words and one action, never your full offer, radio recall builds from repeating the same script 3x a week for a month, not from one clever spot.\n\nDigital (SEO, Google Ads, social, email, your Google Business Profile, your website, content, analytics): the channel that can be targeted, measured and retargeted, and the only one that compounds on its own over time. This is where most Prestige-level budget should concentrate, see the next guide for the build order.\n\nInfluencer (creators, product reviews, brand collaborations): borrowed trust, an audience that already believes the creator transfers that belief to you faster than any ad can build it from zero. Match audience relevance over follower count, a creator with 3,000 tightly relevant followers outsells one with 300,000 broad ones for a niche product. Always negotiate usage rights so that content becomes your ad creative afterward too.\n\nDirect (WhatsApp, SMS, email, phone): the highest conversion rate of the seven because you are speaking to someone who already knows you, this is retention and reactivation territory, not cold acquisition. Every direct message should do exactly one of three things, inform, ask, or offer, never all three at once. Use it 70 percent for value and only 30 percent for asks.\n\nReferral (refer and earn, cashback, invite a friend, loyalty programmes): the cheapest acquisition that exists, because the conversion has already been pre-sold by someone the new customer trusts. Ask inside the 24 to 72 hour golden window after a customer confirms they are happy, and reward both sides, a two-sided reward roughly doubles response rates versus rewarding only the referrer.\n\nAffiliate (trackable links, coupon codes, commission-based sales): scales sales through other people's audiences at zero upfront risk, you only pay when a sale happens. Give affiliates a unique trackable code, never rely on self-reported sales, and support them with ready-made banners and copy the same way you would manage a small sales team.\n\nEvent (trade shows, launches, workshops, expos): compressed trust-building, a single well-run event does in one afternoon what months of content takes to build because people are physically present. The event itself is only the top of the funnel, the real return lives in contacting every lead within 48 hours, before the personal connection cools.\n\nTry this today: list which of these seven channels you are currently running, if it is only one, pick a second one from this list that fits your customer and budget, and commit to running both at a modest, consistent level for the next 30 days.`},
+  {key:'digital_marketing_the_eight_pillars_in_the_right_order', cat:'Marketing & Advertising', t:'Digital Marketing, The Eight Pillars In The Right Order', b:65, full:`Most businesses build their digital presence in the wrong order, paying for ads before the destination is ready to convert, or chasing social followers before search visibility exists. Build the eight pillars in this order and each one makes the next one work harder.\n\n1) Google Business Profile, free and immediate, it captures people already searching for you right now. Complete every field, upload real photos weekly, and reply to every review within 48 hours, profile freshness is itself a ranking signal, not just courtesy.\n\n2) Website Marketing, the destination everything else eventually points to. Fix this before paying for any traffic to reach it, sending paid clicks to a page that cannot convert is paying to lose people faster.\n\n3) SEO, compounds, the earlier you start the bigger the long-term payoff. For a local business, optimise for what you sell plus your area before chasing any broader keyword.\n\n4) Social Media Marketing, builds audience and trust in parallel with SEO, platform-native content, not the same post copied across every platform.\n\n5) Content Marketing, fuels both SEO and Social at once, one well-made asset (a guide, a video, a breakdown) feeds two channels instead of one.\n\n6) Email Marketing, the only channel not rented from a platform, you own this list outright. Segment by behaviour, a customer who bought once gets a different sequence than one who has browsed three times and never bought.\n\n7) Google Ads, buys speed while SEO is still compounding underneath it, use it to fill the gap in the early months, not as a permanent substitute for organic visibility.\n\n8) Analytics and Tracking, wraps around all seven, telling you which are actually working. The single highest-leverage habit here is reviewing the same 5 numbers weekly, not monthly, traffic, cost-per-lead, conversion rate, top channel, top content, a weekly review catches a broken funnel in days instead of months, use TecXFRA's Revenue and Analytics module for the numbers side of this same discipline.\n\nTry this today: check which of these eight pillars you have skipped or built out of order, most businesses discover they paid for Google Ads (pillar 7) before their Google Business Profile (pillar 1) was even complete, fix the earliest gap first.`},
+  {key:'the_six_types_of_marketing_strategy', cat:'Marketing & Advertising', t:'The Six Types of Marketing Strategy', b:60, full:`These are not channels, they are the strategic mode a business operates in, and every channel above gets deployed through one or more of these six.\n\nContent Marketing, earn attention with useful content. The slowest to compound and the most durable, something published today can still be bringing in customers three years from now. Weakness: slow payoff, needs months of consistency before it shows.\n\nGrowth Marketing, test, learn and scale what works. Constant, structured experimentation, A/B testing headlines, offers, channels, pricing, with a fast feedback loop. Weakness: needs enough traffic or data to reach real confidence, not useful before you have some traction.\n\nPerformance Marketing, pay for measurable results. Any spend directly tied to a trackable outcome, a click, a lead, a sale. The advantage is precision, you know your exact cost per outcome. Weakness: stops the moment you stop paying, it does not compound the way content or brand does.\n\nInfluencer Marketing as a strategy (not just the channel), borrow someone else's audience. Includes co-signed partnerships, testimonials from respected figures in your industry, expert endorsements, not only social creators. Weakness: trust is borrowed, not owned, if the other party's reputation changes, so does the association with you.\n\nBrand Marketing, build recognition and trust. The long game, consistent visual identity, tone and message across everything so the business becomes recognisable and preferred independent of any single campaign. Weakness: hardest to measure directly, easiest to underinvest in because the return is never immediate.\n\nSocial Media Marketing, create content for each platform natively. What works on one platform fails on another, this requires platform-specific thinking, not one post copied everywhere. Weakness: the highest maintenance cost of the six, needs near-constant attention to stay effective.\n\nHow they chain together in practice: Content Marketing creates the raw material, Social Media Marketing distributes it natively per platform, Performance Marketing amplifies whichever pieces are already working with paid spend, Growth Marketing tests variations of what is working, Influencer Marketing borrows trust to accelerate the whole system into new segments, Brand Marketing is the consistent thread tying every piece of output back to one recognisable identity.\n\nTry this today: name which of these six modes your current marketing effort is actually running in, most small operators are running Promotional-heavy Performance Marketing alone with no Content or Brand underneath it, that is the single most common reason cost-per-acquisition keeps climbing over time.`},
+  {key:'the_six_types_of_content_what_you_actually_publish', cat:'Marketing & Advertising', t:'The Six Types of Content, What You Actually Publish', b:55, full:`Every piece of content you publish, in any channel, is doing one of six jobs. A feed that is 100 percent one type, usually Promotional, underperforms a mixed feed every time, because an audience that only ever sees asks stops paying attention.\n\nEntertaining, make people watch, stops the scroll and builds reach, roughly a quarter of a healthy mix.\n\nEducational, teach something useful, builds authority and drives saves and shares, roughly a quarter of a healthy mix.\n\nInspirational, motivate people to act, builds emotional connection to the brand, roughly 15 percent.\n\nPromotional, sell the offer, direct conversion, roughly 15 to 20 percent, this is the smallest share on purpose.\n\nUGC (user-generated content), share what customers created themselves, social proof at scale, roughly 10 percent, and it deserves special attention, UGC converts at a meaningfully higher rate than brand-created content in nearly every study on the topic, because audiences trust a peer's honest post over a polished company one. Actively solicit it, do not wait for it to happen, ask happy customers directly, make it easy with a hashtag or a simple prompt, and always credit and reshare.\n\nCommunity, build relationships, drives retention, loyalty and word of mouth, roughly 10 percent.\n\nThe rule underneath all six: lead with Entertaining or Educational, earn the right to be Promotional. An audience given real value repeatedly pays closer attention when the ask finally comes.\n\nTry this today: pull up your last 10 posts across whatever channel you use most, and sort each one into one of these six buckets, if Promotional is more than a fifth of what you actually shared, your next 5 posts should be Educational or Entertaining with zero ask attached.`},
+  {key:'the_six_types_of_advertising_how_you_pay_for_reach', cat:'Marketing & Advertising', t:'The Six Types of Advertising, How You Pay For Reach', b:55, full:`Where content types are about what you publish, advertising types are about how you pay to guarantee it gets seen. At Prestige level, the budget allocation logic across these six matters more than any single ad's creative.\n\nSocial, ads on social platforms, highly targetable by interest, behaviour and demographic, works across the whole funnel from awareness through to conversion.\n\nDisplay, banner ads across a network of websites, broad low-cost awareness and retargeting, generally the weakest of the six for direct conversion, use for top-of-funnel reach, not as a primary sales driver.\n\nSearch, ads based on keywords, the highest-intent advertising type that exists because you are reaching someone at the exact moment they are actively looking for what you sell. Highest cost-per-click of the six, but typically the best return because intent is already proven.\n\nNative, ads that blend into the platform or publication they appear on, outperforms obvious ads on engagement because it does not trigger ad-blindness, but takes more creative effort to execute well.\n\nRetargeting, brings back people who already visited or engaged but did not convert, typically the highest return on investment of all six because you are re-approaching a warm audience, not a cold one. This should be a small, standing, always-on line in every paid budget, never a one-off campaign.\n\nVideo, tells the story across almost every platform, consistently outperforms static image ads on engagement and recall, more production effort but the format most able to build genuine emotional connection at scale.\n\nThe budget order that works at Prestige level: retargeting first and always-on (smallest line, highest return, never switch it off), search second (captures existing demand, fund it while cost-per-acquisition still makes sense), social third (the main engine for reaching new audiences with real targeting precision), video as a creative format layered across the above rather than its own separate budget line, native for specific high-trust placements, and display last and smallest, mainly for broad cheap awareness, not primary spend.\n\nTry this today: check whether retargeting is switched on at all in your current paid spend, if it is not, that is the single highest-leverage gap to close before adding budget anywhere else.`},
+  {key:'the_six_types_of_branding', cat:'Marketing & Advertising', t:'The Six Types of Branding', b:55, full:`Branding is the identity layer underneath every channel, strategy, content piece and ad above, each of them is an expression of one or more of these six.\n\nPersonal Branding, build your own reputation, the owner or key figure becomes recognisable and trusted independent of the company. Especially powerful for service businesses, consultants and founder-led brands, people trust people before they trust companies, build it through consistent presence, your face, your voice, your point of view, not only company-branded material.\n\nCorporate Branding, build the company's identity, the overarching brand of the business itself independent of any one product or founder, this is what lets a business launch new products under one trusted name instead of building trust from zero each time.\n\nProduct Branding, build the product's identity, each product or line gets its own distinct identity, sometimes deliberately separate from the corporate brand, useful when different products serve genuinely different audiences who should not be cross-associated.\n\nCo-branding, partner with another brand, two established brands combine for a joint offer or campaign, each lending the other's audience and trust. Works best when both audiences overlap enough to be relevant but do not fully compete.\n\nService Branding, brand the experience, for a business selling a service rather than a physical product the brand is the experience, how it feels to be served, built through consistency of tone, responsiveness and the standard of every touchpoint, not visual identity alone.\n\nRebranding, refresh the brand, a deliberate identity reset, new visuals, new positioning, sometimes a new name, usually done when the business has outgrown its original identity, entered a new market, or needs to shed an outdated perception. High-risk, high-reward, done well it unlocks a new growth phase, done without a real strategic reason it quietly erodes brand equity built over years.\n\nWhen to reach for which: early-stage and solo operators invest first in Personal Branding, fastest to build trust with the least budget. As the team grows, shift investment toward Corporate Branding so the business does not depend entirely on one person. Once multiple offerings exist, apply Product Branding selectively. Use Co-branding opportunistically to borrow reach. Treat Service Branding as a daily operational discipline, not a one-time project. Only pursue Rebranding when there is a clear strategic trigger, never as a cosmetic refresh alone.\n\nTry this today: name which one of these six your business is currently under-investing in relative to its stage, most single-owner Prestige businesses have strong Personal Branding but almost no Corporate Branding, meaning the business cannot yet be trusted independent of the owner.`},
+  {key:'marketing_then_vs_now_what_actually_changed', cat:'Marketing & Advertising', t:'Marketing Then vs Now, What Actually Changed', b:45, full:`Every old-school channel did not disappear, it evolved into a modern equivalent doing the same underlying job with more precision and lower cost. Understanding the underlying job each pair does is what lets you translate old-school marketing instinct into modern tools instead of dismissing either one.\n\nNewspaper ads became Google Search and SEO, the underlying job stayed the same, reach people at the exact moment they are actively looking for what you sell.\n\nWord of mouth became Influencer Marketing, the job is still borrowing trust from someone people already believe.\n\nTV commercials became YouTube ads, the job is still telling a story with sound and motion to a captive audience.\n\nFlyers and pamphlets became Instagram and Facebook ads, the job is still interrupting a local audience with an offer at low cost per reach.\n\nWall posters became Instagram posts, the job is still repeated visual presence in a place people pass by often.\n\nLoudspeaker announcements became push notifications, the job is still immediate, unavoidable, real-time interruption.\n\nTelephone marketing became WhatsApp marketing, the job is still a direct, personal, one-to-one conversation with a real response.\n\nRadio ads became podcasts and audio ads, the job is still audio companionship, reaching people while they are doing something else.\n\nWhy this matters strategically: the modern version of every channel is almost always more measurable and more targeted for a lower cost, but the old version often still wins on one specific advantage, usually trust, permanence, or reaching an audience the modern version cannot, older demographics, offline moments, ambient local presence. A mature plan does not abandon the old channels, it uses them for what they still do better and shifts budget to the modern ones for what they do better.\n\nThe practical takeaway: if an old tactic has stopped working for you, it is rarely because the underlying human behaviour (wanting proof, wanting recommendations, wanting to be reached personally) has changed, it is because the delivery mechanism has moved. Chase the underlying job, not the specific medium.\n\nTry this today: pick one channel you have written off as outdated, and ask what underlying job it was actually doing, then check whether you have a modern equivalent covering that same job at all.`},
+  {key:'building_the_integrated_marketing_system', cat:'Marketing & Advertising', t:'Building The Integrated Marketing System', b:60, full:`At Prestige level, the goal is not picking one channel and mastering it in isolation, it is running several channels in a coordinated system where each one strengthens the others, and where no single channel's decline ever causes a revenue cliff.\n\nA working quarterly rhythm: weeks 1 to 2, a content creation sprint, batch-produce Educational and Entertaining content across the quarter's themes in one focused push rather than daily from scratch. Weeks 3 to 10, steady publishing across Social and Content Marketing, layered with an always-on Retargeting and Search budget running quietly underneath. Ongoing, weekly Direct Marketing touches (WhatsApp, Email, SMS) to the existing base, never more than once or twice a week. Monthly, one Event or live moment, a workshop, a launch, an expo, to compress trust-building into a single afternoon. Monthly, a referral ask sent to the last 30 days of satisfied customers specifically, not the whole list. Quarterly, review every channel's cost-per-acquisition against the others and shift 10 to 20 percent of budget toward whichever outperformed. Quarterly, revisit brand consistency across every channel, is the same identity actually showing up everywhere.\n\nThe single metric that matters most across all of it: Customer Acquisition Cost relative to Customer Lifetime Value, not vanity metrics like reach or likes. A channel with lower reach but a healthier CAC to LTV ratio should always win budget over a flashier channel with worse underlying economics, track both sides of this in TecXFRA's Revenue and Analytics rather than estimating it from memory.\n\nThe discipline that separates mature marketing operations from everyone else: most businesses pick a channel, run it until it stops working, panic, and jump to a new one entirely. A mature operation runs 3 to 4 channels simultaneously at modest, sustainable levels, constantly reallocating budget toward whichever is currently performing best, so the business is never fully exposed to one channel's algorithm change or one platform's decline.\n\nTry this today: write down your current CAC by channel if you can, or your best estimate if you cannot, and identify the one channel you are over-invested in relative to what it is actually returning, that is this quarter's real budget conversation.`},
+  {key:'the_science_of_cold_outreach_that_actually_gets_replies', cat:'Sales & Outreach', t:'The Science of Cold Outreach That Actually Gets Replies', b:55, full:`Most cold emails fail for a predictable, almost biological reason, not bad luck. New information passes through a threat-screening layer of the brain before any thoughtful reply is even possible, and that layer sorts everything it receives into one of three buckets in a fraction of a second: boring gets ignored, threatening triggers a fight-or-flee reaction (delete, block), and confusing gets radically compressed or skipped entirely rather than puzzled over. A cold message has to clear all three filters before a real, considered response becomes possible at all.\n\nMost cold outreach fails one of these filters without the sender ever realising it. It reads as boring (generic opener, no specific detail, could have been sent to anyone). It reads as threatening (asks for too much too soon, a 30-minute call from a total stranger triggers a small alarm before it triggers curiosity). Or it reads as complicated (jargon, buzzwords, a paragraph that takes real effort to parse), and effort is exactly what an unfamiliar sender has not yet earned.\n\nSeven principles that consistently clear all three filters. Ask for something small first, not a big commitment, a low-effort yes-or-no question earns a reply far more often than a request for 30 minutes of someone's calendar. Write at a plain, simple reading level, not a formal or dense one, simple language reads as safe and honest, dense language reads as effortful and gets skipped. Use one specific, concrete detail instead of a broad claim, a precise observation about the recipient's actual situation lands as credible where a generic compliment lands as a template. Keep it short, scannable and specific, cut every filler phrase, a message that takes real effort to read gets the complicated-filter treatment regardless of how good the offer inside it is. Use tentative, less certain language rather than confident assumptions about the recipient's situation, assuming too much reads as presumptuous and slightly threatening, a softer, more curious tone reads as safe. Personalise every message for the specific recipient rather than sending identical copy at scale, a brain that has seen the same pattern many times stops paying attention to it entirely, which is exactly what happens to obviously templated outreach. And write the way an actual person talks, not the way a company talks, conversational messages get read fully and replied to more often than anything that sounds like it was written by a brand.\n\nTry this today: pull up the last cold message you sent that got no reply, and check it against these three filters, was it boring, was it asking for too much too soon, or was it genuinely hard to read quickly, fix that one thing before you send the next one.`},
+  {key:'selling_b2b_in_the_uk_and_us_what_actually_changes_from_loca', cat:'Sales & Outreach', t:'Selling B2B in the UK and US, What Actually Changes From Local Trading', b:60, full:`A sales approach built around WhatsApp, market-stall conversations and same-day cash trust does not translate directly to a UK or US B2B buyer, not because the underlying principles of trust and value are different, but because the channels, compliance rules and cultural register genuinely are.\n\nThe channel shift: WhatsApp is not the default business communication layer in the UK or US the way it is across much of Africa, email and LinkedIn carry that weight instead. A UK or US buyer expects a professional email domain (not a free @gmail or @outlook address), a real LinkedIn presence that shows the business exists and is active, and outreach that respects the cold-email science covered in the guide above, brief, specific, low-pressure, not a WhatsApp-style rapid back-and-forth with a stranger.\n\nCompliance is not optional the way an informal DM is. In the UK, unsolicited business marketing email falls under PECR (Privacy and Electronic Communications Regulations) alongside UK GDPR, every commercial email needs a genuine sender identity and a working way to opt out, and buying a scraped, unconsented list is a real regulatory risk, not a shortcut. In the US, the CAN-SPAM Act requires accurate header and subject line information, a working opt-out honoured within 10 business days, and a real physical postal address in every commercial email, breaking these rules risks fines and getting the sending domain blacklisted, not just a poor reply rate. This is general orientation, not legal advice, verify current requirements before running outreach at volume.\n\nPayment terms run on a different clock. Net 30 (payment 30 days after invoice, sometimes Net 60) is the UK/US B2B default, not payment on delivery or same-day mobile money. Build this lag into cash-flow planning deliberately, in TecXFRA's Revenue and Analytics, a business that only plans around immediate payment will run short waiting on invoices that are, contractually, not late at all.\n\nTrust signals differ from what builds trust locally. A UK or US buyer sizing up a new supplier looks for a company registration number (Companies House in the UK, state LLC or Corp registration in the US), a real registered business address, and a professional web presence, this matters as much as reviews or word of mouth, sometimes more, because it is the fastest way for them to confirm you are a real, accountable business before money changes hands.\n\nTone matters more than most first-time exporters expect. UK buyers respond to understated, precise language, overt hype reads as untrustworthy rather than exciting. US buyers respond to direct, confident, outcome-forward language, excessive hedging reads as unprepared rather than humble. The same genuine offer needs a different register in each market, not a different product.\n\nTry this today: if you are pitching into the UK or US right now, check your last outreach message against three things, does it come from a professional domain, does it include a real opt-out and sender identity, and does its tone match the market you are actually writing to.`},
+  {key:'uk_ltd_vs_us_llc_corp_what_actually_changes_day_to_day', cat:'Compliance & Structure', t:'UK Ltd vs US LLC/Corp, What Actually Changes Day To Day', b:60, full:`The entity you register under isn't paperwork trivia, it changes what you owe, when you owe it, and how exposed you personally are, and the two systems don't map onto each other as neatly as the names suggest.\n\nIn the UK, a limited company (Ltd) is the default serious-business structure. It's registered with Companies House, has its own legal identity separate from you, and limits your personal liability to what you've invested. The ongoing obligations are concrete and dated: a confirmation statement at least once a year confirming who owns and runs the business, annual accounts filed with Companies House (even a dormant company files something), and a Corporation Tax return to HMRC, separate from your own Self Assessment if you also take a salary or dividends from the company. Miss a Companies House filing and the company can be struck off, not just fined.\n\nIn the US, there's no single equivalent, the choice is between an LLC (Limited Liability Company) and a Corporation (S-Corp or C-Corp), and it's made at the state level, not federally, Delaware, Wyoming and Nevada are common choices for reasons that have nothing to do with where the business actually operates. An LLC is simpler to run and its profits usually pass straight through to your personal tax return (no separate corporate tax), which is why most small US operators start there. A Corporation is more paperwork, a separate corporate tax return, formal shareholder structure, but it's what most investors expect to see if outside capital is genuinely on the table. Both still require an annual state filing (often called an annual report or franchise tax) to stay in good standing, and both still separate personal and business liability the way a UK Ltd does.\n\nWhat trips up businesses moving between the two markets: assuming a UK Ltd registration means anything to a US buyer, or vice versa, it doesn't, each market wants to see its own local structure or a clearly explained equivalent. And assuming \"limited liability\" is automatic protection regardless of behaviour, in both systems, mixing personal and business money, or personally guaranteeing a loan, can undo that protection in practice even though the entity technically still exists.\n\nThis is general orientation, not legal or tax advice, a qualified accountant or company formation agent in the specific country should confirm the right structure and current filing deadlines before you register anything.\n\nTry this today: check the date of your last Companies House confirmation statement or state annual report, whichever applies to you, and put the next deadline directly into TecXFRA's Calendar, not just your memory.`},
+  {key:'hiring_across_borders_contractor_vs_employee_risk', cat:'Compliance & Structure', t:'Hiring Across Borders, Contractor vs Employee Risk', b:55, full:`The cheapest-looking way to bring someone on, calling them a contractor instead of an employee, is also the single most common expensive mistake a scaling business makes in the UK or the US, and the rules for getting it wrong are stricter and more actively enforced than most first-time employers expect.\n\nIn the UK, this shows up as IR35, rules originally built for the contracting/consulting world that determine whether someone working through their own limited company should actually be taxed as if they were an employee. The test isn't what the contract says, it's the real working relationship: does the business control how, when and where the work happens the way it would for an employee, does the person work for multiple clients or effectively just you, could they send a substitute to do the work instead of them personally. Get the classification wrong and the business, not just the individual, can be liable for the missing PAYE and National Insurance, backdated.\n\nIn the US, the equivalent risk sits in the 1099 (contractor) versus W-2 (employee) distinction, enforced by the IRS and, separately, by state labour departments that are often stricter than the federal test. The same underlying question applies: how much control does the business exercise over the work, is the person genuinely running an independent business serving other clients, or functionally working full-time for one company under a contractor label to avoid payroll tax and benefits. Misclassification exposure includes back taxes, penalties, and in some states, damages owed directly to the misclassified worker.\n\nWhat actually protects a business hiring across borders: writing the real working relationship into the agreement honestly, control, exclusivity, equipment, working hours, rather than writing what would be convenient for tax purposes. Reviewing contractor relationships that have quietly become full-time and exclusive over time, classification isn't a one-time decision, a contractor who's worked solely for you for two years under close direction is a very different risk than the one who signed that same contract two years ago. And getting a genuine local read, an accountant or employment specialist in that specific country, before scaling a contractor relationship into something that looks, in substance, like a job.\n\nThis is general orientation, not legal advice, the actual tests are detailed and fact-specific, and getting a professional read before scaling any cross-border hiring relationship costs far less than getting the classification wrong at volume.\n\nTry this today: pick your longest-standing contractor relationship in the UK or US and honestly answer, does this still look like an independent business relationship, or has it quietly become a job in every way except the paperwork.`},
+];
+function drawPrestigeGuideList(){
+  const doneCount = PRESTIGE_GUIDES.filter(g=>isGuideDone(g.key,'prestige')).length;
+  if(!currentPlan().network){
+    document.getElementById('guideList').innerHTML = `<div class="card-title">Prestige Library <span class="sub">${PRESTIGE_GUIDES.length} guides · board-level thinking</span></div>
+    <div style="text-align:center;padding:30px 16px">
+      <div style="font-size:32px;margin-bottom:10px">🔒</div>
+      <div class="disp" style="font-size:16px;font-weight:700;margin-bottom:8px">Prestige Library is a Prestige-plan module</div>
+      <div style="font-size:12.5px;color:var(--ink-dim);max-width:420px;margin:0 auto 16px;line-height:1.7">Board-level thinking: partnership structuring, capital, due diligence, cross-border expansion, delegation, and a full channel-by-channel marketing and advertising system, written for owners already running the daily basics well.</div>
+      <button class="btn btn-primary" onclick="navTo('settings');setSettingsTab('plan');renderSettings();">Upgrade to Prestige →</button>
+    </div>`;
+    return;
+  }
+  document.getElementById('guideList').innerHTML =
+  `<div class="card-title">Prestige Library <span class="sub">${PRESTIGE_GUIDES.length} guides · board-level thinking</span></div>` +
+  guideProgressBar(doneCount, PRESTIGE_GUIDES.length, 'Your Prestige Library progress') +
+  PRESTIGE_GUIDES.map(g=>{
+    const done = isGuideDone(g.key,'prestige');
+    return `<div class="guide-item" onclick="this.classList.toggle('open')">
+    <h4><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" onclick="event.stopPropagation()">
+      <input type="checkbox" ${done?'checked':''} onchange="toggleGuideProgress('${g.key}','prestige',event)">
+    </label> ${esc(g.t)} ${done?'<span style="color:var(--teal);font-size:10.5px">· completed</span>':''} <span style="font-weight:400;color:var(--muted);font-size:10.5px">· ${esc(g.cat)}</span></h4>
+    <p>${esc(g.full.split('\n')[0].slice(0,110))}...</p>
+    <div class="guide-body">${g.full.split('\n\n').map(p=>`<p style="margin-bottom:10px">${esc(p)}</p>`).join('')}</div>
+  </div>`;
+  }).join('');
+}
+
+
 const GUIDE_CATEGORIES = ['Starting Out','Customer Growth','Visibility & Digital','Sales','Customer Service','Referrals & Retention','Money Mindset','Daily Operating System'];
 const GUIDES = [
   {key:'the_5_levels_of_a_customer', cat:'Customer Growth', t:'The 5 Levels of a Customer', b:70, full:`Most owners think a "customer" is someone who buys once and leaves, that's only Level 1. The more people you move up these levels, the less you have to chase new customers every day.\n\nLevel 1, The Customer: buys once, no loyalty yet. Came because you were close by or the price was right that day.\n\nLevel 2, The Client: buys again and again, trusts your quality, but hasn't told anyone else yet.\n\nLevel 3, The Affiliate: a client you've asked to bring you more customers, usually for something small in return. "Bring me two friends, your next one is half price."\n\nLevel 4, The Ambassador: talks about your business unprompted and unpaid, because using you makes them look good.\n\nLevel 5, The Partner: another business owner who joins forces with you so you both grow together instead of working alone.\n\nTry this today: think of 3 customers who already buy from you often (Level 2). Pick one and offer a small reward if they bring a new customer (moves them to Level 3). Ask one happy customer to share a photo or review on their own page (can turn them into Level 4).`},
@@ -4630,13 +5396,15 @@ function renderGuides(){
   document.getElementById('pageContent').innerHTML = `
   <div class="tab-row" id="guideMainTabs" style="margin-bottom:6px">
     <button class="tab-pill ${guidesMainTab==='library'?'active':''}" onclick="setGuidesMainTab('library')">Growth Library</button>
+    <button class="tab-pill ${guidesMainTab==='prestige'?'active':''}" onclick="setGuidesMainTab('prestige')">Prestige Library ${currentPlan().network?'🌐':'🔒'}</button>
     <button class="tab-pill ${guidesMainTab==='store'?'active':''}" onclick="setGuidesMainTab('store')">Guide Store ${GUIDE_STORE.some(g=>!ownsGuide(g.key))?'✨':''}</button>
   </div>
-  <div class="tab-row" id="guideTabs" style="${guidesMainTab==='store'?'display:none':''}"></div>
+  <div class="tab-row" id="guideTabs" style="${guidesMainTab==='store'||guidesMainTab==='prestige'?'display:none':''}"></div>
   <div class="card" id="guideList"></div>`;
   document.getElementById('guideTabs').innerHTML = ['All',...GUIDE_CATEGORIES].map(c=>
     `<button class="tab-pill ${guideCatFilter===c?'active':''}" onclick="setGuideCat('${c.replace(/'/g,"\\'")}')">${c}</button>`).join('');
   if(guidesMainTab==='store'){ syncGuidePurchases().then(drawGuideStore); drawGuideStore(); }
+  else if(guidesMainTab==='prestige'){ drawPrestigeGuideList(); }
   else{ drawGuideList(); }
 }
 function setGuidesMainTab(t){ guidesMainTab=t; renderGuides(); }
@@ -4842,6 +5610,18 @@ function drawSettingsBody(){
   } else if(settingsTab==='plan'){
     const cur = currentPlan();
     const usage = planUsage();
+    // Test-account-only Demo Mode switcher, instant, no payment, no
+    // founding slot, so this one whitelisted account can show, demo, or
+    // record a walkthrough of any plan on request. Never rendered, and
+    // setDemoPlan() itself refuses to run, for anyone not on the list.
+    const isTestAccount = TECXFRA_TEST_ACCOUNTS.includes(CUR_USER_EMAIL);
+    const demoRow = isTestAccount ? `<div class="card" style="margin-bottom:14px;border-color:var(--amber)">
+      <div class="card-title">🎬 Demo Mode <span class="sub">internal test account, switch instantly, no payment</span></div>
+      <div style="font-size:12px;color:var(--ink-dim);margin-bottom:10px">Currently previewing <b style="color:var(--navy)">${cur.label}</b>. Pick any plan below to switch immediately, it sticks until you change it again.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${PLANS.map(p=>`<button class="btn ${p.key===cur.key?'btn-primary':''}" onclick="setDemoPlan('${p.key}')">${p.label}</button>`).join('')}
+      </div>
+    </div>` : '';
     // Founding-slot remaining counts are internal inventory, not something
     // a business owner needs to see once they're already signed up (that
     // scarcity framing belongs in the setup wizard, before they choose,
@@ -4852,12 +5632,12 @@ function drawSettingsBody(){
       <div class="card-title">🎉 You're a founding member <span class="sub">${cur.label}, free for keeps</span></div>
       <div style="font-size:12px;color:var(--ink-dim)">One of the first businesses on TecXFRA, ever. This plan stays free for your business permanently, no action needed.</div>
     </div>` : '';
-    const intendedNudge = (CFG.intendedPlan && CFG.intendedPlan !== cur.key && cur.key === 'starter')
+    const intendedNudge = (CFG.intendedPlan && CFG.intendedPlan !== cur.key && cur.key === 'starter' && !isTestAccount)
       ? `<div class="card" style="margin-bottom:14px;border-color:var(--teal)">
           <div style="font-size:12.5px;color:var(--ink-dim)">You picked <b style="color:var(--navy)">${(PLANS.find(p=>p.key===CFG.intendedPlan)||{}).label || CFG.intendedPlan}</b> during setup. Complete payment below to activate it, until then you're on Starter.</div>
         </div>`
       : '';
-    b.innerHTML = foundingRow + intendedNudge + `<div class="card" style="margin-bottom:14px">
+    b.innerHTML = demoRow + foundingRow + intendedNudge + `<div class="card" style="margin-bottom:14px">
       <div class="card-title">Your usage on ${cur.label}</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:8px">
         ${['contacts','staff','monthlyTransactions'].map(r=>{
@@ -4873,7 +5653,7 @@ function drawSettingsBody(){
         }).join('')}
       </div>
     </div>
-    <div class="grid-metrics plan-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="grid-metrics plan-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
       ${PLANS.map(p=>`<div class="card" style="border-color:${p.key===cur.key?'var(--teal)':'var(--line)'};position:relative;display:flex;flex-direction:column">
         ${p.key===cur.key?'<div class="pill pill-active" style="position:absolute;top:14px;right:14px">Current</div>':''}
         <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">${p.label}</div>
