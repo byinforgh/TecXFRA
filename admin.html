@@ -106,6 +106,7 @@
   .pill-starter{background:#eef0ef;color:#5b6b6d}
   .pill-growth{background:#eaf5f6;color:var(--teal-dim)}
   .pill-enterprise{background:#fbf1e2;color:var(--amber)}
+  .pill-prestige{background:#123642;color:#fff}
   .pill-active{background:#eaf5ee;color:var(--ok)}
   .pill-inactive{background:#f8ebe8;color:var(--danger)}
   .refresh-link{font-size:12px;color:var(--teal-dim);font-weight:700;background:none;border:none;cursor:pointer;padding:0}
@@ -145,6 +146,7 @@
       <button class="tab" data-tab="guides" onclick="switchTab('guides')">Guide Purchases</button>
       <button class="tab" data-tab="announcements" onclick="switchTab('announcements')">Announcements</button>
       <button class="tab" data-tab="admins" onclick="switchTab('admins')">Admins</button>
+      <button class="tab" data-tab="network" onclick="switchTab('network')">Network</button>
     </div>
 
     <div id="tab-overview" class="tab-panel on">
@@ -172,6 +174,14 @@
     <div id="tab-admins" class="tab-panel">
       <div class="sub" style="margin-bottom:12px">Accounts with admin access to this dashboard</div>
       <div id="adminsTableWrap"></div>
+    </div>
+
+    <div id="tab-network" class="tab-panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <div class="sub" style="margin-bottom:0">TecXFRA Network profiles, verify a business once you've checked it's real</div>
+        <button class="refresh-link" onclick="loadNetworkProfiles()">Refresh</button>
+      </div>
+      <div id="networkTableWrap"></div>
     </div>
 
     <div id="tab-announcements" class="tab-panel">
@@ -332,6 +342,7 @@ async function afterLogin(){
   loadBusinesses();
   loadAdmins();
   loadAnnouncements();
+  loadNetworkProfiles();
 }
 
 function switchTab(name){
@@ -364,7 +375,7 @@ async function loadStats(){
 }
 
 function planPill(plan){
-  const cls = plan==='enterprise'?'pill-enterprise':plan==='growth'?'pill-growth':'pill-starter';
+  const cls = plan==='prestige'?'pill-prestige':plan==='enterprise'?'pill-enterprise':plan==='growth'?'pill-growth':'pill-starter';
   return `<span class="pill ${cls}">${(plan||'starter')}</span>`;
 }
 function statusPill(status){
@@ -392,6 +403,29 @@ async function loadBusinesses(){
         <td>${statusPill(b.status)}</td>
         <td>${fmtDate(b.created_at)}</td>
       </tr>`).join('')}</tbody></table>`;
+}
+
+async function loadNetworkProfiles(){
+  const wrap = document.getElementById('networkTableWrap');
+  wrap.innerHTML = '<div class="card empty">Loading…</div>';
+  const { data, error } = await sb.rpc('admin_list_network_profiles');
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load Network profiles: ${error.message||error}</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No Network profiles yet, businesses only appear here once they set up their profile on the Prestige plan.</div>'; return; }
+  wrap.innerHTML = `<table class="biz-table"><thead><tr><th>Business</th><th>Industry</th><th>HQ</th><th>Verified</th><th>Updated</th><th></th></tr></thead><tbody>${data.map(p=>`
+      <tr data-business="${p.business_id}">
+        <td>${esc(p.display_name)}</td>
+        <td>${esc(p.industry)||'—'}</td>
+        <td>${esc(p.hq_location)||'—'}</td>
+        <td>${p.verified ? '<span class="pill pill-enterprise">✔ Verified</span>' : '<span class="pill pill-starter">Not verified</span>'}</td>
+        <td>${fmtDate(p.updated_at)}</td>
+        <td><button class="btn-ok" onclick="toggleNetworkVerified('${p.business_id}', ${!p.verified})">${p.verified?'Remove badge':'Verify'}</button></td>
+      </tr>`).join('')}</tbody></table>`;
+}
+
+async function toggleNetworkVerified(businessId, verified){
+  const { error } = await sb.rpc('admin_set_network_verified', { p_business_id: businessId, p_verified: verified });
+  if(error){ alert('Could not update: ' + (error.message||error)); return; }
+  loadNetworkProfiles();
 }
 
 async function loadAdmins(){
