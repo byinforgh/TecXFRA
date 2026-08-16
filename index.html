@@ -351,6 +351,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 .guide-item p{font-size:11.5px; color:var(--ink-dim); line-height:1.6;}
 .guide-body{font-size:12.5px; color:var(--ink-dim); line-height:1.75; margin-top:8px; display:none;}
 .guide-item.open .guide-body{display:block;}
+.guide-item.open .guide-preview{display:none;}
 .ai-log{max-height:340px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; margin-bottom:12px;}
 .ai-msg{padding:11px 14px; border-radius:11px; font-size:12.5px; line-height:1.65; max-width:88%; white-space:pre-wrap;}
 .ai-msg.user{align-self:flex-end; background:var(--navy); color:#fff;}
@@ -5543,7 +5544,7 @@ function drawGuideStore(){
     const done = owned && isGuideDone(g.key,'store');
     return `<div class="guide-item" data-guide-key="${g.key}" ${owned?`onclick="this.classList.toggle('open')"`:''}>
       <h4>${owned?`<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" onclick="event.stopPropagation()"><input type="checkbox" ${done?'checked':''} onchange="toggleGuideProgress('${g.key}','store',event)"></label> `:''}${esc(g.t)} ${owned?(done?'<span style="color:var(--teal);font-size:11px">· completed</span>':'<span style="color:var(--teal);font-size:11px">· unlocked</span>'):`<span style="color:var(--muted);font-size:11px">· ${guideUsd(g.price)}</span>`}</h4>
-      <p>${esc(g.teaser||'')}</p>
+      <p class="guide-preview">${esc(g.teaser||'')}</p>
       ${owned
         ? `<div class="guide-body">${(g.full||'').split('\n\n').map(p=>`<p style="margin-bottom:10px">${esc(p)}</p>`).join('')}${relatedGuidesRow(g)}</div>`
         : `<button class="btn btn-primary" style="margin-top:8px;padding:8px 16px" onclick="event.stopPropagation();openGuidePurchaseModal('${g.key}')">Unlock for ${guideUsd(g.price)} → Checkout</button>${relatedGuidesRow(g)}`}
@@ -5605,7 +5606,7 @@ function drawPrestigeGuideList(){
     <h4><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" onclick="event.stopPropagation()">
       <input type="checkbox" ${done?'checked':''} onchange="toggleGuideProgress('${g.key}','prestige',event)">
     </label> ${esc(g.t)} ${done?'<span style="color:var(--teal);font-size:10.5px">· completed</span>':''} <span style="font-weight:400;color:var(--muted);font-size:10.5px">· ${esc(g.cat)}</span></h4>
-    <p>${esc(g.full.split('\n')[0].slice(0,110))}...</p>
+    <p class="guide-preview">${esc(g.full.split('\n')[0].slice(0,110))}...</p>
     <div class="guide-body">${g.full.split('\n\n').map(p=>`<p style="margin-bottom:10px">${esc(p)}</p>`).join('')}</div>
   </div>`;
   }).join('');
@@ -6073,7 +6074,7 @@ function drawGuideList(){
     <h4><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" onclick="event.stopPropagation()">
       <input type="checkbox" ${done?'checked':''} onchange="toggleGuideProgress('${g.key}','library',event)">
     </label> ${esc(g.t)} ${done?'<span style="color:var(--teal);font-size:10.5px">· completed</span>':''} <span style="font-weight:400;color:var(--muted);font-size:10.5px">· ${esc(g.cat)}</span></h4>
-    <p>${esc(g.full.split('\n')[0].slice(0,110))}...</p>
+    <p class="guide-preview">${esc(g.full.split('\n')[0].slice(0,110))}...</p>
     <div class="guide-body">${g.full.split('\n\n').map(p=>`<p style="margin-bottom:10px">${esc(p)}</p>`).join('')}</div>
   </div>`;
   }).join('');
