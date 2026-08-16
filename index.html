@@ -2755,7 +2755,15 @@ async function saveNetworkProfile(){
     showToast('Profile saved');
     await loadNetworkData();
     setNetworkTab('directory');
-  }catch(e){ console.error('saveNetworkProfile failed', e); showToast('Could not save profile, try again'); }
+  }catch(e){
+    console.error('saveNetworkProfile failed', e);
+    // A bare "could not save, try again" hides the actual reason (a
+    // required field, a bad URL format, a connection drop) and leaves
+    // no way to tell them apart. Surface whatever Supabase/Postgres
+    // actually said, that's the fastest path to a real fix.
+    const reason = e?.message || e?.error_description || e?.hint || '';
+    showToast(reason ? `Could not save profile: ${reason}` : 'Could not save profile, check your connection and try again');
+  }
 }
 /* ---------- TODAY ---------- */
 function renderToday(){
@@ -5215,6 +5223,40 @@ async function addBrainNote(text){
   showToast('Added to the Business Brain');
   renderSettings();
 }
+// Prompts used to fill the blank space next to the Business settings form
+// on wide screens (Enterprise/Prestige only). Answering any one writes
+// straight into the Business Brain (same store as "Add to Brain" in
+// Settings > Business Brain), it's just a faster, guided way in, three
+// per row on a wide screen, stacking to one column on narrow ones.
+const BUSINESS_QA_PROMPTS = [
+  {id:'qa_niche', q:'What do you specialise in, that you turn away or deprioritise?'},
+  {id:'qa_customer', q:'Where do your best customers actually come from?'},
+  {id:'qa_challenge', q:"What's the single biggest bottleneck right now?"},
+  {id:'qa_differentiator', q:'What do you do that competitors genuinely don\'t?'},
+  {id:'qa_reject', q:'What kind of customer or job do you actively say no to?'},
+  {id:'qa_season', q:'When is your busiest and quietest time of year?'}
+];
+function businessQAPanel(){
+  return `<div class="card" style="flex:1 1 420px;min-width:320px">
+    <div class="card-title">Tell the Business Brain About Your Business <span class="sub">answer any of these, each one feeds your AI Assistant and daily reflection</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px">
+      ${BUSINESS_QA_PROMPTS.map(p=>`<div>
+        <label class="lbl" style="min-height:32px;display:block">${esc(p.q)}</label>
+        <textarea class="inp" id="${p.id}" rows="2" placeholder="Type your answer…"></textarea>
+        <button class="btn btn-ghost" style="margin-top:6px;padding:5px 12px;font-size:11.5px" onclick="submitBusinessQA('${p.id}')">Add to Brain</button>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+function submitBusinessQA(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  const val = el.value.trim();
+  if(!val){ showToast('Write an answer first'); return; }
+  const prompt = BUSINESS_QA_PROMPTS.find(p=>p.id===id);
+  addBrainNote(prompt ? `${prompt.q} ${val}` : val);
+  el.value = '';
+}
 async function removeBrainNote(id){
   if(!DATA.knowledge?.facts) return;
   DATA.knowledge.facts = DATA.knowledge.facts.filter(f=>f.id!==id);
@@ -5378,7 +5420,7 @@ function openGuidePurchaseModal(key){
   if(!g){ showToast('Could not find that guide, please refresh and try again.'); return; }
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
     <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">Checkout, Unlock "${esc(g.t)}"</div>
-    <div style="font-size:12.5px;color:var(--ink-dim);margin-bottom:16px;line-height:1.6">GHS ${g.price} one-time, yours to keep, no subscription. Choose how you'd like to pay, then our team confirms and unlocks it, usually within one business day.</div>
+    <div style="font-size:12.5px;color:var(--ink-dim);margin-bottom:16px;line-height:1.6">${guideUsd(g.price)} USD one-time, yours to keep, no subscription. Choose how you'd like to pay, then our team confirms and unlocks it, usually within one business day.</div>
     <button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="requestGuidePurchase('${key}','momo')">Pay with Mobile Money</button>
     <button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="requestGuidePurchase('${key}','invoice')">Request an Invoice</button>
     <button class="btn btn-ghost btn-full" style="margin-bottom:14px" onclick="requestGuidePurchase('${key}','cash')">Pay with Cash</button>
@@ -5408,12 +5450,20 @@ async function requestGuidePurchase(key, method){
   if(!waSent) showToast(`Note: WhatsApp notification to our team didn't send, your request is still logged and will be actioned.`);
 }
 function relatedGuidesRow(g){
-  if(!Array.isArray(g.related) || !g.related.length) return '';
+  // Defensive on purpose: a single malformed/missing field on one guide
+  // entry used to throw inside this map and silently blank the ENTIRE
+  // Guide Store (the whole .map() in drawGuideStore throws, so the
+  // innerHTML assignment never runs and the tab renders empty with no
+  // visible error). Never let one bad related-guide reference take the
+  // whole list down again.
+  if(!g || !Array.isArray(g.related) || !g.related.length) return '';
   const pills = g.related.map(k=>{
-    const rg = GUIDE_STORE.find(x=>x.key===k);
-    if(!rg) return '';
-    const owned = ownsGuide(k);
-    return `<span onclick="event.stopPropagation();jumpToGuide('${k}')" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:11.5px;background:var(--cream);white-space:nowrap">${owned?'✓ ':''}${esc(rg.t)}${owned?'':` <b style="color:var(--teal)">${guideUsd(rg.price)}</b>`}</span>`;
+    try{
+      const rg = GUIDE_STORE.find(x=>x.key===k);
+      if(!rg) return '';
+      const owned = ownsGuide(k);
+      return `<span onclick="event.stopPropagation();jumpToGuide('${k}')" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:11.5px;background:var(--cream);white-space:nowrap">${owned?'✓ ':''}${esc(rg.t)}${owned?'':` <b style="color:var(--teal)">${guideUsd(rg.price)}</b>`}</span>`;
+    }catch(e){ console.error('relatedGuidesRow pill failed for', k, e); return ''; }
   }).join('');
   if(!pills) return '';
   return `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
@@ -5440,15 +5490,23 @@ function drawGuideStore(){
   <div style="font-size:12px;color:var(--ink-dim);margin-bottom:12px;line-height:1.6">Deeper, standalone guides not included in your plan, bought once via MoMo, Invoice, or Cash instead of a subscription. Enterprise plan businesses get every guide unlocked automatically.</div>` +
   (ownedGuides.length ? guideProgressBar(doneCount, ownedGuides.length, 'Your unlocked guides progress') : '') +
   GUIDE_STORE.map(g=>{
+    try{
     const owned = ownsGuide(g.key);
     const done = owned && isGuideDone(g.key,'store');
     return `<div class="guide-item" data-guide-key="${g.key}" ${owned?`onclick="this.classList.toggle('open')"`:''}>
       <h4>${owned?`<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" onclick="event.stopPropagation()"><input type="checkbox" ${done?'checked':''} onchange="toggleGuideProgress('${g.key}','store',event)"></label> `:''}${esc(g.t)} ${owned?(done?'<span style="color:var(--teal);font-size:11px">· completed</span>':'<span style="color:var(--teal);font-size:11px">· unlocked</span>'):`<span style="color:var(--muted);font-size:11px">· ${guideUsd(g.price)}</span>`}</h4>
-      <p>${esc(g.teaser)}</p>
+      <p>${esc(g.teaser||'')}</p>
       ${owned
-        ? `<div class="guide-body">${g.full.split('\n\n').map(p=>`<p style="margin-bottom:10px">${esc(p)}</p>`).join('')}${relatedGuidesRow(g)}</div>`
+        ? `<div class="guide-body">${(g.full||'').split('\n\n').map(p=>`<p style="margin-bottom:10px">${esc(p)}</p>`).join('')}${relatedGuidesRow(g)}</div>`
         : `<button class="btn btn-primary" style="margin-top:8px;padding:8px 16px" onclick="event.stopPropagation();openGuidePurchaseModal('${g.key}')">Unlock for ${guideUsd(g.price)} → Checkout</button>${relatedGuidesRow(g)}`}
     </div>`;
+    }catch(e){
+      // Never let one broken guide entry blank the entire Guide Store,
+      // this is exactly the failure mode that made the whole tab render
+      // empty with no error visible anywhere on screen.
+      console.error('drawGuideStore item failed for', g && g.key, e);
+      return `<div class="guide-item"><h4>${esc((g&&g.t)||'This guide')}</h4><p style="color:var(--coral,#c0584a)">Couldn't load this guide right now, please refresh.</p></div>`;
+    }
   }).join('');
 }
 
@@ -5662,7 +5720,9 @@ function drawSettingsBody(){
   if(settingsTab==='business'){
     const ci = getCountryInfo();
     const countryBase = COUNTRIES.find(c=>c.country===CFG.country) || ci;
-    b.innerHTML = `<div class="card" style="max-width:480px">
+    const showBrainPanel = currentPlan().whiteLabel || currentPlan().network;
+    b.innerHTML = `<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+    <div class="card" style="max-width:480px;flex:1 1 420px">
       <div class="industry-badge" style="margin-bottom:14px">${CUR_INDUSTRY_OBJ.ic} ${CUR_INDUSTRY_OBJ.label}</div>
       <label class="lbl">Business name</label><input class="inp" id="setBizName" value="${esc(CFG.bizName)}">
       <label class="lbl">Owner name</label><input class="inp" id="setOwnerName" value="${esc(CFG.ownerName)}">
@@ -5693,6 +5753,8 @@ function drawSettingsBody(){
         <label class="lbl">Business email (optional)</label><input class="inp" id="setInvEmail" value="${esc(CFG.invoiceEmail||'')}" placeholder="e.g. sales@yourbusiness.com" type="email">
       </div>
       <button class="btn btn-primary" onclick="saveBusinessSettings()">Save Changes</button>
+    </div>
+    ${showBrainPanel ? businessQAPanel() : ''}
     </div>`;
   } else if(settingsTab==='brain'){
     migrateLegacyGoal();
@@ -5834,8 +5896,20 @@ function drawSettingsBody(){
       <div class="card-title">White-Label Branding ${locked?'<span class=\"pill pill-warm\">Enterprise only</span>':''}</div>
       ${locked?'<div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px">Upgrade to Enterprise to customise your brand colour and logo across the whole app.</div>':''}
       <label class="lbl">Brand colour</label><input class="inp" id="setBrandColor" type="color" value="${esc(CFG.brandColor||'#4aa8b8')}" ${locked?'disabled':''} style="height:44px;padding:4px">
-      <label class="lbl">Logo (emoji or initials, e.g. 🏨 or HB)</label><input class="inp" id="setLogoEmoji" value="${esc(CFG.logoEmoji||'')}" maxlength="4" ${locked?'disabled':''} placeholder="Leave blank to use the default TecXFRA mark">
-      <button class="btn btn-primary" ${locked?'disabled':''} onclick="saveBranding()">Save Branding</button>
+      <label class="lbl">Logo image <span style="font-weight:400;color:var(--muted)">PNG or JPG, square works best</span></label>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+        <div id="logoPreviewBox" style="width:56px;height:56px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--cream);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          ${CFG.logoDataUrl ? `<img src="${CFG.logoDataUrl}" style="width:100%;height:100%;object-fit:cover">` : `<span style="font-size:11px;color:var(--muted)">No logo</span>`}
+        </div>
+        <div style="flex:1">
+          <input class="inp" id="setLogoFile" type="file" accept="image/png,image/jpeg,image/webp" ${locked?'disabled':''} onchange="handleLogoFileUpload(this)">
+          <div id="logoUploadStatus" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+        </div>
+        ${CFG.logoDataUrl ? `<button class="btn btn-ghost" style="padding:8px 12px" ${locked?'disabled':''} onclick="removeLogo()">Remove</button>` : ''}
+      </div>
+      <label class="lbl">Or, logo as emoji / initials <span style="font-weight:400;color:var(--muted)">used if no image is uploaded</span></label>
+      <input class="inp" id="setLogoEmoji" value="${esc(CFG.logoEmoji||'')}" maxlength="4" ${locked?'disabled':''} placeholder="Leave blank to use the default TecXFRA mark">
+      <button class="btn btn-primary" style="margin-top:10px" ${locked?'disabled':''} onclick="saveBranding()">Save Branding</button>
     </div>`;
   } else if(settingsTab==='account'){
     const sub = CUR_SUBSCRIPTION;
@@ -6045,17 +6119,59 @@ function notifyAdminWhatsApp(message){
   const url = `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
   window.open(url, '_blank', 'noopener,noreferrer');
 }
+// Logos are stored as a compressed base64 data URL directly inside CFG
+// (the same JSON blob everything else in Settings already saves through),
+// so this works with zero extra backend setup, no storage bucket needed.
+// Resized client-side to keep the CFG row small.
+function handleLogoFileUpload(input){
+  const file = input.files && input.files[0];
+  const status = document.getElementById('logoUploadStatus');
+  if(!file) return;
+  if(!/^image\/(png|jpeg|webp)$/.test(file.type)){ if(status) status.textContent = 'Please choose a PNG, JPG, or WEBP image.'; return; }
+  if(file.size > 8*1024*1024){ if(status) status.textContent = 'That image is too large, please choose one under 8MB.'; return; }
+  if(status) status.textContent = 'Processing…';
+  const reader = new FileReader();
+  reader.onerror = () => { if(status) status.textContent = 'Could not read that file, please try again.'; };
+  reader.onload = () => {
+    const img = new Image();
+    img.onerror = () => { if(status) status.textContent = 'Could not read that image, please try a different file.'; };
+    img.onload = () => {
+      const MAX = 256;
+      let w = img.width, h = img.height;
+      if(w > h){ if(w > MAX){ h = Math.round(h*MAX/w); w = MAX; } } else { if(h > MAX){ w = Math.round(w*MAX/h); h = MAX; } }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/png', 0.9);
+      PENDING_LOGO_DATA_URL = dataUrl;
+      const preview = document.getElementById('logoPreviewBox');
+      if(preview) preview.innerHTML = `<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover">`;
+      if(status) status.textContent = 'Ready, click "Save Branding" to apply.';
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+let PENDING_LOGO_DATA_URL = undefined; // undefined = no change, null = explicit removal
+async function removeLogo(){
+  PENDING_LOGO_DATA_URL = null;
+  CFG.logoDataUrl = null;
+  await saveCfg(); applyBranding(); showToast('Logo removed'); renderSettings();
+}
 async function saveBranding(){
   if(!currentPlan().whiteLabel){ showToast('Upgrade to Enterprise first'); return; }
   CFG.brandColor = document.getElementById('setBrandColor').value;
   CFG.logoEmoji = document.getElementById('setLogoEmoji').value.trim();
+  if(PENDING_LOGO_DATA_URL !== undefined){ CFG.logoDataUrl = PENDING_LOGO_DATA_URL; PENDING_LOGO_DATA_URL = undefined; }
   await saveCfg(); applyBranding(); showToast('Branding updated');
 }
 function applyBranding(){
   document.documentElement.style.setProperty('--teal', CFG.brandColor || '#4aa8b8');
   const marks = document.querySelectorAll('.mark');
   marks.forEach(el=>{
-    if(CFG.logoEmoji){ el.innerHTML = `<div style="width:100%;height:100%;border-radius:8px;background:${CFG.brandColor||'#4aa8b8'};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff">${CFG.logoEmoji}</div>`; }
+    if(CFG.logoDataUrl){ el.innerHTML = `<img src="${CFG.logoDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`; }
+    else if(CFG.logoEmoji){ el.innerHTML = `<div style="width:100%;height:100%;border-radius:8px;background:${CFG.brandColor||'#4aa8b8'};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff">${CFG.logoEmoji}</div>`; }
   });
 }
 function openIndustryChangeConfirm(){
