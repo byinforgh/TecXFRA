@@ -2190,6 +2190,7 @@ function labelFor(key){
 }
 function navTo(page){
   if(!CFG.modules.includes(page) && page!=='settings') page='today';
+  if(page!=='network' && NETWORK_PRESENCE_TIMER){ clearInterval(NETWORK_PRESENCE_TIMER); NETWORK_PRESENCE_TIMER = null; }
   CUR_PAGE = page;
   document.querySelectorAll('.sb-item').forEach(el=>el.classList.toggle('active', el.dataset.page===page));
   closeSidebarUI();
@@ -2323,11 +2324,32 @@ async function loadNetworkData(){
     NETWORK_CONNECTIONS = conns.data || [];
     NETWORK_CHANNELS = chans.data || [];
     NETWORK_NEEDS = needs.data || [];
+    touchNetworkPresence();
+    if(!NETWORK_PRESENCE_TIMER) NETWORK_PRESENCE_TIMER = setInterval(touchNetworkPresence, 4*60*1000);
   }catch(e){
     console.error('loadNetworkData failed', e);
     showToast('Could not load the Network, check connection');
   }
   drawNetworkBody();
+}
+let NETWORK_PRESENCE_TIMER = null;
+// "Online now" in the Directory is real, not decorative: opening the
+// Network page (and every few minutes while it stays open) touches this
+// business's own updated_at, an UPDATE (not upsert) so it only ever
+// touches that one column and can never wipe out the rest of a profile.
+// Every other member's card then reads their own updated_at to decide
+// Online / Active Xh ago / Offline. No new table or column needed.
+async function touchNetworkPresence(){
+  if(!NETWORK_PROFILE || !CUR_VENUE_ID || !sb) return;
+  try{ await sb.from('network_profiles').update({ updated_at: new Date().toISOString() }).eq('business_id', CUR_VENUE_ID); }
+  catch(e){ console.error('presence touch failed', e); }
+}
+function presenceInfo(updatedAt){
+  if(!updatedAt) return null;
+  const mins = (Date.now() - new Date(updatedAt).getTime())/60000;
+  if(mins < 10) return {label:'Online now', color:'#3f8f5f'};
+  if(mins < 24*60) return {label:`Active ${mins<60?Math.max(1,Math.round(mins))+'m':Math.round(mins/60)+'h'} ago`, color:'#c98a2e'};
+  return {label:'Offline', color:'#8a9394'};
 }
 function unsubscribeNetworkRealtime(){
   if(NETWORK_RT){ try{ sb.removeChannel(NETWORK_RT); }catch(e){} NETWORK_RT = null; }
@@ -2387,6 +2409,10 @@ function renderNetworkDirGrid(){
     ${list.map(p=>{
       const conn = connectionWith(p.business_id);
       const ind = INDUSTRIES.find(i=>i.key===p.industry);
+      const pres = presenceInfo(p.updated_at);
+      const myLoc = (NETWORK_PROFILE?.hq_location||'').toLowerCase().trim();
+      const theirLoc = (p.hq_location||'').toLowerCase().trim();
+      const nearYou = myLoc && theirLoc && (myLoc===theirLoc || myLoc.includes(theirLoc) || theirLoc.includes(myLoc));
       let actionBtn;
       if(!conn) actionBtn = `<button class="btn btn-primary btn-full" onclick="openConnectModal('${p.business_id}','${jsAttr(p.display_name)}')">Connect</button>`;
       else if(conn.status==='pending' && conn.requester_id===CUR_VENUE_ID) actionBtn = `<button class="btn btn-ghost btn-full" disabled>Request sent</button>`;
@@ -2400,6 +2426,10 @@ function renderNetworkDirGrid(){
             <div style="font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:5px">${esc(p.display_name)} ${p.verified?'<span title="Verified" style="color:var(--teal)">✔</span>':''}</div>
             <div style="font-size:10.5px;color:var(--muted)">${ind?ind.label:'General'}${p.hq_location?' · '+esc(p.hq_location):''}</div>
           </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+          ${pres ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:${pres.color}"><span style="width:7px;height:7px;border-radius:50%;background:${pres.color};display:inline-block"></span>${pres.label}</span>` : ''}
+          ${nearYou ? `<span class="chip" style="background:var(--teal-tint);color:var(--teal-dim)">📍 Near you</span>` : ''}
         </div>
         ${p.tagline?`<div style="font-size:11.5px;font-weight:600;color:var(--navy);margin-bottom:6px">${esc(p.tagline)}</div>`:''}
         ${p.bio?`<div style="font-size:11.5px;color:var(--ink-dim);line-height:1.5;margin-bottom:8px">${esc(p.bio).slice(0,140)}${p.bio.length>140?'…':''}</div>`:''}
@@ -5416,6 +5446,7 @@ function guideProgressBar(done, total, label){
     </div>
   </div>`;
 }
+function guideUsd(n){ return '$' + Number(n).toFixed(2); }
 function openGuidePurchaseModal(key){
   const g = GUIDE_STORE.find(x=>x.key===key);
   if(!g){ showToast('Could not find that guide, please refresh and try again.'); return; }
