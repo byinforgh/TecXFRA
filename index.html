@@ -559,6 +559,8 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 
 <script src="https://js.paystack.co/v1/inline.js"></script>
 <script src="https://js.hcaptcha.com/1/api.js?render=explicit" async defer></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============================================================
    TecXFRA, SUPABASE CLIENT + AUTH GATE
@@ -1005,6 +1007,7 @@ const MODULES = [
   {key:'expenses', name:'Expenses & Budgets', ic:'💸', desc:'Spend tracked against budget', core:true},
   {key:'staff', name:'Staff & Shifts', ic:'🧑‍💼', desc:'Roster, check-in, payroll basics', core:true},
   {key:'revenue', name:'Revenue & Analytics', ic:'📊', desc:'Trends, conversion, summaries', core:true},
+  {key:'investor', name:'Investor Data Room', ic:'🏦', desc:'A ready-to-show snapshot for a bank, investor, or client meeting', core:true},
   {key:'messages', name:'Messages & Templates', ic:'💬', desc:'Cold/warm/close scripts, WhatsApp', core:true},
   {key:'referrals', name:'Referrals & Retention', ic:'🤝', desc:'Turn customers into referrers & partners', core:true},
   {key:'persona', name:'Ideal Client Persona', ic:'🎯', desc:'Build a profile of who you sell to best', core:true},
@@ -1021,18 +1024,18 @@ const MODULES = [
 ];
 
 const INDUSTRY_DEFAULTS = {
-  hospitality:['today','calendar','crm','followups','pos','bookings','inventory','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
-  retail:['today','calendar','crm','followups','pos','inventory','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
-  salon:['today','calendar','crm','followups','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
-  services:['today','calendar','crm','followups','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
-  realestate:['today','calendar','crm','followups','bookings','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
-  logistics:['today','calendar','crm','followups','bookings','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
-  manufacturing:['today','calendar','crm','followups','bookings','inventory','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
-  education:['today','calendar','crm','followups','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
-  healthcare:['today','calendar','crm','followups','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
-  nonprofit:['today','calendar','crm','followups','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
-  events:['today','calendar','crm','followups','pos','bookings','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
-  general:['today','calendar','crm','followups','inventory','invoicing','expenses','staff','revenue','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings']
+  hospitality:['today','calendar','crm','followups','pos','bookings','inventory','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
+  retail:['today','calendar','crm','followups','pos','inventory','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
+  salon:['today','calendar','crm','followups','bookings','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
+  services:['today','calendar','crm','followups','invoicing','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
+  realestate:['today','calendar','crm','followups','bookings','invoicing','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
+  logistics:['today','calendar','crm','followups','bookings','invoicing','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
+  manufacturing:['today','calendar','crm','followups','bookings','inventory','invoicing','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
+  education:['today','calendar','crm','followups','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
+  healthcare:['today','calendar','crm','followups','bookings','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
+  nonprofit:['today','calendar','crm','followups','invoicing','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
+  events:['today','calendar','crm','followups','pos','bookings','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings'],
+  general:['today','calendar','crm','followups','inventory','invoicing','expenses','staff','revenue','investor','messages','referrals','persona','audit','accountability','journal','network','reminders','ai','guides','archive','system','settings']
 };
 
 const COUNTRIES = [
@@ -2047,14 +2050,14 @@ const TECXFRA_GROUPS = [
   {letter:'c', label:'CRM & Calendar', keys:['crm','calendar','bookings']},
   {letter:'X', label:'Execution & Growth', keys:['referrals','persona','guides','network']},
   {letter:'F', label:'Follow-Ups & Messaging', keys:['followups','messages']},
-  {letter:'R', label:'Revenue & Invoicing', keys:['revenue','pos','invoicing']},
+  {letter:'R', label:'Revenue & Invoicing', keys:['revenue','pos','invoicing','investor']},
   {letter:'A', label:'Accountability & AI', keys:['accountability','audit','ai']}
 ];
 const TECXFRA_MORE_KEYS = ['staff','journal','reminders','archive','system','settings'];
 const PLANS = [
   {key:'starter', label:'Starter', price:'Entry', tagline:'Run the daily basics, Tec + F + R',
     desc:'Today, CRM, Calendar, Follow-Ups, Messages, Expenses, Revenue, POS/Bookings, Staff, Guides.',
-    locked:['referrals','persona','audit','accountability','journal','network'], network:false, aiFacts:3, whiteLabel:false, csvImport:false,
+    locked:['referrals','persona','audit','accountability','journal','network','investor'], network:false, aiFacts:3, whiteLabel:false, csvImport:false,
     limits:{contacts:30, staff:3, monthlyTransactions:60},
     features:[
       'Today view, Calendar, CRM & Pipeline',
@@ -2068,7 +2071,7 @@ const PLANS = [
     ]},
   {key:'growth', label:'Growth', price:'Paid', tagline:'Adds the X layer, analytics & retention',
     desc:'Everything in Starter, plus Referrals & Retention, Persona, Business Audit, Accountability.',
-    locked:['journal','network'], network:false, aiFacts:10, whiteLabel:false, csvImport:true,
+    locked:['journal','network','investor'], network:false, aiFacts:10, whiteLabel:false, csvImport:true,
     limits:{contacts:300, staff:15, monthlyTransactions:1000},
     features:[
       'Everything in Starter, no caps at Starter\'s size',
@@ -2087,6 +2090,7 @@ const PLANS = [
     features:[
       'Everything in Growth, with no contact/staff/transaction caps',
       'Journal & Notes module',
+      'Investor Data Room, a ready-to-show financial snapshot for a bank, investor, or client meeting',
       'Deepest AI recall, up to 200 learned facts',
       'White-label branding (your logo & brand colour app-wide)',
       'Priority support for setup & data questions',
@@ -2151,12 +2155,13 @@ const PLAN_PRICING = {
   // operation from a phone, so it is priced like the premium tier it is.
   // Prestige: a flat, deliberately global/diaspora price anchor ($249-349
   // range), NOT a scaled-down local SME price like the three tiers above.
-  // Anchored at $299 here, CONFIRM before go-live, and update alongside
-  // whatever server-side plan/amount check the Paystack webhook does.
-  GHS: { starter: 5000,   growth: 15000,   enterprise: 150000,   prestige: 450000  }, // GH₵50 / GH₵150 / GH₵1,500 / GH₵4,500, CONFIRM
-  NGN: { starter: 500000, growth: 2500000, enterprise: 25000000, prestige: 45000000 }, // ₦5,000 / ₦25,000 / ₦250,000 / ₦450,000, CONFIRM
-  ZAR: { starter: 6000,   growth: 30000,   enterprise: 300000,   prestige: 540000  }, // R60 / R300 / R3,000 / R5,400, CONFIRM
-  KES: { starter: 40000,  growth: 200000,  enterprise: 2000000,  prestige: 3900000 }, // KSh400 / KSh2,000 / KSh20,000 / KSh39,000, CONFIRM
+  // Anchored at $299 here. Pricing across all four tiers and all five
+  // currencies is locked, update alongside whatever server-side
+  // plan/amount check the Paystack webhook does if it ever changes.
+  GHS: { starter: 5000,   growth: 15000,   enterprise: 150000,   prestige: 450000  }, // GH₵50 / GH₵150 / GH₵1,500 / GH₵4,500
+  NGN: { starter: 500000, growth: 2500000, enterprise: 25000000, prestige: 45000000 }, // ₦5,000 / ₦25,000 / ₦250,000 / ₦450,000
+  ZAR: { starter: 6000,   growth: 30000,   enterprise: 300000,   prestige: 540000  }, // R60 / R300 / R3,000 / R5,400
+  KES: { starter: 40000,  growth: 200000,  enterprise: 2000000,  prestige: 3900000 }, // KSh400 / KSh2,000 / KSh20,000 / KSh39,000
   USD: { starter: 500,    growth: 1500,    enterprise: 15000,    prestige: 29900   }  // $5 / $15 / $150 / $299, fallback for every other country
 };
 const PAYSTACK_SUPPORTED_CURRENCIES = ['GHS','NGN','ZAR','USD','KES'];
@@ -2247,7 +2252,8 @@ const MODULE_TEASERS = {
   audit: ['A full diagnostic score across Visibility, Trust, Sales and Authority, same method as the printed BYINFORGH checklist', 'Tells you exactly which chapter of the Growth Library to start with, instead of guessing'],
   accountability: ['Daily/weekly/monthly non-negotiables with a running streak, outreach made, follow-ups cleared, calls done', 'Rolls up to a monthly score so you always know if this month beat last month'],
   journal: ['A running diary tied to the business or to any individual client, searchable, timestamped', 'Where the AI assistant\'s memory of your business actually grows from, the more you write, the smarter it gets'],
-  network: ['A verified business directory, browse and search every member business by industry', 'TecXFRA Connect, direct B2B chat once two businesses accept each other, no cold WhatsApp spam', 'Private industry channels to find suppliers, partners, and collaborators by sector', 'Post exactly what you\'re looking for: Collaboration, Partnership, Investment, or Supply']
+  network: ['A verified business directory, browse and search every member business by industry', 'TecXFRA Connect, direct B2B chat once two businesses accept each other, no cold WhatsApp spam', 'Private industry channels to find suppliers, partners, and collaborators by sector', 'Post exactly what you\'re looking for: Collaboration, Partnership, Investment, or Supply'],
+  investor: ['Revenue and expenses by month, computed server-side so the numbers can\'t be edited in the browser before a meeting', 'Month-on-month growth, customer mix, and repeat-buyer rate in one place', 'Outstanding debtor exposure pulled straight from your real invoices', 'A short list of what to fix before you walk into that meeting, based on your own numbers']
 };
 function renderUpgradePrompt(page, m){
   const plan = currentPlan();
@@ -2266,7 +2272,7 @@ function renderUpgradePrompt(page, m){
 const RENDERERS = {
   today: renderToday, calendar: renderCalendar, crm: renderCRM, followups: renderFollowups,
   pos: renderPOS, bookings: renderBookings, inventory: renderInventory, invoicing: renderInvoicing,
-  expenses: renderExpenses, staff: renderStaff, revenue: renderRevenue, messages: renderMessages,
+  expenses: renderExpenses, staff: renderStaff, revenue: renderRevenue, investor: renderInvestor, messages: renderMessages,
   referrals: renderReferrals, persona: renderPersona, audit: renderAudit, accountability: renderAccountability, journal: renderJournal,
   reminders: renderReminders, network: renderNetwork,
   ai: renderAI, guides: renderGuides, archive: renderArchive, system: renderSystem, settings: renderSettings
@@ -2283,20 +2289,9 @@ const RENDERERS = {
    See network_schema.sql for the table definitions + RLS policies
    this code assumes. Only LinkedIn and X are referenced anywhere in
    this module's copy, by design, no other outbound platforms.
-============================================================ */
-
-
-/* ============================================================
-   TECXFRA NETWORK  (Prestige-only: verified directory, Connect
-   1:1 B2B chat, and industry channels)
-   Unlike every other module, this reads/writes CROSS-TENANT data,
-   so it does NOT use the CFG/DATA JSON-blob pattern the rest of the
-   app uses. It talks directly to its own Supabase tables:
-     network_profiles, network_connections, network_messages,
-     network_channels, network_channel_messages
-   See network_schema.sql for the table definitions + RLS policies
-   this code assumes. Only LinkedIn and X are referenced anywhere in
-   this module's copy, by design, no other outbound platforms.
+   Locations (latitude/longitude on network_profiles) are optional and
+   set client-side via a one-click Nominatim lookup, never geocoded in
+   the background, see locateNetworkProfile() below.
 ============================================================ */
 let networkTab = 'directory';
 let networkFilterIndustry = '';
@@ -2402,6 +2397,9 @@ function networkDirectoryHtml(){
     </div>`;
   }
   return `
+    <div class="card" style="margin-bottom:14px;padding:0;overflow:hidden">
+      <div id="networkMap" style="height:260px;width:100%;background:var(--cream)"></div>
+    </div>
     <div class="card" style="margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <input class="inp" style="flex:2;min-width:180px;margin:0" placeholder="Search business, capability, or what they're looking for…" oninput="networkSearchQ=this.value;renderNetworkDirGrid();">
       <select class="inp" style="flex:1;min-width:150px;margin:0" onchange="networkFilterIndustry=this.value;renderNetworkDirGrid();">
@@ -2461,6 +2459,45 @@ function renderNetworkDirGrid(){
       </div>`;
     }).join('')}
   </div>`;
+  drawNetworkMap(list);
+}
+let NETWORK_LEAFLET_MAP = null;
+// Renders pins for every profile (in the currently filtered list) that has
+// lat/lng set, plus this business's own pin if it has one. Silently does
+// nothing if nobody has coordinates yet or Leaflet hasn't loaded (e.g. the
+// CDN is blocked on a restrictive network), the text-based "Near you" chip
+// above still works either way, this is a bonus, not a dependency.
+function drawNetworkMap(list){
+  const mapEl = document.getElementById('networkMap');
+  if(!mapEl || typeof L === 'undefined') return;
+  const pins = [];
+  if(NETWORK_PROFILE && NETWORK_PROFILE.latitude!=null && NETWORK_PROFILE.longitude!=null){
+    pins.push({lat:NETWORK_PROFILE.latitude, lng:NETWORK_PROFILE.longitude, name: NETWORK_PROFILE.display_name+' (you)', me:true});
+  }
+  (list||[]).forEach(p=>{
+    if(p.latitude!=null && p.longitude!=null) pins.push({lat:p.latitude, lng:p.longitude, name:p.display_name, me:false});
+  });
+  if(!pins.length){
+    mapEl.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--ink-dim);font-size:11.5px;text-align:center;padding:0 20px">No member locations pinned yet, add yours from My Profile → Locate My Business</div>`;
+    if(NETWORK_LEAFLET_MAP){ NETWORK_LEAFLET_MAP.remove(); NETWORK_LEAFLET_MAP = null; }
+    return;
+  }
+  mapEl.innerHTML = '';
+  if(NETWORK_LEAFLET_MAP){ NETWORK_LEAFLET_MAP.remove(); NETWORK_LEAFLET_MAP = null; }
+  NETWORK_LEAFLET_MAP = L.map('networkMap', {scrollWheelZoom:false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 18
+  }).addTo(NETWORK_LEAFLET_MAP);
+  pins.forEach(p=>{
+    L.circleMarker([p.lat, p.lng], {
+      radius: p.me ? 9 : 7,
+      color: p.me ? '#123642' : '#4aa8b8',
+      fillColor: p.me ? '#123642' : '#4aa8b8',
+      fillOpacity: 0.85, weight: 2
+    }).addTo(NETWORK_LEAFLET_MAP).bindPopup(esc(p.name));
+  });
+  if(pins.length===1){ NETWORK_LEAFLET_MAP.setView([pins[0].lat, pins[0].lng], 11); }
+  else { NETWORK_LEAFLET_MAP.fitBounds(pins.map(p=>[p.lat,p.lng]), {padding:[24,24]}); }
 }
 function openConnectModal(targetId, targetName){
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
@@ -2704,6 +2741,40 @@ async function sendNetworkChannelMessage(){
 }
 
 /* ---------- MY PROFILE ---------- */
+// One-click geocode of the HQ location text into lat/lng, using
+// Nominatim (OpenStreetMap's free search endpoint, no API key, no paid
+// tier required). Only ever runs when the business clicks the button,
+// never automatically and never in a background loop, respecting
+// Nominatim's usage policy for a lightweight, occasional lookup like
+// this. Result is cached on the input's dataset until the location text
+// changes again (see the oninput handler on npLocation above).
+async function locateNetworkProfile(){
+  const input = document.getElementById('npLocation');
+  const status = document.getElementById('npLocateStatus');
+  const query = (input?.value||'').trim();
+  if(!query){ status.textContent = 'Type a location first (e.g. "Accra, Ghana")'; status.style.color = 'var(--coral,#c9633f)'; return; }
+  status.textContent = 'Looking up…'; status.style.color = 'var(--muted)';
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if(!res.ok) throw new Error('lookup failed');
+    const results = await res.json();
+    if(!results || !results.length){
+      status.textContent = 'Could not find that location, try adding a country or being more specific.';
+      status.style.color = 'var(--coral,#c9633f)';
+      return;
+    }
+    const { lat, lon, display_name } = results[0];
+    input.dataset.lat = lat; input.dataset.lng = lon;
+    status.textContent = `📍 Pinned: ${display_name}`;
+    status.style.color = 'var(--teal-dim)';
+  }catch(e){
+    console.error('locateNetworkProfile failed', e);
+    status.textContent = 'Lookup failed, check your connection and try again.';
+    status.style.color = 'var(--coral,#c9633f)';
+  }
+}
 function networkProfileCompleteness(p){
   if(!p) return 0;
   const fields = ['display_name','industry','bio','capabilities','website','whatsapp','tagline','founded_year','team_size','hq_location'];
@@ -2745,7 +2816,11 @@ function networkProfileFormHtml(){
       </div>
     </div>
     <label class="lbl">HQ location</label>
-    <input class="inp" id="npLocation" value="${esc(p.hq_location||'')}" placeholder="e.g. Accra, Ghana">
+    <div style="display:flex;gap:8px">
+      <input class="inp" id="npLocation" style="flex:1;margin:0" value="${esc(p.hq_location||'')}" placeholder="e.g. Accra, Ghana" data-lat="${p.latitude??''}" data-lng="${p.longitude??''}" oninput="this.dataset.lat='';this.dataset.lng='';document.getElementById('npLocateStatus').textContent='';">
+      <button type="button" class="btn btn-ghost" style="white-space:nowrap" onclick="locateNetworkProfile()">📍 Locate</button>
+    </div>
+    <div id="npLocateStatus" style="font-size:10.5px;color:var(--muted);margin:4px 0 10px;min-height:14px"></div>
     <label class="lbl">What you do (short bio)</label>
     <textarea class="inp" id="npBio" rows="3" maxlength="400" placeholder="What your business does, in a couple of sentences">${esc(p.bio||'')}</textarea>
     <label class="lbl">Capabilities / what you offer</label>
@@ -2790,6 +2865,8 @@ async function saveNetworkProfile(){
     founded_year: foundedVal ? parseInt(foundedVal,10) : null,
     team_size: document.getElementById('npTeamSize').value,
     hq_location: document.getElementById('npLocation').value.trim(),
+    latitude: document.getElementById('npLocation').dataset.lat ? parseFloat(document.getElementById('npLocation').dataset.lat) : null,
+    longitude: document.getElementById('npLocation').dataset.lng ? parseFloat(document.getElementById('npLocation').dataset.lng) : null,
     bio: document.getElementById('npBio').value.trim(),
     capabilities: document.getElementById('npCapabilities').value.trim(),
     looking_for,
@@ -4542,7 +4619,104 @@ function renderRevenue(){
   drawRevViewBody();
 }
 
+/* ---------- INVESTOR DATA ROOM ----------
+   Enterprise+ only. Unlike every other module here, the numbers are NOT
+   computed from the in-memory DATA object, they come from the
+   get_investor_snapshot() RPC, which recomputes them server-side from
+   the same tenant_data JSONB plus the real invoices table. That's
+   deliberate: a number shown to a bank or investor should not be
+   editable by opening the browser console and poking at DATA. */
+function renderInvestor(){
+  const pc = document.getElementById('pageContent');
+  pc.innerHTML = `
+    <div class="card" style="margin-bottom:14px;border-color:var(--navy);background:linear-gradient(135deg, var(--teal-tint), var(--paper))">
+      <div class="card-title">Investor Data Room <span class="pill pill-active" style="margin-left:8px">Enterprise</span></div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.7">A snapshot of your business built from your real numbers, computed on our servers so nothing here can be edited before you show it to a bank, investor, or client. Refresh it right before you walk into the room.</div>
+    </div>
+    <div id="investorBody"><div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:34px">Loading your snapshot…</div></div>
+  `;
+  loadInvestorSnapshot();
+}
+async function loadInvestorSnapshot(){
+  if(!(await requireSupabase())) return;
+  const body = document.getElementById('investorBody');
+  try{
+    const { data, error } = await sb.rpc('get_investor_snapshot');
+    if(error) throw error;
+    drawInvestorBody(data);
+  }catch(e){
+    console.error('loadInvestorSnapshot failed', e);
+    if(body) body.innerHTML = `<div class="card" style="text-align:center;padding:24px"><div style="font-size:12.5px;color:var(--ink-dim);margin-bottom:10px">Could not load your snapshot, check your connection and try again.</div><button class="btn btn-ghost" onclick="loadInvestorSnapshot()">Retry</button></div>`;
+  }
+}
+function drawInvestorBody(snap){
+  const body = document.getElementById('investorBody');
+  if(!body) return;
+  const months = (snap.revenue_by_month||[]).slice().reverse();
+  const expByMonth = {}; (snap.expenses_by_month||[]).forEach(m=>{ expByMonth[m.month]=m.expenses; });
+  const maxRev = Math.max(1, ...months.map(m=>m.revenue));
+  const cust = snap.customers || {total:0,hot:0,warm:0,cold:0,repeat_buyers:0,buyers_seen:0};
+  const inv = snap.invoices || {outstanding_count:0,outstanding_total:0,paid_count:0,paid_total:0};
+  const repeatRate = cust.buyers_seen>0 ? Math.round((cust.repeat_buyers/cust.buyers_seen)*100) : null;
+  const sinceLabel = snap.on_platform_since ? new Date(snap.on_platform_since).toLocaleDateString('en-GB',{month:'short',year:'numeric'}) : ', ';
 
+  // Presentation coaching: plain-English flags built off the same numbers
+  // shown above, not a separate guess, so it always matches what's on
+  // screen. This is the "mock Q&A" idea from the architecture doc, kept
+  // as a short, honest checklist rather than a generic pep talk.
+  const coaching = [];
+  if(snap.mom_growth_pct===null) coaching.push('No month-on-month comparison yet, log at least one full prior month of sales before this number means anything to an investor.');
+  else if(snap.mom_growth_pct<0) coaching.push(`Revenue is down ${Math.abs(snap.mom_growth_pct)}% on last month, be ready to explain why before anyone asks.`);
+  else coaching.push(`Revenue is up ${snap.mom_growth_pct}% on last month, lead with this.`);
+  if(repeatRate!==null && repeatRate<20) coaching.push(`Only ${repeatRate}% of your buyers have purchased more than once, a lender will read this as weak retention, work the Referrals & Retention module before this meeting.`);
+  if(inv.outstanding_total>0) coaching.push(`${money(inv.outstanding_total)} is still outstanding across ${inv.outstanding_count} invoice${inv.outstanding_count===1?'':'s'}, know this number cold, it will be asked.`);
+  if(cust.total<10) coaching.push('Fewer than 10 contacts logged, a thin customer base is one of the first things a bank or investor checks, build this up before you present.');
+  if(!coaching.length) coaching.push('Nothing obviously weak in these numbers right now, keep logging daily so this stays accurate.');
+
+  body.innerHTML = `
+  <div class="grid-metrics" style="margin-bottom:14px">
+    <div class="metric navy"><div class="ml">On TecXFRA Since</div><div class="mv" style="font-size:16px">${sinceLabel}</div></div>
+    <div class="metric ${snap.mom_growth_pct===null?'navy':snap.mom_growth_pct<0?'coral':'green'}"><div class="ml">Month-on-Month</div><div class="mv">${snap.mom_growth_pct===null?', ':(snap.mom_growth_pct>=0?'+':'')+snap.mom_growth_pct+'%'}</div></div>
+    <div class="metric navy"><div class="ml">Total Contacts</div><div class="mv">${cust.total}</div></div>
+    <div class="metric ${repeatRate===null?'navy':repeatRate<20?'coral':'green'}"><div class="ml">Repeat Buyer Rate</div><div class="mv">${repeatRate===null?', ':repeatRate+'%'}</div><div class="ms">${cust.repeat_buyers} of ${cust.buyers_seen} buyers</div></div>
+    <div class="metric coral"><div class="ml">Outstanding Debt</div><div class="mv">${money(inv.outstanding_total)}</div><div class="ms">${inv.outstanding_count} invoice${inv.outstanding_count===1?'':'s'}</div></div>
+    <div class="metric green"><div class="ml">Collected</div><div class="mv">${money(inv.paid_total)}</div><div class="ms">${inv.paid_count} invoice${inv.paid_count===1?'':'s'} paid</div></div>
+  </div>
+  <div class="card"><div class="card-title">Revenue by Month</div>
+    <div style="display:flex;align-items:flex-end;gap:10px;height:150px;padding-top:10px">
+    ${months.map(m=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+      <div class="mono" style="font-size:9.5px;color:var(--ink-dim);margin-bottom:4px">${money(m.revenue).replace(/\.00$/,'')}</div>
+      <div style="width:100%;background:var(--teal);border-radius:5px 5px 0 0;height:${Math.max(4,(m.revenue/maxRev)*110)}px"></div>
+      <div style="font-size:9.5px;color:var(--muted);margin-top:5px">${m.month}</div>
+    </div>`).join('') || '<div class="empty">Not enough dated sales yet to chart a trend</div>'}
+    </div>
+  </div>
+  <div class="card"><div class="card-title">Revenue vs Expenses by Month</div>
+    <div class="scroll-tbl"><table><thead><tr><th>Month</th><th>Revenue</th><th>Expenses</th><th>Net</th></tr></thead><tbody>
+    ${months.length ? months.map(m=>{
+      const exp = expByMonth[m.month]||0;
+      return `<tr><td>${m.month}</td><td class="mono">${money(m.revenue)}</td><td class="mono">${money(exp)}</td><td class="mono">${money(m.revenue-exp)}</td></tr>`;
+    }).join('') : `<tr><td colspan="4" class="empty">No dated activity yet</td></tr>`}
+    </tbody></table></div>
+  </div>
+  <div class="two-col">
+    <div class="card"><div class="card-title">Customer Mix</div>
+      <div class="list-row"><span>🔥 Hot</span><span class="mono">${cust.hot}</span></div>
+      <div class="list-row"><span>🌤️ Warm</span><span class="mono">${cust.warm}</span></div>
+      <div class="list-row"><span>❄️ Cold</span><span class="mono">${cust.cold}</span></div>
+    </div>
+    <div class="card"><div class="card-title">Before You Present</div>
+      <ul style="padding-left:18px;font-size:12.5px;color:var(--ink-dim);line-height:1.9;margin:0">
+        ${coaching.map(c=>`<li>${esc(c)}</li>`).join('')}
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="text-align:center">
+    <button class="btn btn-ghost" onclick="loadInvestorSnapshot()">↻ Refresh Snapshot</button>
+    <button class="btn btn-ghost" onclick="window.print()">🖨️ Print / Save as PDF</button>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:8px">Generated ${new Date(snap.generated_at).toLocaleString()}</div>
+  </div>`;
+}
 
 /* ---------- MESSAGES ---------- */
 let msgCat = 'cold';
