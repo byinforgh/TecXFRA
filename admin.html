@@ -151,6 +151,11 @@
 
     <div id="tab-overview" class="tab-panel on">
       <div id="statGrid" class="stat-grid"></div>
+      <div class="row" style="justify-content:space-between;margin:24px 0 12px">
+        <div class="sub" style="margin-bottom:0">Plan mismatches, active subscription plan disagrees with the cached plan on the account. Read-only, subscriptions is always the source of truth.</div>
+        <button class="refresh-link" onclick="loadPlanMismatches()">Refresh</button>
+      </div>
+      <div id="mismatchWrap"></div>
     </div>
 
     <div id="tab-businesses" class="tab-panel">
@@ -343,6 +348,7 @@ async function afterLogin(){
   loadAdmins();
   loadAnnouncements();
   loadNetworkProfiles();
+  loadPlanMismatches();
 }
 
 function switchTab(name){
@@ -374,6 +380,28 @@ async function loadStats(){
   wrap.innerHTML = cards.map(([l,n,tab])=>`<div class="stat-card" role="button" tabindex="0" onclick="switchTab('${tab}')" onkeydown="if(event.key==='Enter')switchTab('${tab}')"><div class="n">${n ?? 0}</div><div class="l">${l}</div></div>`).join('');
 }
 
+// Closes the sign-off's "subscriptions table sync" gap: cfg.plan self-heals
+// on the business owner's own next login, but between logins the two can
+// genuinely disagree in the database. This surfaces that instead of only
+// finding out when a customer reports being on the wrong plan.
+async function loadPlanMismatches(){
+  const wrap = document.getElementById('mismatchWrap');
+  wrap.innerHTML = '<div class="card empty">Checking…</div>';
+  const { data, error } = await sb.rpc('admin_list_plan_mismatches');
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not check: ${error.message||error}</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No mismatches, every active subscription matches the plan cached on the account.</div>'; return; }
+  wrap.innerHTML = `<table class="biz-table"><thead><tr>
+      <th>Business</th><th>Cached plan (cfg)</th><th>Real plan (subscriptions)</th><th>Status</th><th>Renews</th>
+    </tr></thead><tbody>${data.map(m=>`
+      <tr>
+        <td><b>${esc(m.business_name)||'Unnamed business'}</b></td>
+        <td>${planPill(m.cfg_plan)}</td>
+        <td>${planPill(m.subscription_plan)}</td>
+        <td>${statusPill(m.subscription_status)}</td>
+        <td>${fmtDate(m.current_period_end)}</td>
+      </tr>`).join('')}</tbody></table>
+      <div class="sub" style="margin-top:8px">This clears itself the next time that business logs in (loadAll/syncSubscription always re-reads from subscriptions). If it's still here after they've logged in since, something's actually wrong, worth a closer look.</div>`;
+}
 function planPill(plan){
   const cls = plan==='prestige'?'pill-prestige':plan==='enterprise'?'pill-enterprise':plan==='growth'?'pill-growth':'pill-starter';
   return `<span class="pill ${cls}">${(plan||'starter')}</span>`;
