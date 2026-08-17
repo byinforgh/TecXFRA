@@ -1265,7 +1265,11 @@ async function addKnowledgeFact(text, source){
 }
 function knowledgeStrength(){
   const n = (DATA.knowledge?.facts||[]).length;
-  return {facts:n, pct: Math.min(100, Math.round(n*6))};
+  // 150 facts (well short of the 200 the store retains) to reach 100%,
+  // so a handful of early entries reads as genuinely early, not "done."
+  const pct = Math.min(100, Math.round(n/1.5));
+  const tier = pct < 15 ? 'Just Started' : pct < 40 ? 'Learning' : pct < 70 ? 'Developing' : pct < 100 ? 'Advanced' : 'Expert';
+  return {facts:n, pct, tier};
 }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 
@@ -2837,9 +2841,8 @@ function renderToday(){
     <div class="card-title">Your Own Business Tip <span class="sub">write a reminder to yourself for today</span></div>
     <textarea class="inp" id="ownTipBox" rows="2" placeholder="e.g. Call the two customers who asked about the new stock last week">${esc(DATA.ownTip||'')}</textarea>
     <button class="btn btn-primary" style="margin-top:8px;padding:7px 16px" onclick="saveOwnTip(document.getElementById('ownTipBox').value)">Save</button>
-    ${(DATA.ownTipLog||[]).length ? `<div style="margin-top:14px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Feeding your Business Brain</div>
-    <div style="margin-top:4px">${(DATA.ownTipLog||[]).slice(0,3).map(t=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:11.5px;color:var(--ink-dim);line-height:1.5">${esc(t.text)}</span><span style="color:var(--muted);font-size:10px;white-space:nowrap">${fmtDate(t.date)}</span></div>`).join('')}</div>` : ''}
-  </div>`;
+    <div style="margin-top:14px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Your day-by-day tracker</div>
+    <div style="margin-top:4px;max-height:280px;overflow-y:auto">${(DATA.ownTipLog||[]).length ? (DATA.ownTipLog||[]).map(t=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:11.5px;color:var(--ink-dim);line-height:1.5">${esc(t.text)}</span><span style="color:var(--muted);font-size:10px;white-space:nowrap">${fmtDate(t.date)}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted);padding:8px 4px">Nothing saved yet, write today's tip above and hit Save, it'll show up here and feed straight into your Business Brain.</div>`}</div></div>`;
   html += renderInsightsCard();
   html += `<div class="grid-metrics">
     <div class="metric navy" style="cursor:pointer" onclick="navTo('revenue')"><div class="ml">Revenue Today</div><div class="mv">${money(todaySales)}</div><div class="ms">${(DATA.transactions||[]).filter(x=>x.date===t).length} sales logged</div></div>
@@ -4072,20 +4075,25 @@ async function archiveOldExpenses(){
 }
 async function saveOwnTip(val){
   const text = (val||'').trim().slice(0,300);
-  const prev = DATA.ownTip;
+  const today = todayStr();
   DATA.ownTip = text;
-  const changed = text && text !== prev;
-  if(changed){
-    if(!Array.isArray(DATA.ownTipLog)) DATA.ownTipLog = [];
-    DATA.ownTipLog.unshift({text, date: todayStr()});
-    DATA.ownTipLog = DATA.ownTipLog.slice(0, 30);
+  if(!Array.isArray(DATA.ownTipLog)) DATA.ownTipLog = [];
+  let brainWorthy = false;
+  if(text){
+    const existing = DATA.ownTipLog.find(t=>t.date===today);
+    if(existing){
+      brainWorthy = existing.text !== text;
+      existing.text = text;
+    } else {
+      DATA.ownTipLog.unshift({text, date: today});
+      brainWorthy = true;
+    }
+    // Keep enough history for a real day-by-day tracker, not just a "last 3" glance.
+    DATA.ownTipLog = DATA.ownTipLog.slice(0, 90);
   }
   await saveData();
-  // Feed every genuinely new self-reminder into the Business Brain too,
-  // this is what makes today's tip accumulate into real knowledge over
-  // time instead of just overwriting itself and vanishing tomorrow.
-  if(changed) await addBrainNote(text);
-  showToast(changed ? 'Saved, and added to your Business Brain' : 'Saved');
+  if(brainWorthy) await addKnowledgeFact(text, 'owner');
+  showToast(text ? `Saved for ${fmtDate(today)}` : 'Saved');
   if(CUR_PAGE==='today') renderToday();
 }
 async function addExpense(){
@@ -4733,7 +4741,15 @@ const AUDIT_QUESTIONS = [
   {key:'followupsystem', q:'Do you have a system for following up on leads who go quiet, rather than relying on memory?'},
   {key:'repeat', q:'Do most of your customers come back more than once?'},
   {key:'referralask', q:'Do you actively ask satisfied customers to refer others, rather than hoping it happens?'},
-  {key:'numbers', q:'Do you know your revenue and expenses for the current month, right now, without checking?'}
+  {key:'numbers', q:'Do you know your revenue and expenses for the current month, right now, without checking?'},
+  {key:'margin', q:'Do you know your actual profit margin on your best-selling product or service, not just the revenue it brings in?'},
+  {key:'continuity', q:'If you couldn\'t work for a week, could someone else keep the business running without you?'},
+  {key:'writtengoal', q:'Do you have a specific goal for this month or quarter written down somewhere, not just in your head?'},
+  {key:'competitorawareness', q:'Do you know who your three biggest competitors are and what they do differently from you?'},
+  {key:'feedbackloop', q:'Do you collect feedback from customers on purpose, rather than only hearing about problems when something goes wrong?'},
+  {key:'financeseparate', q:'Are your business and personal finances kept separate?'},
+  {key:'databackup', q:'If your phone was lost or damaged today, would your contacts, records and business data still be safe somewhere?'},
+  {key:'cac', q:'Do you have a rough idea what it actually costs you to win one new customer?'}
 ];
 // Extra questions tailored to what actually matters in each industry,
 // added on top of the 12 universal ones above so the audit reflects
@@ -4807,7 +4823,7 @@ function renderAudit(){
 }
 async function setAuditAnswer(key, val){
   if(!DATA.auditAnswers) DATA.auditAnswers = {};
-  DATA.auditAnswers[key] = val;
+  DATA.auditAnswers[key] = (DATA.auditAnswers[key] === val) ? undefined : val;
   await saveData(); renderAudit();
 }
 function renderAuditScore(){
@@ -4830,7 +4846,16 @@ async function scoreAudit(){
   DATA.auditScore = score;
   await saveData(); showToast('Audit scored'); renderAudit();
   const tier = score<=questions.length*0.33?'Foundation':score<=questions.length*0.66?'Visibility':'Growth';
-  await addKnowledgeFact(`Business audit scored ${score}/${questions.length}, ${tier} stage.`);
+  // Re-scoring replaces the previous audit facts rather than piling up
+  // duplicates each time, and drops gaps that got fixed since the last
+  // audit, so the Brain always reflects the business's current state,
+  // not a stale history of every past run.
+  if(DATA.knowledge?.facts) DATA.knowledge.facts = DATA.knowledge.facts.filter(f=>f.source!=='audit' && f.source!=='audit_score');
+  await addKnowledgeFact(`Business audit scored ${score}/${questions.length}, ${tier} stage.`, 'audit_score');
+  const gaps = questions.filter(a=>ans[a.key]===false);
+  for(const g of gaps.slice(0,8)){
+    await addKnowledgeFact(`Audit gap: "${g.q}", answered No.`, 'audit');
+  }
 }
 
 /* ============================================================
@@ -4899,6 +4924,17 @@ async function logAccountability(taskKey){
   if(!DATA.accountability.daily[k][taskKey]){
     DATA.accountability.daily[k][taskKey] = true;
     await saveData(); renderSidebar();
+    // Tier is recomputed from live audit score/streak, so "advancing" isn't
+    // an event that fires on its own, check here whenever a task is logged
+    // and record it once, the first time this business ever reaches it.
+    const tier = accountabilityTier();
+    const maxSeen = DATA.accountability.maxTierReached || 1;
+    if(tier > maxSeen){
+      DATA.accountability.maxTierReached = tier;
+      await saveData();
+      const tierName = {2:'Visibility Stage', 3:'Growth Stage', 4:'Prestige'}[tier] || `Tier ${tier}`;
+      await addKnowledgeFact(`Business advanced to ${tierName} on the Daily Accountability checklist.`, 'accountability');
+    }
   }
 }
 function renderAccountability(){
@@ -5104,7 +5140,7 @@ function renderAI(){
   const ks = knowledgeStrength();
   document.getElementById('pageContent').innerHTML = `
   <div class="card" style="border-color:var(--teal)">
-    <div class="card-title">What TecXFRA has learned <span class="sub">${ks.facts} fact${ks.facts===1?'':'s'} recorded</span></div>
+    <div class="card-title">What TecXFRA has learned <span class="sub">${ks.facts} fact${ks.facts===1?'':'s'} recorded, ${ks.tier}</span></div>
     <div class="progress-track" style="margin-bottom:8px"><div class="progress-fill" style="width:${ks.pct}%"></div></div>
     <div style="font-size:11.5px;color:var(--ink-dim)">Every persona detail, audit result, journal note, and loyalty tier you set gets added here, the more you feed it, the sharper the answers below get. A brand-new setup starts at 0%; nothing here is invented.</div>
   </div>
@@ -5282,7 +5318,15 @@ const BUSINESS_QA_PROMPTS = [
   {id:'qa_challenge', q:"What's the single biggest bottleneck right now?"},
   {id:'qa_differentiator', q:'What do you do that competitors genuinely don\'t?'},
   {id:'qa_reject', q:'What kind of customer or job do you actively say no to?'},
-  {id:'qa_season', q:'When is your busiest and quietest time of year?'}
+  {id:'qa_season', q:'When is your busiest and quietest time of year?'},
+  {id:'qa_social', q:'What are your social media and website links (Instagram, Facebook, TikTok, WhatsApp Business, website)?'},
+  {id:'qa_complaint', q:'What\'s the most common complaint or objection you hear from customers?'},
+  {id:'qa_pricing', q:'How did you land on your current pricing, and does it still feel right?'},
+  {id:'qa_bestperformer', q:'What\'s your best-performing product or service, and why do you think it works?'},
+  {id:'qa_deferred', q:'What\'s one thing you keep meaning to fix in the business but haven\'t yet?'},
+  {id:'qa_growthneed', q:'What would actually need to happen to double your revenue in the next 12 months?'},
+  {id:'qa_nexthire', q:'If you hired one more person tomorrow, what would you hand off to them first?'},
+  {id:'qa_win', q:'What\'s a recent win in the business you\'re genuinely proud of?'}
 ];
 function businessQAPanel(){
   return `<div class="card" style="flex:1 1 420px;min-width:320px">
