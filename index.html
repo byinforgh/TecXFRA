@@ -236,7 +236,20 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 .metric .ml{font-size:10.5px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-bottom:8px;}
 .metric .mv{font-family:'Space Grotesk',sans-serif; font-size:27px; font-weight:700; color:var(--navy);}
 .metric .ms{font-size:11px; color:var(--ink-dim); margin-top:5px;}
-.card{background:var(--paper); border:1px solid var(--line); border-radius:var(--r-md); padding:20px; margin-bottom:16px;}
+/* FIX (18 Aug 2026, mobile layout audit): .card had no min-width or
+   overflow containment of its own. A grid/flex item's default
+   min-width is auto (content-based), not 0, so any intrinsically wide
+   child inside a card (a long .list-row that doesn't wrap, a table)
+   could force the .card itself wider than its grid track, pushing the
+   whole page wider than the phone's viewport. The page-level
+   overflow-x:hidden (line 42) then silently clips that overflow rather
+   than showing it, which is exactly what read as "boxes pushed to the
+   right" / cut-off columns and buttons in the Aug 2026 mobile review.
+   min-width:0 lets the card shrink to its grid track properly;
+   overflow-x:hidden is a second safety net so nothing inside can bleed
+   past the card's own right edge either. .scroll-tbl's own
+   overflow-x:auto still works independently inside this. */
+.card{background:var(--paper); border:1px solid var(--line); border-radius:var(--r-md); padding:20px; margin-bottom:16px; min-width:0; overflow-x:hidden;}
 .card-title{font-size:11px; font-weight:800; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; gap:10px;}
 .card-title .sub{font-weight:400; text-transform:none; letter-spacing:0; color:var(--muted); font-size:11.5px;}
 .two-col{display:grid; grid-template-columns:1.35fr 1fr; gap:16px;}
@@ -279,7 +292,14 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 .pill-client{background:var(--teal-tint); color:var(--teal-dim);}
 .empty{text-align:center; padding:34px 10px; color:var(--muted); font-size:12.5px;}
 .temp-dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; vertical-align:middle;}
-.list-row{display:flex; justify-content:space-between; align-items:center; padding:10px 4px; border-bottom:1px solid var(--line-soft); gap:10px;}
+/* FIX (18 Aug 2026, mobile layout audit): no flex-wrap meant a row with
+   both longer text (contact name + detail) and a 2-button group (e.g.
+   Follow-Ups' "Snooze 3d" / "✓ Done") could together exceed the card's
+   width on a phone with nowhere to go, since flex children don't wrap
+   onto a new line by default. flex-wrap lets the button group drop
+   below the text instead of forcing the row, and therefore the card,
+   wider than the viewport. */
+.list-row{display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; padding:10px 4px; border-bottom:1px solid var(--line-soft); gap:10px;}
 .list-row[onclick]:hover{background:var(--cream);}
 .list-row:last-child{border-bottom:none;}
 .toast{position:fixed; bottom:24px; right:24px; background:var(--navy); color:#fff; padding:11px 18px; border-radius:10px; font-size:12.5px; font-weight:600; opacity:0; transform:translateY(14px); transition:.28s; z-index:999; box-shadow:var(--shadow);}
@@ -6539,7 +6559,18 @@ function drawSettingsBody(){
       </div>
     </div>
     <div class="grid-metrics plan-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
-      ${PLANS.map(p=>`<div class="card" style="border-color:${p.key===cur.key?'var(--teal)':'var(--line)'};position:relative;display:flex;flex-direction:column">
+      ${PLANS.map(p=>{
+        // Button label must reflect direction relative to the CURRENT plan,
+        // not just "not current plan = Upgrade". A Prestige account looking
+        // at the Enterprise card was always shown "Upgrade to Enterprise"
+        // even though that's a downgrade, since this used to only check
+        // p.key===cur.key and defaulted everything else to "Upgrade to".
+        const rank = {starter:0, growth:1, enterprise:2, prestige:3};
+        const label = p.key===cur.key ? 'Current Plan'
+          : p.key==='starter' ? 'Switch to Starter'
+          : (rank[p.key] ?? 0) > (rank[cur.key] ?? 0) ? 'Upgrade to '+p.label
+          : 'Downgrade to '+p.label;
+        return `<div class="card" style="border-color:${p.key===cur.key?'var(--teal)':'var(--line)'};position:relative;display:flex;flex-direction:column">
         ${p.key===cur.key?'<div class="pill pill-active" style="position:absolute;top:14px;right:14px">Current</div>':''}
         <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">${p.label}</div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${planPriceDisplay(p.key)}</div>
@@ -6548,8 +6579,9 @@ function drawSettingsBody(){
           ${p.features.map(f=>`<li>${f}</li>`).join('')}
         </ul>
         ${p.key!=='starter'?`<div style="font-size:10.5px;color:var(--muted);margin-bottom:8px">Activates the moment payment is confirmed, nothing changes until then.</div>`:''}
-        <button class="btn ${p.key===cur.key?'btn-ghost':'btn-primary'} btn-full" ${p.key===cur.key?'disabled':''} onclick="switchPlan('${p.key}')">${p.key===cur.key?'Current Plan':(p.key==='starter'?'Switch to Starter':'Upgrade to '+p.label)}</button>
-      </div>`).join('')}
+        <button class="btn ${p.key===cur.key?'btn-ghost':'btn-primary'} btn-full" ${p.key===cur.key?'disabled':''} onclick="switchPlan('${p.key}')">${label}</button>
+      </div>`;
+      }).join('')}
     </div>
     <div class="card"><div class="card-title">What changes between plans</div>
       <div style="font-size:12px;color:var(--ink-dim);line-height:1.8">
