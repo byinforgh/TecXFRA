@@ -8,7 +8,7 @@
 <style>
   :root{ --teal:#4aa8b8; --teal-dim:#3a8b99; --navy:#123642; --navy-deep:#0c262f; --cream:#faf8f3; --ink:#0c262f; --line:#e4ded2; --danger:#c0584a; --ok:#3f8f5f; --amber:#c98a2e; }
   *{box-sizing:border-box}
-  body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--cream);color:var(--ink);transition:background .4s ease}
+  body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--cream);color:var(--ink);transition:background .4s ease;overflow-x:hidden}
 
   /* ============ FUTURISTIC SIGN-IN BACKDROP ============
      Only active while body carries .pre-auth (i.e. before a
@@ -87,8 +87,14 @@
   #topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px}
 
   /* ============ DASHBOARD ADD-ONS ============ */
-  .tabs{display:flex;gap:6px;margin-bottom:20px;border-bottom:1px solid var(--line);padding-bottom:0}
-  .tab{background:transparent;border:none;padding:10px 14px;font-size:13px;font-weight:700;color:#8a9394;border-bottom:2px solid transparent;border-radius:0}
+  .tabs{display:flex;gap:6px;margin-bottom:20px;border-bottom:1px solid var(--line);padding-bottom:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
+  /* Without this, a narrow phone forces the whole page to shrink-to-fit
+     instead of just this row scrolling, which is what made every tab
+     label render tiny and required scrolling the entire page sideways
+     to reach Announcements/Admins/Network/Support Tickets. */
+  .tabs::-webkit-scrollbar{height:4px;}
+  .tabs::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+  .tab{background:transparent;border:none;padding:10px 14px;font-size:13px;font-weight:700;color:#8a9394;border-bottom:2px solid transparent;border-radius:0;flex-shrink:0;white-space:nowrap;}
   .tab.on{color:var(--navy);border-bottom:2px solid var(--teal)}
   .tab-panel{display:none}
   .tab-panel.on{display:block}
