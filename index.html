@@ -1148,14 +1148,14 @@ async function saveCfg(){
   if(!CUR_VENUE_ID) return;
   SAVES_PENDING++;
   try{ const { error } = await sb.rpc('save_tenant_cfg', { p_cfg: CFG, p_business_name: CFG.bizName }); if(error) throw error; }
-  catch(e){ console.error('saveCfg failed', e); showToast('Could not save, check connection'); }
+  catch(e){ console.error('saveCfg failed', e); showToast(/too many requests/i.test(e?.message||'') ? e.message : 'Could not save, check connection'); }
   finally{ SAVES_PENDING--; }
 }
 async function saveData(){
   if(!CUR_VENUE_ID) return false;
   SAVES_PENDING++;
   try{ const { error } = await sb.rpc('save_tenant_data', { p_data: DATA }); if(error) throw error; return true; }
-  catch(e){ console.error('saveData failed', e); showToast('Could not save, check connection'); return false; }
+  catch(e){ console.error('saveData failed', e); showToast(/too many requests/i.test(e?.message||'') ? e.message : 'Could not save, check connection'); return false; }
   finally{ SAVES_PENDING--; }
 }
 async function loadAll(){
