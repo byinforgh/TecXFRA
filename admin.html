@@ -156,6 +156,14 @@
         <button class="refresh-link" onclick="loadPlanMismatches()">Refresh</button>
       </div>
       <div id="mismatchWrap"></div>
+
+      <div class="row" style="justify-content:space-between;margin:24px 0 12px">
+        <div class="sub" style="margin-bottom:0">Backups. This project may not have automated daily backups (that needs a paid Supabase tier), so run this manually on a regular schedule, weekly at minimum, and store the file somewhere safe, not just on this device.</div>
+      </div>
+      <div class="card">
+        <button class="btn" onclick="downloadFullBackup()">⬇ Export Full Backup (JSON)</button>
+        <span id="backupStatus" class="sub" style="margin-left:10px"></span>
+      </div>
     </div>
 
     <div id="tab-businesses" class="tab-panel">
@@ -384,6 +392,31 @@ async function loadStats(){
 // on the business owner's own next login, but between logins the two can
 // genuinely disagree in the database. This surfaces that instead of only
 // finding out when a customer reports being on the wrong plan.
+// Manual backup export, closes the sign-off's "backup/disaster-recovery"
+// item. This project does not appear to have automated backups (no
+// confirmed Pro-tier plan), so this is the real safety net until it does.
+// Run weekly at minimum, save the downloaded file somewhere durable
+// (Google Drive, not just this laptop). See the runbook doc for the
+// restore procedure.
+async function downloadFullBackup(){
+  const status = document.getElementById('backupStatus');
+  status.textContent = 'Exporting…';
+  try{
+    const { data, error } = await sb.rpc('admin_export_backup');
+    if(error) throw error;
+    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `tecxfra-backup-${stamp}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    status.textContent = `Downloaded, ${Object.keys(data).length} sections, at ${new Date().toLocaleString()}`;
+  }catch(e){
+    console.error('downloadFullBackup failed', e);
+    status.textContent = 'Export failed: ' + (e.message||e);
+  }
+}
 async function loadPlanMismatches(){
   const wrap = document.getElementById('mismatchWrap');
   wrap.innerHTML = '<div class="card empty">Checking…</div>';
