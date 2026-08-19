@@ -270,6 +270,13 @@ tr:last-child td{border-bottom:none;}
    by the page-level overflow-x:hidden. */
 .scroll-tbl table{min-width:520px;}
 input.inp,select.inp,textarea.inp{width:100%; background:var(--cream); border:1.5px solid var(--line); border-radius:9px; padding:10px 13px; outline:none; margin-bottom:9px; font-size:16px;}
+/* iOS Safari renders type=date/time with no icon and centred text, so it
+   looks like a static label instead of a tappable control (this is what
+   business owners flagged as "the box that's not correct"). The native
+   picker still opens on tap either way, this just makes that visible. */
+input.inp[type="date"],input.inp[type="time"]{background-repeat:no-repeat; background-position:right 13px center; background-size:16px; padding-right:38px; text-align:left;}
+input.inp[type="date"]{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7677' stroke-width='2'><rect x='3' y='5' width='18' height='16' rx='2'/><path d='M16 3v4M8 3v4M3 10h18'/></svg>");}
+input.inp[type="time"]{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7677' stroke-width='2'><circle cx='12' cy='12' r='9'/><path d='M12 7v5l3 3'/></svg>");}
 /* Date/time inputs carry their own browser-native minimum width on some
    mobile browsers (the day/month/year or hour/minute segments won't
    shrink below a built-in floor), which can exceed the card's available
@@ -3382,10 +3389,23 @@ function openContactModal(id){
     <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateContact('${id}','notes',this.value)">${esc(c.notes||'')}</textarea>
     <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
       ${c.phone?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" rel="noopener noreferrer" href="https://wa.me/${c.phone.replace(/\\D/g,'')}">💬 WhatsApp</a>`:''}
+      ${CFG.modules.includes('invoicing')?`<button class="btn btn-ghost" style="flex:1" onclick="quickInvoiceFor('${id}')">🧾 Generate Invoice</button>`:''}
       <button class="btn btn-ghost" style="flex:1" onclick="openJournalFor('${id}','${c.name.replace(/'/g,"\\'")}')">📓 Journal Note</button>
       <button class="btn btn-ghost" style="flex:1" onclick="archiveContact('${id}')">🗄️ Archive</button>
     </div>
   </div></div>`;
+}
+// Jumps to Invoicing with this contact already selected in the Send an
+// Invoice form, so the business owner doesn't retype a name/phone they
+// already have saved on the contact card.
+function quickInvoiceFor(id){
+  closeModal();
+  navTo('invoicing');
+  setTimeout(()=>{
+    const sel = document.getElementById('sendInvContact');
+    if(sel){ sel.value = id; applyInvoiceContact(); }
+    document.getElementById('sendInvDesc')?.focus();
+  }, 150);
 }
 async function updateContact(id, field, val){
   const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
@@ -3937,7 +3957,7 @@ function renderInvoicing(){
   </div>
   <div class="card" style="margin-top:16px"><div class="card-title">Send an Invoice <span class="sub">get a shareable link and a ready WhatsApp message</span></div>
     <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
-    <select class="inp" id="sendInvContact"><option value="">, New name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+    <select class="inp" id="sendInvContact" onchange="applyInvoiceContact()"><option value="">, New name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
     <label class="lbl">Or client name</label><input class="inp" id="sendInvName" placeholder="e.g. Kwame Enterprises">
     <label class="lbl">Client phone (optional, for WhatsApp)</label><input class="inp" id="sendInvPhone" placeholder="e.g. 0241234567">
     <label class="lbl">What's this for</label><input class="inp" id="sendInvDesc" placeholder="e.g. Logo design + business card set">
@@ -3948,6 +3968,16 @@ function renderInvoicing(){
   </div>
   <div class="card" style="margin-top:16px"><div class="card-title">Recent Invoices Sent</div><div id="recentInvoicesWrap"><div class="empty">Loading…</div></div></div>`;
   loadRecentInvoices();
+}
+function applyInvoiceContact(){
+  const id = document.getElementById('sendInvContact').value;
+  const nameEl = document.getElementById('sendInvName'), phoneEl = document.getElementById('sendInvPhone');
+  if(!id){ nameEl.disabled = false; phoneEl.disabled = false; return; }
+  const c = (DATA.contacts||[]).find(x=>x.id===id); if(!c) return;
+  nameEl.value = c.name || '';
+  phoneEl.value = c.phone || '';
+  // Left editable on purpose, a contact's saved phone can be out of date,
+  // this just saves retyping the common case instead of forcing it.
 }
 async function generateInvoice(){
   const existingId = document.getElementById('sendInvContact').value;
@@ -5175,8 +5205,8 @@ function renderAccountability(){
   </div>
   ${tier>1?`<div class="card" style="border-color:var(--teal);margin-bottom:0"><div style="font-size:12px;color:var(--ink-dim)">${tier===3?'🔥 Growth-stage checklist unlocked, extra strategic tasks added below because the basics are already solid.':'📈 Visibility-stage checklist unlocked, referral and re-engagement tasks added below.'}</div></div>`:''}
   <div class="card"><div class="card-title">Today's Checklist</div>
-    ${tasks.map(t=>`<div class="list-row"><span>${t.label}</span>
-      <input type="checkbox" ${day[t.key]?'checked':''} onchange="toggleAccountability('${t.key}',this.checked)" style="width:18px;height:18px;accent-color:var(--teal)">
+    ${tasks.map(t=>`<div class="list-row" style="flex-wrap:nowrap;align-items:flex-start"><span style="flex:1">${t.label}</span>
+      <input type="checkbox" ${day[t.key]?'checked':''} onchange="toggleAccountability('${t.key}',this.checked)" style="width:18px;height:18px;accent-color:var(--teal);flex-shrink:0;margin-top:2px">
     </div>`).join('')}
     ${tier<3?`<div class="sub" style="margin-top:10px">${tier===1?'Score above '+Math.round(getAuditQuestions().length*0.33)+' on your Business Audit, or hit a 14-day streak, to unlock the next tier.':'Score above '+Math.round(getAuditQuestions().length*0.66)+' on your Business Audit, or hit a 30-day streak, to unlock the final tier.'}</div>`:''}
   </div>
@@ -5742,16 +5772,20 @@ function openGuidePurchaseModal(key){
   </div></div>`;
 }
 async function requestGuidePurchase(key, method){
-  // Same popup-blocking fix as the plan-upgrade WhatsApp notify: open the
-  // tab synchronously before any await breaks the click's user-gesture
-  // context, then point it at the real URL once the request is logged.
-  const waTab = notifyAdminWhatsAppSetup();
+  // Previously pre-opened a blank tab before the RPC to dodge mobile
+  // popup-blocking. On several mobile/in-app-browser contexts that blank
+  // tab took over the visible screen while the request was still
+  // processing, looking exactly like a broken blank screen, even though
+  // the request itself succeeded underneath it. The WhatsApp ping is a
+  // convenience, not the source of truth (the RPC + admin dashboard is),
+  // so it's no longer allowed to block or obscure the on-screen
+  // confirmation of the actual completed action.
+  let error;
   try{
-    const { error } = await sb.rpc('request_guide_purchase', { p_guide_key: key, p_method: method, p_business_name: CFG.bizName });
+    ({ error } = await sb.rpc('request_guide_purchase', { p_guide_key: key, p_method: method, p_business_name: CFG.bizName }));
     if(error) throw error;
   }catch(e){
     console.error(e);
-    if(waTab && !waTab.closed) waTab.close();
     showToast('Could not send request, check your connection and try again.');
     return;
   }
@@ -5760,8 +5794,7 @@ async function requestGuidePurchase(key, method){
   await addKnowledgeFact(`Requested to unlock guide "${guideTitle}" via ${method}.`);
   showToast('Request logged, our team will confirm and unlock it within one business day.');
   const methodLabel = {momo:'Mobile Money', invoice:'an invoice', cash:'a cash'}[method] || method;
-  const waSent = notifyAdminWhatsAppFinish(waTab, `TecXFRA guide unlock request\nBusiness: ${CFG.bizName}\nGuide: ${guideTitle}\nMethod: ${methodLabel}\nPlease confirm and unlock.`);
-  if(!waSent) showToast(`Note: WhatsApp notification to our team didn't send, your request is still logged and will be actioned.`);
+  notifyAdminWhatsApp(`TecXFRA guide unlock request\nBusiness: ${CFG.bizName}\nGuide: ${guideTitle}\nMethod: ${methodLabel}\nPlease confirm and unlock.`);
 }
 function relatedGuidesRow(g){
   // Defensive on purpose: a single malformed/missing field on one guide
@@ -6842,14 +6875,15 @@ async function requestMomoInvoice(planKey, method){
   const methodLabel = {momo:'Mobile Money', invoice:'an invoice', cash:'a cash'}[method] || method;
   const planLabel = PLANS.find(p=>p.key===planKey).label;
   const waMessage = `TecXFRA upgrade request\nBusiness: ${CFG.bizName}\nPlan: ${planLabel}\nMethod: ${methodLabel}\nPlease confirm and activate.`;
-  // Open the WhatsApp tab FIRST, synchronously, still inside the click's
-  // original user-gesture context. Every await below (addKnowledgeFact,
-  // the RPC) breaks that gesture chain, so a window.open() placed after
-  // them gets silently blocked as a popup by Safari/Chrome on mobile,
-  // the button LOOKS like it worked (the "Request sent" toast still
-  // fires) but no WhatsApp tab ever actually opens. Opening a blank tab
-  // now and pointing it at the real URL once ready avoids that.
-  const waTab = notifyAdminWhatsAppSetup();
+  // Previously pre-opened a blank tab before these awaits to dodge mobile
+  // popup-blocking on the WhatsApp notify. On several mobile/in-app-browser
+  // contexts that blank tab took over the visible screen while the
+  // request was still logging, looking exactly like "a blank screen on
+  // all 3 payment options" (the reported bug). The WhatsApp ping to the
+  // team is a convenience on top of the real request, it is not the
+  // source of truth (the RPC below + admin.html's Payments tab are), so
+  // it no longer gets to block or obscure the on-screen confirmation
+  // that the business owner's actual request went through.
   await addKnowledgeFact(`Requested ${methodLabel} upgrade to ${planLabel} plan.`);
   let requestSaved = true;
   try{
@@ -6862,33 +6896,23 @@ async function requestMomoInvoice(planKey, method){
     showToast(`Request logged, our team will confirm your ${confirmLabel} and activate ${planLabel} within one business day.`);
   } else {
     showToast(`Could not log your request, check your connection and try again.`);
-    if(waTab && !waTab.closed) waTab.close();
     return;
   }
-  const waSent = notifyAdminWhatsAppFinish(waTab, waMessage);
-  if(!waSent) showToast(`Note: WhatsApp notification to our team didn't send, your request is still logged and will be actioned.`);
-}
-// Two-step so the popup can be opened synchronously (see comment above)
-// while the message text is still assembled up front, before it's
-// actually addressed and navigated to.
-function notifyAdminWhatsAppSetup(){
-  if(!ADMIN_WHATSAPP_NUMBER || /^2330{9}$/.test(ADMIN_WHATSAPP_NUMBER)) return null; // placeholder not yet set
-  try{ return window.open('', '_blank', 'noopener,noreferrer'); }catch(e){ return null; }
-}
-function notifyAdminWhatsAppFinish(waTab, message){
-  if(!ADMIN_WHATSAPP_NUMBER || /^2330{9}$/.test(ADMIN_WHATSAPP_NUMBER)) return false; // placeholder not yet set, nothing to send
-  const url = `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-  if(waTab && !waTab.closed){ waTab.location = url; return true; }
-  try{ window.open(url, '_blank', 'noopener,noreferrer'); return true; }catch(e){ return false; }
+  notifyAdminWhatsApp(waMessage);
 }
 // Opens the customer's own WhatsApp with a message pre-addressed to the
 // admin number, this is the "notify me on WhatsApp" path while there's
 // no paid WhatsApp Business API wired in. New tab so it never disrupts
-// the app's own state if it's blocked or the user cancels it.
+// the app's own state if it's blocked or the user cancels it. Called
+// only after the real action (payment/guide request) is already
+// confirmed on-screen, so if a browser silently blocks this popup
+// (which can happen this many awaits after the original click), the
+// business owner still sees clear confirmation their request went
+// through, nothing depends on this popup succeeding.
 function notifyAdminWhatsApp(message){
   if(!ADMIN_WHATSAPP_NUMBER || /^2330{9}$/.test(ADMIN_WHATSAPP_NUMBER)) return; // placeholder not yet set
   const url = `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-  window.open(url, '_blank', 'noopener,noreferrer');
+  try{ window.open(url, '_blank', 'noopener,noreferrer'); }catch(e){ /* best-effort only */ }
 }
 // Logos are stored as a compressed base64 data URL directly inside CFG
 // (the same JSON blob everything else in Settings already saves through),
