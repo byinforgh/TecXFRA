@@ -147,6 +147,7 @@
       <button class="tab" data-tab="announcements" onclick="switchTab('announcements')">Announcements</button>
       <button class="tab" data-tab="admins" onclick="switchTab('admins')">Admins</button>
       <button class="tab" data-tab="network" onclick="switchTab('network')">Network</button>
+      <button class="tab" data-tab="tickets" onclick="switchTab('tickets')">Support Tickets</button>
     </div>
 
     <div id="tab-overview" class="tab-panel on">
@@ -224,6 +225,23 @@
         <button class="refresh-link" onclick="loadAnnouncements()">Refresh</button>
       </div>
       <div id="annListWrap"></div>
+    </div>
+
+    <div id="tab-tickets" class="tab-panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <div class="sub" style="margin-bottom:0">Problem reports sent from inside the app (Settings → Account → Report a Problem). The business owner sees your status update live on their side, no separate reply needed.</div>
+        <button class="refresh-link" onclick="loadTickets()">Refresh</button>
+      </div>
+      <div class="field" style="max-width:220px;margin-bottom:14px">
+        <label>Filter by status</label>
+        <select id="ticketFilter" onchange="loadTickets()">
+          <option value="all">All</option>
+          <option value="open" selected>Open</option>
+          <option value="in_progress">Being looked at</option>
+          <option value="resolved">Resolved</option>
+        </select>
+      </div>
+      <div id="ticketsWrap"></div>
     </div>
   </div>
 </div>
@@ -357,6 +375,7 @@ async function afterLogin(){
   loadAnnouncements();
   loadNetworkProfiles();
   loadPlanMismatches();
+  loadTickets();
 }
 
 function switchTab(name){
@@ -535,6 +554,49 @@ async function loadAnnouncements(){
       <div style="font-size:11px;color:var(--teal-dim);font-weight:700;margin:2px 0 6px">${ANN_KIND_LABEL[a.kind]||a.kind} ${a.notify_email?'· emailed':''}</div>
       <div style="font-size:13px;color:#3a4546;white-space:pre-line">${esc(a.body)}</div>
     </div>`).join('');
+}
+
+const TICKET_STATUS_LABEL = {open:'Open', in_progress:'Being looked at', resolved:'Resolved'};
+function ticketStatusPill(status){
+  const cls = status==='resolved'?'pill-active':status==='in_progress'?'pill-growth':'pill-starter';
+  return `<span class="pill ${cls}">${TICKET_STATUS_LABEL[status]||status}</span>`;
+}
+async function loadTickets(){
+  const wrap = document.getElementById('ticketsWrap');
+  wrap.innerHTML = '<div class="card empty">Loading…</div>';
+  const { data, error } = await sb.rpc('admin_list_support_tickets');
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load tickets: ${error.message||error}</div>`; return; }
+  const filter = document.getElementById('ticketFilter').value;
+  const rows = (data||[]).filter(t => filter==='all' || t.status===filter);
+  if(!rows.length){ wrap.innerHTML = `<div class="card empty">Nothing ${filter==='all'?'reported yet':'with that status'}.</div>`; return; }
+  // SECURITY: message/business_name/page are all tenant-supplied free text,
+  // escaped through esc() before touching innerHTML, same rule as every
+  // other tenant-authored field rendered in this admin panel.
+  wrap.innerHTML = rows.map(t=>`
+    <div class="card" style="padding:14px 16px;margin-bottom:8px">
+      <div class="row" style="justify-content:space-between">
+        <div style="font-weight:700;font-size:13.5px">${esc(t.business_name)||'Unnamed business'} <span style="font-weight:400;color:#8a9394;font-size:11.5px">· ${esc(t.page)||'general'}</span></div>
+        <div style="font-size:11px;color:#8a9394">${fmtDate(t.created_at)}</div>
+      </div>
+      <div style="font-size:13px;color:#3a4546;white-space:pre-line;margin:8px 0">${esc(t.message)}</div>
+      <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
+        ${ticketStatusPill(t.status)}
+        <select id="ticketStatusSel-${t.id}" style="width:auto;padding:4px 8px;font-size:12px">
+          <option value="open" ${t.status==='open'?'selected':''}>Open</option>
+          <option value="in_progress" ${t.status==='in_progress'?'selected':''}>Being looked at</option>
+          <option value="resolved" ${t.status==='resolved'?'selected':''}>Resolved</option>
+        </select>
+        <input id="ticketNote-${t.id}" placeholder="internal note (optional)" value="${esc(t.admin_note)||''}" style="width:auto;flex:1;min-width:160px;padding:4px 8px;font-size:12px">
+        <button class="btn-ok" onclick="updateTicket(${t.id})">Save</button>
+      </div>
+    </div>`).join('');
+}
+async function updateTicket(id){
+  const status = document.getElementById(`ticketStatusSel-${id}`).value;
+  const note = document.getElementById(`ticketNote-${id}`).value.trim();
+  const { error } = await sb.rpc('admin_update_support_ticket', { p_id: id, p_status: status, p_note: note });
+  if(error){ alert('Could not update: ' + (error.message||error)); return; }
+  loadTickets();
 }
 
 function renderList(rows){
