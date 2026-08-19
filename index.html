@@ -1001,18 +1001,18 @@ async function initAuthGate(){
 ============================================================ */
 
 const INDUSTRIES = [
-  {key:'hospitality', ic:'🍸', label:'Bar / Restaurant / Café', crmNoun:'Guests', pipelineNoun:'Table & Bar Orders', itemNoun:'Menu Items'},
-  {key:'retail', ic:'🛍️', label:'Retail / Shop', crmNoun:'Customers', pipelineNoun:'Sales', itemNoun:'Products'},
-  {key:'salon', ic:'💇', label:'Salon / Spa / Wellness', crmNoun:'Clients', pipelineNoun:'Bookings', itemNoun:'Services'},
-  {key:'services', ic:'💼', label:'Consulting / Agency / Services', crmNoun:'Clients', pipelineNoun:'Deals', itemNoun:'Service Packages'},
-  {key:'realestate', ic:'🏠', label:'Real Estate', crmNoun:'Leads', pipelineNoun:'Listings & Deals', itemNoun:'Properties'},
-  {key:'logistics', ic:'🚚', label:'Logistics / Transport', crmNoun:'Clients', pipelineNoun:'Jobs', itemNoun:'Routes & Services'},
-  {key:'manufacturing', ic:'🏭', label:'Manufacturing / Production', crmNoun:'Buyers', pipelineNoun:'Orders', itemNoun:'Products & Materials'},
-  {key:'education', ic:'🎓', label:'Education / Training', crmNoun:'Students', pipelineNoun:'Enrollments', itemNoun:'Courses'},
-  {key:'healthcare', ic:'🩺', label:'Clinic / Wellness (front office)', crmNoun:'Patients', pipelineNoun:'Appointments', itemNoun:'Services'},
-  {key:'nonprofit', ic:'🤝', label:'Nonprofit / Membership', crmNoun:'Members', pipelineNoun:'Engagements', itemNoun:'Programs'},
-  {key:'events', ic:'🎪', label:'Events & Venues', crmNoun:'Clients', pipelineNoun:'Bookings', itemNoun:'Packages'},
-  {key:'general', ic:'🧭', label:'Something else / General', crmNoun:'Contacts', pipelineNoun:'Pipeline', itemNoun:'Items'}
+  {key:'hospitality', ic:'🍸', label:'Bar / Restaurant / Café', crmNoun:'Guests', pipelineNoun:'Table & Bar Orders', itemNoun:'Menu Items', tracksStock:true},
+  {key:'retail', ic:'🛍️', label:'Retail / Shop', crmNoun:'Customers', pipelineNoun:'Sales', itemNoun:'Products', tracksStock:true},
+  {key:'salon', ic:'💇', label:'Salon / Spa / Wellness', crmNoun:'Clients', pipelineNoun:'Bookings', itemNoun:'Services', tracksStock:false},
+  {key:'services', ic:'💼', label:'Consulting / Agency / Services', crmNoun:'Clients', pipelineNoun:'Deals', itemNoun:'Service Packages', tracksStock:false},
+  {key:'realestate', ic:'🏠', label:'Real Estate', crmNoun:'Leads', pipelineNoun:'Listings & Deals', itemNoun:'Properties', tracksStock:false},
+  {key:'logistics', ic:'🚚', label:'Logistics / Transport', crmNoun:'Clients', pipelineNoun:'Jobs', itemNoun:'Routes & Services', tracksStock:false},
+  {key:'manufacturing', ic:'🏭', label:'Manufacturing / Production', crmNoun:'Buyers', pipelineNoun:'Orders', itemNoun:'Products & Materials', tracksStock:true},
+  {key:'education', ic:'🎓', label:'Education / Training', crmNoun:'Students', pipelineNoun:'Enrollments', itemNoun:'Courses', tracksStock:false},
+  {key:'healthcare', ic:'🩺', label:'Clinic / Wellness (front office)', crmNoun:'Patients', pipelineNoun:'Appointments', itemNoun:'Services', tracksStock:false},
+  {key:'nonprofit', ic:'🤝', label:'Nonprofit / Membership', crmNoun:'Members', pipelineNoun:'Engagements', itemNoun:'Programs', tracksStock:false},
+  {key:'events', ic:'🎪', label:'Events & Venues', crmNoun:'Clients', pipelineNoun:'Bookings', itemNoun:'Packages', tracksStock:false},
+  {key:'general', ic:'🧭', label:'Something else / General', crmNoun:'Contacts', pipelineNoun:'Pipeline', itemNoun:'Items', tracksStock:true}
 ];
 
 const MODULES = [
@@ -1135,6 +1135,7 @@ let CFG = null;
 let DATA = null;
 let CUR_PAGE = 'today';
 let CUR_INDUSTRY_OBJ = null;
+function tracksStock(){ return !CUR_INDUSTRY_OBJ || CUR_INDUSTRY_OBJ.tracksStock !== false; }
 let cart = {};
 let calMonth = new Date().getMonth(), calYear = new Date().getFullYear();
 let CUR_VENUE_ID = null;
@@ -2918,7 +2919,7 @@ function renderToday(){
   const t = todayStr();
   const todaySales = (DATA.transactions||[]).filter(x=>x.date===t).reduce((s,x)=>s+x.amount,0);
   const dueFollowups = (DATA.followups||[]).filter(f=>!f.done && f.due<=t);
-  const lowStock = (DATA.inventory||[]).filter(i=>i.stock<=i.par);
+  const lowStock = tracksStock() ? (DATA.inventory||[]).filter(i=>i.stock<=i.par) : (DATA.inventory||[]);
   const todayEvents = (DATA.events||[]).filter(e=>e.date===t);
   const hotLeads = (DATA.contacts||[]).filter(c=>c.temp==='hot').length;
   const onDuty = (DATA.staff||[]).filter(s=>s.onDuty).length;
@@ -2944,7 +2945,7 @@ function renderToday(){
   html += `<div class="grid-metrics">
     <div class="metric navy" style="cursor:pointer" onclick="navTo('revenue')"><div class="ml">Revenue Today</div><div class="mv">${money(todaySales)}</div><div class="ms">${(DATA.transactions||[]).filter(x=>x.date===t).length} sales logged</div></div>
     <div class="metric coral" style="cursor:pointer" onclick="navTo('followups')"><div class="ml">Follow-ups Due</div><div class="mv">${dueFollowups.length}</div><div class="ms">across all ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase()}</div></div>
-    <div class="metric amber" style="cursor:pointer" onclick="${CFG.modules.includes('inventory')?"navTo('inventory')":"enableSellingTools()"}"><div class="ml">Low Stock</div><div class="mv">${lowStock.length}</div><div class="ms">${CFG.modules.includes('inventory')?'items at/under par':'tap to turn on inventory'}</div></div>
+    <div class="metric amber" style="cursor:pointer" onclick="${CFG.modules.includes('inventory')?"navTo('inventory')":"enableSellingTools()"}"><div class="ml">${tracksStock()?'Low Stock':CUR_INDUSTRY_OBJ.itemNoun}</div><div class="mv">${lowStock.length}</div><div class="ms">${CFG.modules.includes('inventory')?(tracksStock()?'items at/under par':'listed, tap to manage'):'tap to turn on inventory'}</div></div>
     <div class="metric green" style="cursor:pointer" onclick="navTo('crm')"><div class="ml">Hot Leads</div><div class="mv">${hotLeads}</div><div class="ms">ready to close</div></div>
     <div class="metric amber" style="cursor:pointer" onclick="navTo('reminders')"><div class="ml">Reminders Due</div><div class="mv">${(DATA.reminders||[]).filter(r=>!r.done && r.dueDate<=addDays(t,7)).length}</div><div class="ms">renewals & deadlines, next 7 days</div></div>
   </div>
@@ -3757,7 +3758,7 @@ function renderPOS(){
     </div>
   </div>`;
   document.getElementById('qsGrid').innerHTML = (DATA.inventory||[]).map(it=>`
-    <button class="qs-item" onclick="addToCart('${it.id}')"><div class="qn">${esc(it.name)}</div><div class="qp">${money(it.price)}</div>${it.stock<=it.par?'<div style="font-size:10px;color:var(--coral)">low stock</div>':''}</button>
+    <button class="qs-item" onclick="addToCart('${it.id}')"><div class="qn">${esc(it.name)}</div><div class="qp">${money(it.price)}</div>${(tracksStock() && it.stock<=it.par)?'<div style="font-size:10px;color:var(--coral)">low stock</div>':''}</button>
   `).join('');
   drawCart();
 }
@@ -3786,8 +3787,10 @@ async function checkout(){
   ids.forEach(id=>{
     const c = cart[id];
     DATA.transactions.push({id:uid('T'), date:todayStr(), item:c.name, amount:c.qty*c.price, type:'sale', staff:CFG.ownerName, contact:custName});
-    const it = (DATA.inventory||[]).find(x=>x.id===id);
-    if(it) it.stock = Math.max(0, (it.stock||0) - c.qty);
+    if(tracksStock()){
+      const it = (DATA.inventory||[]).find(x=>x.id===id);
+      if(it) it.stock = Math.max(0, (it.stock||0) - c.qty);
+    }
   });
   cart = {};
   logAccountability('sales_made');
@@ -3818,59 +3821,64 @@ function renderBookings(){
 
 /* ---------- INVENTORY ---------- */
 function renderInventory(){
+  const stocked = tracksStock();
+  const singular = CUR_INDUSTRY_OBJ.itemNoun.toLowerCase().endsWith('s') ? CUR_INDUSTRY_OBJ.itemNoun.slice(0,-1) : CUR_INDUSTRY_OBJ.itemNoun;
   document.getElementById('pageContent').innerHTML = `
   <div class="two-col">
     <div class="card">
-      <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun}, Stock <span class="sub">click a row to edit</span></div>
-      <div class="scroll-tbl"><table><thead><tr><th>Item</th><th>Stock</th><th>Par</th><th>Cost</th><th>Price</th><th>Notes</th></tr></thead><tbody>
-        ${(DATA.inventory||[]).map(it=>`<tr style="cursor:pointer;${it.stock<=it.par?'color:var(--coral)':''}" onclick="openItemModal('${it.id}')"><td>${esc(it.name)}</td><td class="mono">${it.stock}</td><td class="mono">${it.par}</td><td class="mono">${money(it.cost)}</td><td class="mono">${money(it.price)}</td><td style="color:var(--muted);font-size:11.5px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.notes||'')}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No stock items yet</td></tr>'}
+      <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun}${stocked?', Stock':''} <span class="sub">click a row to edit</span></div>
+      <div class="scroll-tbl"><table><thead><tr><th>${stocked?'Item':'Name'}</th>${stocked?'<th>Stock</th><th>Par</th>':''}<th>Cost</th><th>Price</th><th>Notes</th></tr></thead><tbody>
+        ${(DATA.inventory||[]).map(it=>`<tr style="cursor:pointer;${stocked && it.stock<=it.par?'color:var(--coral)':''}" onclick="openItemModal('${it.id}')"><td>${esc(it.name)}</td>${stocked?`<td class="mono">${it.stock}</td><td class="mono">${it.par}</td>`:''}<td class="mono">${money(it.cost)}</td><td class="mono">${money(it.price)}</td><td style="color:var(--muted);font-size:11.5px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.notes||'')}</td></tr>`).join('') || `<tr><td colspan="${stocked?6:4}" class="empty">No ${CUR_INDUSTRY_OBJ.itemNoun.toLowerCase()} yet</td></tr>`}
       </tbody></table></div>
     </div>
     <div class="card">
-      <div class="card-title">Restock / Add an Item</div>
-      <label class="lbl">Item name</label><input class="inp" id="rName" list="invList" placeholder="Must match exactly to update, or creates new">
+      <div class="card-title">${stocked?'Restock / Add an Item':`Add a ${esc(singular)}`}</div>
+      <label class="lbl">${stocked?'Item name':'Name'}</label><input class="inp" id="rName" list="invList" placeholder="Must match exactly to update, or creates new">
       <datalist id="invList">${(DATA.inventory||[]).map(it=>`<option value="${esc(it.name)}">`).join('')}</datalist>
-      <label class="lbl">Qty to add</label><input class="inp" id="rQty" type="number" placeholder="e.g. 24">
-      <label class="lbl">Par level (optional)</label><input class="inp" id="rPar" type="number" placeholder="e.g. 10">
-      <label class="lbl">Cost per unit (optional)</label><input class="inp" id="rCost" type="number" placeholder="what it costs you">
-      <label class="lbl">Sale price (optional)</label><input class="inp" id="rPrice" type="number" placeholder="what you charge">
-      <label class="lbl">Notes (optional)</label><textarea class="inp" id="rNotes" rows="2" placeholder="Supplier, variant, anything worth remembering"></textarea>
-      <button class="btn btn-primary btn-full" onclick="restock()">＋ Add Stock</button>
+      ${stocked?`<label class="lbl">Qty to add</label><input class="inp" id="rQty" type="number" placeholder="e.g. 24">
+      <label class="lbl">Par level (optional)</label><input class="inp" id="rPar" type="number" placeholder="e.g. 10">`:''}
+      <label class="lbl">${stocked?'Cost per unit (optional)':'What it costs you to deliver (optional)'}</label><input class="inp" id="rCost" type="number" placeholder="what it costs you">
+      <label class="lbl">${stocked?'Sale price (optional)':'Price (optional)'}</label><input class="inp" id="rPrice" type="number" placeholder="what you charge">
+      <label class="lbl">Notes (optional)</label><textarea class="inp" id="rNotes" rows="2" placeholder="${stocked?'Supplier, variant, anything worth remembering':'What it includes, duration, anything worth remembering'}"></textarea>
+      <button class="btn btn-primary btn-full" onclick="restock()">＋ ${stocked?'Add Stock':`Add ${esc(singular)}`}</button>
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
         <label class="lbl">Import from CSV ${currentPlan().csvImport?'':'<span style=\"color:var(--muted)\">(Growth/Enterprise)</span>'}</label>
         <input class="inp" type="file" accept=".csv" onchange="importInventoryCSV(this)" ${currentPlan().csvImport?'':'disabled title=\"Upgrade to Growth or Enterprise to import inventory from CSV\"'}>
-        <div class="sub" style="margin-top:4px">Columns: name, stock, par, cost, price, notes, matches existing items by name</div>
+        <div class="sub" style="margin-top:4px">Columns: name, ${stocked?'stock, par, ':''}cost, price, notes, matches existing items by name</div>
       </div>
     </div>
   </div>`;
 }
 async function restock(){
+  const stocked = tracksStock();
   const name = document.getElementById('rName').value.trim();
-  const qty = parseFloat(document.getElementById('rQty').value)||0;
-  if(!name || !qty){ showToast('Item name and quantity required'); return; }
+  if(!name){ showToast('Name required'); return; }
+  const qty = stocked ? (parseFloat(document.getElementById('rQty').value)||0) : 0;
+  if(stocked && !qty){ showToast('Item name and quantity required'); return; }
   let it = DATA.inventory.find(x=>x.name.toLowerCase()===name.toLowerCase());
-  const par = document.getElementById('rPar').value;
+  const par = stocked ? document.getElementById('rPar').value : '';
   const cost = document.getElementById('rCost').value;
   const price = document.getElementById('rPrice').value;
   const notes = document.getElementById('rNotes').value.trim().slice(0,400);
   if(it){
-    it.stock += qty;
+    if(stocked) it.stock += qty;
     if(par) it.par = parseFloat(par);
     if(cost) it.cost = parseFloat(cost);
     if(price) it.price = parseFloat(price);
     if(notes) it.notes = notes;
   } else {
-    DATA.inventory.push({id:uid('I'), name, stock:qty, par: par?parseFloat(par):5, cost: cost?parseFloat(cost):0, price: price?parseFloat(price):0, notes});
+    DATA.inventory.push({id:uid('I'), name, stock: stocked?qty:1, par: stocked?(par?parseFloat(par):5):0, cost: cost?parseFloat(cost):0, price: price?parseFloat(price):0, notes});
   }
-  await saveData(); showToast('Stock updated'); renderInventory();
+  await saveData(); showToast(stocked?'Stock updated':'Added'); renderInventory();
 }
 function openItemModal(id){
   const it = (DATA.inventory||[]).find(x=>x.id===id); if(!it) return;
+  const stocked = tracksStock();
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
     <div class="modal-head"><h3>${esc(it.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <label class="lbl">Name</label><input class="inp" value="${esc(it.name||'')}" onchange="updateItem('${id}','name',this.value)">
-    <label class="lbl">Stock on hand</label><input class="inp" type="number" value="${esc(it.stock||0)}" onchange="updateItem('${id}','stock',parseFloat(this.value)||0)">
-    <label class="lbl">Par level</label><input class="inp" type="number" value="${esc(it.par||0)}" onchange="updateItem('${id}','par',parseFloat(this.value)||0)">
+    ${stocked?`<label class="lbl">Stock on hand</label><input class="inp" type="number" value="${esc(it.stock||0)}" onchange="updateItem('${id}','stock',parseFloat(this.value)||0)">
+    <label class="lbl">Par level</label><input class="inp" type="number" value="${esc(it.par||0)}" onchange="updateItem('${id}','par',parseFloat(this.value)||0)">`:''}
     <label class="lbl">Cost per unit</label><input class="inp" type="number" value="${esc(it.cost||0)}" onchange="updateItem('${id}','cost',parseFloat(this.value)||0)">
     <label class="lbl">Sale price</label><input class="inp" type="number" value="${esc(it.price||0)}" onchange="updateItem('${id}','price',parseFloat(this.value)||0)">
     <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateItem('${id}','notes',this.value)">${esc(it.notes||'')}</textarea>
@@ -5365,9 +5373,10 @@ function aiSummary(){
   const t = todayStr();
   const rev = (DATA.transactions||[]).filter(x=>x.date===t).reduce((s,x)=>s+x.amount,0);
   const due = (DATA.followups||[]).filter(f=>!f.done && f.due<=t).length;
-  const low = (DATA.inventory||[]).filter(i=>i.stock<=i.par).length;
+  const low = tracksStock() ? (DATA.inventory||[]).filter(i=>i.stock<=i.par).length : null;
   const acc = accountabilityTodayScore();
-  return `Good day, here's where things stand:\n\n• Revenue today: ${money(rev)}\n• Follow-ups due: ${due}\n• Low stock items: ${low}\n• Hot leads: ${(DATA.contacts||[]).filter(c=>c.temp==='hot').length}\n• Today's accountability: ${acc.done}/${acc.total}\n\n${toneSignoff()}\n\nAsk me about who to contact first, revenue trends, your persona, your audit score, or "what have you noticed" for patterns I've spotted in your own numbers.`;
+  const lowLine = low!==null ? `• Low stock items: ${low}\n` : '';
+  return `Good day, here's where things stand:\n\n• Revenue today: ${money(rev)}\n• Follow-ups due: ${due}\n${lowLine}• Hot leads: ${(DATA.contacts||[]).filter(c=>c.temp==='hot').length}\n• Today's accountability: ${acc.done}/${acc.total}\n\n${toneSignoff()}\n\nAsk me about who to contact first, revenue trends, your persona, your audit score, or "what have you noticed" for patterns I've spotted in your own numbers.`;
 }
 function aiAnswer(q){
   const ql = q.toLowerCase();
@@ -5404,6 +5413,7 @@ function aiAnswer(q){
     return `Today: ${money(rev)}. Logged total this window: ${money(week)}. ${rev>0?'Keep the pace up.':'No sales logged yet today.'}`;
   }
   if(ql.includes('stock') || ql.includes('restock') || ql.includes('inventory')){
+    if(!tracksStock()) return `${CUR_INDUSTRY_OBJ.itemNoun} don't track stock levels for this business type, head to the Inventory page to manage your list of ${CUR_INDUSTRY_OBJ.itemNoun.toLowerCase()} and prices.`;
     const low=(DATA.inventory||[]).filter(i=>i.stock<=i.par);
     if(!low.length) return 'Nothing at or below par right now.';
     return 'Needs restocking:\n'+low.map(i=>`• ${i.name}, ${i.stock} left (par ${i.par})`).join('\n');
@@ -6631,7 +6641,18 @@ function drawSettingsBody(){
       <div class="card-title">Account</div>
       <div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px">Signed in as this business's owner account. Signing out just locks the app on this device, nothing is deleted.</div>
       <button class="btn btn-ghost" onclick="signOut()">Sign out</button>
+    </div>
+    <div class="card" style="max-width:480px">
+      <div class="card-title">Report a Problem</div>
+      <div style="font-size:12px;color:var(--ink-dim);margin-bottom:12px">Found a bug or something that doesn't feel right? Tell us exactly what happened, it goes straight to the TecXFRA team and you'll see the status update right here once it's picked up.</div>
+      <label class="lbl">Which page or feature</label>
+      <select class="inp" id="spPage">${MODULES.map(m=>`<option value="${m.key}">${esc(m.name)}</option>`).join('')}<option value="other">Something else</option></select>
+      <label class="lbl">What happened</label>
+      <textarea class="inp" id="spMessage" rows="3" placeholder="e.g. Tried to add a haircut service on Inventory but the form wouldn't let me save without a quantity"></textarea>
+      <button class="btn btn-primary" style="margin-top:8px" onclick="submitProblemReport()">Send Report</button>
+      <div id="myTicketsList" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"></div>
     </div>`;
+    loadMyTickets();
   } else if(settingsTab==='data'){
     const counts = {contacts:(DATA.contacts||[]).length, transactions:(DATA.transactions||[]).length,
       expenses:(DATA.expenses||[]).length, messageLog:(DATA.messageLog||[]).length,
@@ -6666,6 +6687,36 @@ function drawSettingsBody(){
       ${(DATA.staff||[]).map(s=>`<div class="list-row"><span><b>${esc(s.name)}</b> · ${esc(s.role)}</span><span class="pill pill-cold">${esc(s.dept)}</span></div>`).join('')}
       <button class="btn btn-ghost" style="margin-top:10px" onclick="navTo('staff')">Open Staff & Shifts →</button>
     </div>`;
+  }
+}
+async function submitProblemReport(){
+  const page = document.getElementById('spPage').value;
+  const message = document.getElementById('spMessage').value.trim();
+  if(!message){ showToast('Tell us what happened first'); return; }
+  try{
+    const { error } = await sb.rpc('submit_support_ticket', { p_page: page, p_message: message.slice(0,2000) });
+    if(error) throw error;
+    document.getElementById('spMessage').value = '';
+    showToast('Report sent, thank you');
+    loadMyTickets();
+  }catch(e){
+    showToast(e.message && e.message.includes('rate') ? 'Too many reports too fast, try again in a bit' : 'Could not send that, check your connection and try again');
+  }
+}
+async function loadMyTickets(){
+  const el = document.getElementById('myTicketsList'); if(!el) return;
+  el.innerHTML = '<div class="empty">Loading your reports…</div>';
+  try{
+    const { data, error } = await sb.rpc('list_my_support_tickets');
+    if(error) throw error;
+    const rows = data || [];
+    const el2 = document.getElementById('myTicketsList'); if(!el2) return;
+    if(!rows.length){ el2.innerHTML = '<div class="empty">No reports sent yet.</div>'; return; }
+    const statusLabel = {open:'Received', in_progress:'Being looked at', resolved:'Resolved'};
+    el2.innerHTML = `<div style="font-weight:700;font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Your reports</div>` +
+      rows.map(r=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:12px;color:var(--ink-dim);max-width:260px">${esc((r.message||'').slice(0,90))}${(r.message||'').length>90?'…':''}<br><span style="color:var(--muted);font-size:10.5px">${fmtDate(r.created_at)}</span></span><span class="pill ${r.status==='resolved'?'pill-active':'pill-cold'}">${statusLabel[r.status]||r.status}</span></div>`).join('');
+  }catch(e){
+    const el3 = document.getElementById('myTicketsList'); if(el3) el3.innerHTML = '<div class="empty">Could not load your reports right now.</div>';
   }
 }
 async function saveBusinessSettings(){
