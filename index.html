@@ -230,7 +230,7 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 
 /* ============ SHARED UI ============ */
 .grid-metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:20px;}
-.metric{background:var(--paper); border:1px solid var(--line); border-radius:var(--r-md); padding:17px 18px; position:relative; overflow:hidden;}
+.metric{background:var(--paper); border:1px solid var(--line); border-radius:var(--r-md); padding:17px 18px; position:relative; overflow:hidden; touch-action:manipulation; -webkit-tap-highlight-color:rgba(74,168,184,.15);}
 .metric::before{content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--teal);}
 .metric.amber::before{background:var(--amber);} .metric.coral::before{background:var(--coral);} .metric.green::before{background:var(--green);} .metric.navy::before{background:var(--navy);}
 .metric .ml{font-size:10.5px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-bottom:8px;}
@@ -1170,7 +1170,18 @@ async function loadAll(){
       CFG = (row.cfg && Object.keys(row.cfg).length) ? row.cfg : null;
       DATA = (row.data && Object.keys(row.data).length) ? hydrateData(row.data) : null;
       CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, current_period_end: row.current_period_end };
-      if(CFG){ CFG.plan = (row.status === 'active') ? row.plan : 'starter'; }
+      if(CFG){
+        const correctedPlan = (row.status === 'active') ? row.plan : 'starter';
+        const storedPlan = row.cfg && row.cfg.plan;
+        CFG.plan = correctedPlan;
+        // Persist the correction, not just hold it in memory. Without this,
+        // an active subscription's plan can drift from what's cached in
+        // cfg (e.g. after an admin approves a plan change) and the mismatch
+        // shown in admin.html's Plan Mismatches panel never actually clears
+        // for an account that doesn't happen to visit Settings afterward,
+        // even though every login was already correcting it in memory.
+        if(storedPlan !== correctedPlan) saveCfg();
+      }
     }
   }catch(e){ console.error('loadAll failed', e); CFG = null; DATA = null; }
   // Self-heal: a business should never be left with an empty module
@@ -1205,7 +1216,13 @@ async function syncSubscription(){
     const row = Array.isArray(rows) ? rows[0] : rows;
     if(row){
       CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, current_period_end: row.current_period_end };
-      if(CFG){ const active = row.status === 'active'; CFG.plan = active ? row.plan : 'starter'; }
+      if(CFG){
+        const active = row.status === 'active';
+        const correctedPlan = active ? row.plan : 'starter';
+        const storedPlan = row.cfg && row.cfg.plan;
+        CFG.plan = correctedPlan;
+        if(storedPlan !== correctedPlan) saveCfg();
+      }
     }
     // Internal test accounts (TECXFRA_TEST_ACCOUNTS) can preview ANY plan
     // on demand, for demos, screenshots and walkthrough videos, this
