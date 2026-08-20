@@ -8,6 +8,11 @@
 <style>
   :root{ --teal:#4aa8b8; --teal-dim:#3a8b99; --navy:#123642; --navy-deep:#0c262f; --cream:#faf8f3; --ink:#0c262f; --line:#e4ded2; --danger:#c0584a; --ok:#3f8f5f; --amber:#c98a2e; }
   *{box-sizing:border-box}
+  /* html needs overflow-x:hidden too, not just body — a wide child (like
+     the data tables below) can still make the whole page pannable
+     sideways on iOS Safari even with body alone constrained, which is
+     exactly the "have to drag the whole screen right" bug reported. */
+  html{overflow-x:hidden}
   body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--cream);color:var(--ink);transition:background .4s ease;overflow-x:hidden}
 
   /* ============ FUTURISTIC SIGN-IN BACKDROP ============
@@ -104,7 +109,12 @@
   .stat-card:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
   .stat-card .n{font-size:26px;font-weight:800;color:var(--navy);line-height:1.1}
   .stat-card .l{font-size:11px;color:#8a9394;text-transform:uppercase;letter-spacing:.5px;margin-top:4px;font-weight:700}
-  table.biz-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  /* Every table.biz-table is now rendered inside a .table-scroll wrapper
+     (added below in the JS) so only the table area scrolls sideways on
+     narrow screens, instead of forcing the whole page to pan right to
+     reach columns like Verified/Updated or Owner Email/Industry. */
+  .table-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:14px}
+  table.biz-table{width:100%;min-width:640px;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
   table.biz-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#8a9394;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--cream)}
   table.biz-table td{padding:12px 14px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
   table.biz-table tr:last-child td{border-bottom:none}
@@ -448,7 +458,7 @@ async function loadPlanMismatches(){
   const { data, error } = await sb.rpc('admin_list_plan_mismatches');
   if(error){ wrap.innerHTML = `<div class="card empty">Could not check: ${error.message||error}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No mismatches, every active subscription matches the plan cached on the account.</div>'; return; }
-  wrap.innerHTML = `<table class="biz-table"><thead><tr>
+  wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
       <th>Business</th><th>Cached plan (cfg)</th><th>Real plan (subscriptions)</th><th>Status</th><th>Renews</th>
     </tr></thead><tbody>${data.map(m=>`
       <tr>
@@ -457,7 +467,7 @@ async function loadPlanMismatches(){
         <td>${planPill(m.subscription_plan)}</td>
         <td>${statusPill(m.subscription_status)}</td>
         <td>${fmtDate(m.current_period_end)}</td>
-      </tr>`).join('')}</tbody></table>
+      </tr>`).join('')}</tbody></table></div>
       <div class="sub" style="margin-top:8px">This clears itself the next time that business logs in (loadAll/syncSubscription always re-reads from subscriptions). If it's still here after they've logged in since, something's actually wrong, worth a closer look.</div>`;
 }
 function planPill(plan){
@@ -475,7 +485,7 @@ async function loadBusinesses(){
   const { data, error } = await sb.rpc('admin_list_businesses');
   if(error){ wrap.innerHTML = `<div class="card empty">Could not load businesses: ${error.message||error}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No businesses signed up yet.</div>'; return; }
-  wrap.innerHTML = `<table class="biz-table"><thead><tr>
+  wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
       <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Status</th><th>Signed up</th>
     </tr></thead><tbody>${data.map(b=>`
       <tr>
@@ -488,7 +498,7 @@ async function loadBusinesses(){
         <td>${planPill(b.plan)}</td>
         <td>${statusPill(b.status)}</td>
         <td>${fmtDate(b.created_at)}</td>
-      </tr>`).join('')}</tbody></table>`;
+      </tr>`).join('')}</tbody></table></div>`;
 }
 
 async function loadNetworkProfiles(){
@@ -497,7 +507,7 @@ async function loadNetworkProfiles(){
   const { data, error } = await sb.rpc('admin_list_network_profiles');
   if(error){ wrap.innerHTML = `<div class="card empty">Could not load Network profiles: ${error.message||error}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No Network profiles yet, businesses only appear here once they set up their profile on the Prestige plan.</div>'; return; }
-  wrap.innerHTML = `<table class="biz-table"><thead><tr><th>Business</th><th>Industry</th><th>HQ</th><th>Verified</th><th>Updated</th><th></th></tr></thead><tbody>${data.map(p=>`
+  wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr><th>Business</th><th>Industry</th><th>HQ</th><th>Verified</th><th>Updated</th><th></th></tr></thead><tbody>${data.map(p=>`
       <tr data-business="${p.business_id}">
         <td>${esc(p.display_name)}</td>
         <td>${esc(p.industry)||'—'}</td>
@@ -505,7 +515,7 @@ async function loadNetworkProfiles(){
         <td>${p.verified ? '<span class="pill pill-enterprise">✔ Verified</span>' : '<span class="pill pill-starter">Not verified</span>'}</td>
         <td>${fmtDate(p.updated_at)}</td>
         <td><button class="btn-ok" onclick="toggleNetworkVerified('${p.business_id}', ${!p.verified})">${p.verified?'Remove badge':'Verify'}</button></td>
-      </tr>`).join('')}</tbody></table>`;
+      </tr>`).join('')}</tbody></table></div>`;
 }
 
 async function toggleNetworkVerified(businessId, verified){
@@ -520,8 +530,8 @@ async function loadAdmins(){
   const { data, error } = await sb.rpc('admin_list_admins');
   if(error){ wrap.innerHTML = `<div class="card empty">Could not load admins: ${error.message||error}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No admins found.</div>'; return; }
-  wrap.innerHTML = `<table class="biz-table"><thead><tr><th>Email</th><th>Added</th></tr></thead><tbody>${data.map(a=>`
-      <tr><td>${esc(a.email||a.user_id)}</td><td>${fmtDate(a.added_at)}</td></tr>`).join('')}</tbody></table>`;
+  wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr><th>Email</th><th>Added</th></tr></thead><tbody>${data.map(a=>`
+      <tr><td>${esc(a.email||a.user_id)}</td><td>${fmtDate(a.added_at)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 const ANN_KIND_LABEL = {feature:'✨ New feature', bugfix:'🔧 Fixed for you', maintenance:'📌 Maintenance'};
