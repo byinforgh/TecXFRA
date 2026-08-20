@@ -273,10 +273,20 @@ input.inp,select.inp,textarea.inp{width:100%; background:var(--cream); border:1.
 /* iOS Safari renders type=date/time with no icon and centred text, so it
    looks like a static label instead of a tappable control (this is what
    business owners flagged as "the box that's not correct"). The native
-   picker still opens on tap either way, this just makes that visible. */
-input.inp[type="date"],input.inp[type="time"]{background-repeat:no-repeat; background-position:right 13px center; background-size:16px; padding-right:38px; text-align:left;}
-input.inp[type="date"]{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7677' stroke-width='2'><rect x='3' y='5' width='18' height='16' rx='2'/><path d='M16 3v4M8 3v4M3 10h18'/></svg>");}
-input.inp[type="time"]{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7677' stroke-width='2'><circle cx='12' cy='12' r='9'/><path d='M12 7v5l3 3'/></svg>");}
+   picker still opens on tap either way, this just makes that visible.
+   IMPORTANT: this custom icon + padding-right + text-align only apply on
+   devices with a mouse (desktop). On iOS/Android, the OS already renders
+   its own calendar icon and day/month/year "pill" as part of the native
+   control, and that native content has its own fixed layout — reserving
+   38px of padding-right on top of it pushes the native content wider
+   than the box, which is exactly what forced the "have to drag the date
+   field sideways to see it" bug. Scoping this to pointer:fine keeps the
+   desktop fix without breaking the native mobile control. */
+@media (hover:hover) and (pointer:fine){
+  input.inp[type="date"],input.inp[type="time"]{background-repeat:no-repeat; background-position:right 13px center; background-size:16px; padding-right:38px; text-align:left;}
+  input.inp[type="date"]{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7677' stroke-width='2'><rect x='3' y='5' width='18' height='16' rx='2'/><path d='M16 3v4M8 3v4M3 10h18'/></svg>");}
+  input.inp[type="time"]{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7677' stroke-width='2'><circle cx='12' cy='12' r='9'/><path d='M12 7v5l3 3'/></svg>");}
+}
 /* Date/time inputs carry their own browser-native minimum width on some
    mobile browsers (the day/month/year or hour/minute segments won't
    shrink below a built-in floor), which can exceed the card's available
@@ -3388,7 +3398,7 @@ function openContactModal(id){
     <label class="lbl">Next follow-up</label><input class="inp" type="date" value="${esc(c.nextFollowUp||'')}" onchange="updateContact('${id}','nextFollowUp',this.value)">
     <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateContact('${id}','notes',this.value)">${esc(c.notes||'')}</textarea>
     <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
-      ${c.phone?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" rel="noopener noreferrer" href="https://wa.me/${c.phone.replace(/\\D/g,'')}">💬 WhatsApp</a>`:''}
+      ${c.phone?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" rel="noopener noreferrer" href="https://wa.me/${c.phone.replace(/\D/g,'')}">💬 WhatsApp</a>`:''}
       ${CFG.modules.includes('invoicing')?`<button class="btn btn-ghost" style="flex:1" onclick="quickInvoiceFor('${id}')">🧾 Generate Invoice</button>`:''}
       <button class="btn btn-ghost" style="flex:1" onclick="openJournalFor('${id}','${c.name.replace(/'/g,"\\'")}')">📓 Journal Note</button>
       <button class="btn btn-ghost" style="flex:1" onclick="archiveContact('${id}')">🗄️ Archive</button>
