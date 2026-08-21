@@ -208,10 +208,23 @@
 
     <div id="tab-network" class="tab-panel">
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <div class="sub" style="margin-bottom:0">Founding Cohorts, the 10 diaspora + 10 Ghana invite-only launch spots. Fully separate from the standing 2/3/5 founding program, and from the 5 internal test accounts, which stay untouched.</div>
+        <button class="refresh-link" onclick="loadCohortAdmin()">Refresh</button>
+      </div>
+      <div id="cohortStatWrap" class="stat-grid" style="margin-bottom:14px"></div>
+      <div id="cohortListWrap" style="margin-bottom:26px"></div>
+
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
         <div class="sub" style="margin-bottom:0">TecXFRA Network profiles, verify a business once you've checked it's real</div>
         <button class="refresh-link" onclick="loadNetworkProfiles()">Refresh</button>
       </div>
       <div id="networkTableWrap"></div>
+
+      <div class="row" style="justify-content:space-between;margin:26px 0 12px">
+        <div class="sub" style="margin-bottom:0">Enterprise → Prestige crossover, Ghana Enterprise businesses unlock mutual visibility and direct connect with Prestige members after 3 months. Reference only, this list does not grant or revoke anything, the 3-month rule is enforced by the database itself.</div>
+        <button class="refresh-link" onclick="loadEnterpriseQualification()">Refresh</button>
+      </div>
+      <div id="enterpriseQualWrap"></div>
     </div>
 
     <div id="tab-announcements" class="tab-panel">
@@ -390,6 +403,8 @@ async function afterLogin(){
   loadAdmins();
   loadAnnouncements();
   loadNetworkProfiles();
+  loadEnterpriseQualification();
+  loadCohortAdmin();
   loadPlanMismatches();
   loadTickets();
 }
@@ -501,6 +516,33 @@ async function loadBusinesses(){
       </tr>`).join('')}</tbody></table></div>`;
 }
 
+async function loadCohortAdmin(){
+  const statWrap = document.getElementById('cohortStatWrap');
+  const listWrap = document.getElementById('cohortListWrap');
+  if(!statWrap || !listWrap) return;
+  statWrap.innerHTML = '<div class="card empty">Loading…</div>';
+  listWrap.innerHTML = '';
+  const [slots, claims] = await Promise.all([
+    sb.rpc('get_cohort_slots_status'),
+    sb.rpc('admin_list_cohort_claims')
+  ]);
+  if(slots.error){ statWrap.innerHTML = `<div class="card empty">Could not load cohort slots: ${slots.error.message||slots.error}. Has founding_cohorts_schema.sql been run yet?</div>`; return; }
+  const byKey = {}; (slots.data||[]).forEach(r=>{ byKey[r.cohort]=r; });
+  const card = (key,label)=>{
+    const s = byKey[key] || {cap:10, used:0, remaining:10};
+    return `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-num">${s.remaining} / ${s.cap}</div><div class="sub" style="margin:2px 0 0">spots remaining</div></div>`;
+  };
+  statWrap.innerHTML = card('diaspora','Diaspora Cohort (Prestige)') + card('ghana','Ghana Cohort (local tier)');
+  if(claims.error){ listWrap.innerHTML = `<div class="card empty">Could not load claimed businesses: ${claims.error.message||claims.error}</div>`; return; }
+  if(!claims.data || !claims.data.length){ listWrap.innerHTML = '<div class="card empty">No cohort spots claimed yet. Share an invite link ending in ?cohort=diaspora or ?cohort=ghana with the businesses you\'re targeting.</div>'; return; }
+  listWrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr><th>Business</th><th>Cohort</th><th>Plan</th><th>Claimed</th></tr></thead><tbody>${claims.data.map(c=>`
+      <tr>
+        <td>${esc(c.business_name)||'Unnamed business'}</td>
+        <td>${c.cohort==='diaspora'?'🌐 Diaspora':'🇬🇭 Ghana'}</td>
+        <td>${planPill(c.plan)}</td>
+        <td>${fmtDate(c.claimed_at)}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+}
 async function loadNetworkProfiles(){
   const wrap = document.getElementById('networkTableWrap');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
@@ -522,6 +564,23 @@ async function toggleNetworkVerified(businessId, verified){
   const { error } = await sb.rpc('admin_set_network_verified', { p_business_id: businessId, p_verified: verified });
   if(error){ alert('Could not update: ' + (error.message||error)); return; }
   loadNetworkProfiles();
+}
+
+async function loadEnterpriseQualification(){
+  const wrap = document.getElementById('enterpriseQualWrap');
+  wrap.innerHTML = '<div class="card empty">Loading…</div>';
+  const { data, error } = await sb.rpc('admin_list_network_enterprise_status');
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load Enterprise businesses: ${error.message||error}</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No Ghana Enterprise businesses yet.</div>'; return; }
+  wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr><th>Business</th><th>Member since</th><th>Status</th><th>Network profile</th></tr></thead><tbody>${data.map(e=>`
+      <tr>
+        <td>${esc(e.business_name)||'Unnamed business'}</td>
+        <td>${fmtDate(e.member_since)}</td>
+        <td>${e.qualifies
+            ? '<span class="pill pill-enterprise">✔ Unlocked</span>'
+            : `<span class="pill pill-starter">${e.days_remaining} day${e.days_remaining===1?'':'s'} to go</span>`}</td>
+        <td>${e.has_network_profile ? (e.network_visible ? 'Set up, visible' : 'Set up, not visible') : 'Not set up yet'}</td>
+      </tr>`).join('')}</tbody></table></div>`;
 }
 
 async function loadAdmins(){
