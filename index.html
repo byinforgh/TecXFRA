@@ -1695,6 +1695,64 @@ function getTemplates(){
 // Day 30 a final, honest re-entry that acknowledges the gap.
 const TEMPLATE_CATEGORY_LABELS = {cold:'Cold Outreach', warm:'Warm Follow-Up', close:'Closing', objection:'Handling Objections', reconnect:'Reconnect / Gone-Quiet', partner:'Partner Outreach 🌐', investor:'Investor & Capital 🌐', delegation:'Delegation 🌐'};
 
+// ---- Founding Cohorts: Diaspora (10) and Ghana (10) ----------------------
+// Entirely separate from the existing, untouched 2 Enterprise / 3 Growth /
+// 5 Starter founding-slot program below (that pool stays exactly as it is,
+// running as the general public offer). These two cohorts are a curated
+// outreach list, not a self-serve promo: a business only enters one via a
+// direct invite link (?cohort=diaspora or ?cohort=ghana) shared personally,
+// never surfaced in the normal signup flow for anyone who arrives without
+// one. diaspora is a Prestige cohort (free, for keeps); ghana is a local
+// -tier cohort (Starter/Growth/Enterprise, free, for keeps), both capped at
+// 10 and tracked server-side so two people can never race the same spot.
+// See founding_cohorts_schema.sql for the get_cohort_slots_status() and
+// claim_cohort_slot() functions this code assumes.
+const WIZ_COHORT = (function(){
+  try{
+    const v = new URLSearchParams(window.location.search).get('cohort');
+    return (v==='diaspora' || v==='ghana') ? v : null;
+  }catch(e){ return null; }
+})();
+let COHORT_SLOTS = null; // {diaspora:{cap,used,remaining}, ghana:{...}}
+async function loadCohortSlots(){
+  if(!WIZ_COHORT) return;
+  try{
+    if(!(await requireSupabase())) return;
+    const { data, error } = await sb.rpc('get_cohort_slots_status');
+    if(error) throw error;
+    COHORT_SLOTS = {};
+    (data||[]).forEach(r=>{ COHORT_SLOTS[r.cohort] = r; });
+  }catch(e){ console.error('loadCohortSlots failed', e); COHORT_SLOTS = null; }
+}
+function cohortBanner(){
+  if(!WIZ_COHORT) return '';
+  const s = COHORT_SLOTS && COHORT_SLOTS[WIZ_COHORT];
+  const label = WIZ_COHORT==='diaspora' ? 'Founding Diaspora Cohort' : 'Founding Ghana Cohort';
+  const desc = WIZ_COHORT==='diaspora'
+    ? 'Prestige, free for keeps, one of 10 spots reserved for this launch group.'
+    : 'Your chosen plan, free for keeps, one of 10 spots reserved for this launch group.';
+  if(!s) return `<div style="font-size:11.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">🎉 ${label} — ${desc}</div>`;
+  if(s.remaining<=0) return `<div style="font-size:11.5px;font-weight:700;color:var(--muted);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">${label} is fully claimed, you'll continue on a normal paid signup below, still very welcome.</div>`;
+  return `<div style="font-size:11.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">🎉 ${label}, ${s.remaining} of ${s.cap} spot${s.remaining===1?'':'s'} left — ${desc}</div>`;
+}
+// Claims one spot from whichever cohort this signup arrived through. Kept
+// fully separate from claimFoundingSlotIfChosen below: a cohort signup
+// claims ONLY from its own 10-spot pool, never touches the 2/3/5 pool, so
+// the two programs can never double-count against each other.
+async function claimCohortSlotIfChosen(planKey){
+  if(!WIZ_COHORT) return false;
+  try{
+    const { data, error } = await sb.rpc('claim_cohort_slot', { p_cohort: WIZ_COHORT, p_plan: planKey });
+    if(error) throw error;
+    if(data && data.success){
+      const label = WIZ_COHORT==='diaspora' ? 'Founding Diaspora Cohort' : 'Founding Ghana Cohort';
+      showToast(`🎉 Welcome to the ${label}, ${PLANS.find(p=>p.key===planKey).label} is free, for keeps.`);
+      return true;
+    }
+    return false;
+  }catch(e){ console.error('claimCohortSlotIfChosen failed', e); return false; }
+}
+
 let wizIndustry = null;
 let wizPlan = 'growth';
 let FOUNDING_SLOTS = null; // {starter:{cap,used,remaining}, growth:{...}, enterprise:{...}}
@@ -1744,11 +1802,12 @@ function renderWizPlanStep(){
   if(sub) sub.textContent = isAfrican
     ? "TecXFRA rewards its first businesses: the very first 10 signups get their chosen plan free, permanently, 2 Enterprise, 3 Growth, 5 Starter spots. After that, every plan is a paid subscription, and Starter is priced to stay within reach of any business, anywhere."
     : "Businesses outside Ghana, Nigeria, Kenya and South Africa go straight to Prestige, our global/diaspora tier: the TecXFRA Network, verified directory, direct B2B chat and industry channels, priced for the market you're operating in.";
-  if(!isAfrican){
+  const cohortHtml = cohortBanner();
+  if(!isAfrican || WIZ_COHORT==='diaspora'){
     wizPlan = 'prestige';
     const p = PLANS.find(x=>x.key==='prestige');
     grid.style.gridTemplateColumns = '1fr';
-    grid.innerHTML = `
+    grid.innerHTML = `${cohortHtml}
     <div class="plan-pick sel" data-k="prestige" style="border:2px solid var(--teal);border-radius:12px;padding:16px;cursor:default">
       <div style="font-size:10.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:6px;padding:3px 8px;display:inline-block;margin-bottom:8px">🌐 Global / diaspora market, Prestige is your plan</div>
       <div style="font-weight:800;font-size:14.5px;color:var(--navy)">${p.label}</div>
@@ -1758,12 +1817,13 @@ function renderWizPlanStep(){
     return;
   }
   grid.style.gridTemplateColumns = 'repeat(3,1fr)';
-  grid.innerHTML = PLANS.filter(p=>p.key!=='prestige').map(p=>`
+  const bannerRow = cohortHtml ? `<div style="grid-column:1/-1">${cohortHtml}</div>` : '';
+  grid.innerHTML = bannerRow + PLANS.filter(p=>p.key!=='prestige').map(p=>`
     <div class="plan-pick ${wizPlan===p.key?'sel':''}" data-k="${p.key}" onclick="pickWizPlan('${p.key}')" style="border:2px solid ${wizPlan===p.key?'var(--teal)':'var(--line)'};border-radius:12px;padding:14px;cursor:pointer">
       <div style="font-weight:800;font-size:14.5px;color:var(--navy)">${p.label}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${planPriceDisplay(p.key, wizCurrency)}</div>
       <div style="font-size:11.5px;color:var(--ink-dim);margin:4px 0 6px;line-height:1.5">${p.tagline}</div>
-      ${foundingBadge(p.key)}
+      ${WIZ_COHORT==='ghana' ? '' : foundingBadge(p.key)}
     </div>`).join('');
 }
 function renderIndustryGrid(){
@@ -1831,7 +1891,7 @@ function wizGo(step){
   }
   if(step===3 && !wizIndustry){ showToast('Pick an industry first'); return; }
   if(step===3) renderModuleList();
-  if(step===4){ loadFoundingSlots().then(renderWizPlanStep); renderWizPlanStep(); }
+  if(step===4){ loadFoundingSlots().then(renderWizPlanStep); loadCohortSlots().then(renderWizPlanStep); renderWizPlanStep(); }
   document.querySelectorAll('.wiz-step').forEach(s=>s.classList.remove('active'));
   document.querySelector(`.wiz-step[data-step="${step}"]`).classList.add('active');
   [1,2,3,4].forEach(n=>document.getElementById('dot'+n).classList.toggle('on', n===step));
@@ -1871,6 +1931,11 @@ async function finishSetup(setup){
     // granted Prestige live and immediately, no payment, no founding slot.
     plan: isTestAccount ? 'prestige' : 'starter',
     intendedPlan: isTestAccount ? 'prestige' : setup.plan,
+    // Which founding cohort this account arrived through, if any (see
+    // WIZ_COHORT above). null for every ordinary signup and for the
+    // existing public 2/3/5 founding program, purely informational, read
+    // by admin.html to show the two launch cohorts separately.
+    cohort: (!isTestAccount && WIZ_COHORT) ? WIZ_COHORT : null,
     brandColor: '#4aa8b8',
     logoEmoji: '',
     digestPhone: '',
@@ -1883,10 +1948,15 @@ async function finishSetup(setup){
   };
   DATA = emptyData();
   await saveCfg(); await saveData();
-  // Test accounts never touch the founding-slot pool, at all, regardless
-  // of what plan was clicked in the wizard, real founding spots are for
-  // real businesses only.
-  if(!isTestAccount) await claimFoundingSlotIfChosen(setup.plan);
+  // Test accounts never touch either slot pool, at all, regardless of what
+  // plan was clicked in the wizard, real founding spots are for real
+  // businesses only. A cohort signup (arrived via an invite link) draws
+  // only from its own 10-spot cohort, never the general 2/3/5 pool, so a
+  // single signup can never double-claim across both programs.
+  if(!isTestAccount){
+    if(WIZ_COHORT) await claimCohortSlotIfChosen(setup.plan);
+    else await claimFoundingSlotIfChosen(setup.plan);
+  }
   await boot();
   if(isTestAccount){
     showToast(`Internal test account, Prestige granted directly. No founding slot used.`);
@@ -2112,7 +2182,7 @@ const TECXFRA_MORE_KEYS = ['staff','journal','reminders','archive','system','set
 const PLANS = [
   {key:'starter', label:'Starter', price:'Entry', tagline:'Run the daily basics, Tec + F + R',
     desc:'Today, CRM, Calendar, Follow-Ups, Messages, Expenses, Revenue, POS/Bookings, Staff, Guides.',
-    locked:['referrals','persona','audit','accountability','journal','network','investor'], network:false, aiFacts:3, whiteLabel:false, csvImport:false,
+    locked:['referrals','persona','audit','accountability','journal','investor'], network:false, networkLite:true, aiFacts:3, whiteLabel:false, csvImport:false,
     limits:{contacts:30, staff:3, monthlyTransactions:60},
     features:[
       'Today view, Calendar, CRM & Pipeline',
@@ -2126,7 +2196,7 @@ const PLANS = [
     ]},
   {key:'growth', label:'Growth', price:'Paid', tagline:'Adds the X layer, analytics & retention',
     desc:'Everything in Starter, plus Referrals & Retention, Persona, Business Audit, Accountability.',
-    locked:['journal','network','investor'], network:false, aiFacts:10, whiteLabel:false, csvImport:true,
+    locked:['journal','investor'], network:false, networkLite:true, aiFacts:10, whiteLabel:false, csvImport:true,
     limits:{contacts:300, staff:15, monthlyTransactions:1000},
     features:[
       'Everything in Starter, no caps at Starter\'s size',
@@ -2140,7 +2210,7 @@ const PLANS = [
     ]},
   {key:'enterprise', label:'Enterprise', price:'Custom', tagline:'Everything unlocked, deepest AI recall',
     desc:'Everything in Growth, plus Journal, full AI knowledge recall, white-label branding, and CSV import.',
-    locked:['network'], network:false, aiFacts:200, whiteLabel:true, csvImport:true,
+    locked:[], network:false, networkLite:true, aiFacts:200, whiteLabel:true, csvImport:true,
     limits:{contacts:Infinity, staff:Infinity, monthlyTransactions:Infinity},
     features:[
       'Everything in Growth, with no contact/staff/transaction caps',
@@ -2239,8 +2309,17 @@ function planPriceDisplay(planKey, overrideCurrency){
 }
 function currentPlan(){ return PLANS.find(p=>p.key===(CFG.plan||'enterprise')) || PLANS[2]; }
 function isLocked(moduleKey){
-  if(moduleKey==='network') return !currentPlan().network;
+  if(moduleKey==='network') return !currentPlan().network && !currentPlan().networkLite;
   return currentPlan().locked.includes(moduleKey);
+}
+// True once a business can be found and messaged on the Network, even on
+// a non-Prestige plan (opt-in, free). False means the module is fully
+// hidden (should not happen for any current plan, kept for safety).
+function networkAccessLevel(){
+  const p = currentPlan();
+  if(p.network) return 'full';       // Prestige: search, initiate, channels, seeking board
+  if(p.networkLite) return 'lite';   // Starter/Growth/Enterprise: profile + receive/reply only
+  return 'none';
 }
 function renderSidebar(){
   const on = MODULES.filter(m=>CFG.modules.includes(m.key));
@@ -2360,19 +2439,40 @@ let NETWORK_ACTIVE_CONNECTION = null;
 let NETWORK_ACTIVE_CHANNEL = null;
 let NETWORK_ACTIVE_MESSAGES = [];
 let NETWORK_RT = null;             // current realtime subscription handle
+// Only ever populated for Ghana Enterprise-plan businesses: whether this
+// business has cleared the 3-month tenure rule that unlocks mutual
+// visibility and direct connection with Prestige members. Loaded fresh
+// each time the Network page opens, see loadNetworkData().
+let NETWORK_ENTERPRISE_STATUS = null;
 const NETWORK_LOOKING_FOR_OPTIONS = ['Collaboration','Partnership','Investment','Supply Chain','Distribution','Mentorship','Talent / Hire','Marketing / Creative Partner'];
 
 function jsAttr(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' '); }
 
 function renderNetwork(){
   const pc = document.getElementById('pageContent');
+  const level = networkAccessLevel(); // 'full' | 'lite'
+  const allTabs = ['directory','seeking','connections','channels','profile'];
+  const liteTabs = ['connections','profile'];
+  // Ghana Enterprise businesses get the Directory tab too (whether or not
+  // they've cleared the 3-month rule yet), showing either a countdown or,
+  // once qualified, Prestige members only, never the full directory.
+  // That stays exclusive to Prestige. Seeking and Channels stay
+  // Prestige-only either way.
+  const enterpriseTabs = CFG.plan==='enterprise' ? ['directory', ...liteTabs] : liteTabs;
+  const visibleTabs = level==='full' ? allTabs : enterpriseTabs;
+  if(!visibleTabs.includes(networkTab)) networkTab = level==='full' ? 'directory' : 'connections';
+  const introFull = `<div class="card-title">TecXFRA Network <span class="pill pill-active" style="margin-left:8px">Prestige</span></div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.7">A verified directory of TecXFRA businesses. Browse, connect, message, and find partners by industry, all inside the platform. Every member here runs their business on the same standard of accountability.</div>`;
+  const introLite = `<div class="card-title">TecXFRA Network <span class="pill" style="margin-left:8px;background:var(--cream);color:var(--teal-dim);border:1px solid var(--line)">Free, opt-in</span></div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.7">Any business on any plan can be listed and found here, at no cost. Turn on visibility below and Prestige members searching the directory, including diaspora and international buyers, can find you and reach out. You can accept requests and reply for free.
+      <br><br>Searching the full directory yourself, joining industry channels, and starting a new conversation are part of Prestige, that is what funds the active side of the Network. Being found, and replying once someone reaches you, always stays free.</div>`;
   pc.innerHTML = `
     <div class="card" style="margin-bottom:14px;border-color:var(--teal);background:linear-gradient(135deg, var(--teal-tint), var(--paper))">
-      <div class="card-title">TecXFRA Network <span class="pill pill-active" style="margin-left:8px">Prestige</span></div>
-      <div style="font-size:12px;color:var(--ink-dim);line-height:1.7">A verified directory of TecXFRA businesses. Browse, connect, message, and find partners by industry, all inside the platform. Every member here runs their business on the same standard of accountability.</div>
+      ${level==='full' ? introFull : introLite}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      ${['directory','seeking','connections','channels','profile'].map(k=>`<button class="tab-pill ${networkTab===k?'active':''}" onclick="setNetworkTab('${k}')">${{directory:'Directory',seeking:'Seeking',connections:'Connect',channels:'Channels',profile:'My Profile'}[k]}</button>`).join('')}
+      ${visibleTabs.map(k=>`<button class="tab-pill ${networkTab===k?'active':''}" onclick="setNetworkTab('${k}')">${{directory:'Directory',seeking:'Seeking',connections:'Requests',channels:'Channels',profile:'My Profile'}[k]}</button>`).join('')}
+      ${level!=='full' ? `<button class="tab-pill" style="border-style:dashed" onclick="navTo('settings');setSettingsTab('plan');renderSettings();">🔒 Search &amp; Channels, Prestige →</button>` : ''}
     </div>
     <div id="networkBody"><div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:34px">Loading network…</div></div>
   `;
@@ -2381,20 +2481,50 @@ function renderNetwork(){
 async function loadNetworkData(){
   if(!(await requireSupabase())) return;
   const uid = CUR_VENUE_ID;
+  const level = networkAccessLevel();
   try{
-    const [mine, others, conns, chans, needs] = await Promise.all([
-      sb.from('network_profiles').select('*').eq('business_id', uid).maybeSingle(),
-      sb.from('network_profiles').select('*').neq('business_id', uid).eq('visible', true).order('updated_at',{ascending:false}),
-      sb.from('network_connections').select('*').or(`requester_id.eq.${uid},recipient_id.eq.${uid}`).order('created_at',{ascending:false}),
-      sb.from('network_channels').select('*').order('label'),
-      sb.from('network_needs').select('*').order('created_at',{ascending:false}).limit(100)
-    ]);
+    const mine = await sb.from('network_profiles').select('*').eq('business_id', uid).maybeSingle();
     if(mine.error) throw mine.error;
     NETWORK_PROFILE = mine.data || null;
-    NETWORK_DIRECTORY = others.data || [];
+    const conns = await sb.from('network_connections').select('*').or(`requester_id.eq.${uid},recipient_id.eq.${uid}`).order('created_at',{ascending:false});
     NETWORK_CONNECTIONS = conns.data || [];
-    NETWORK_CHANNELS = chans.data || [];
-    NETWORK_NEEDS = needs.data || [];
+    if(level==='full'){
+      const [others, chans, needs] = await Promise.all([
+        sb.from('network_profiles').select('*').neq('business_id', uid).eq('visible', true).order('updated_at',{ascending:false}),
+        sb.from('network_channels').select('*').order('label'),
+        sb.from('network_needs').select('*').order('created_at',{ascending:false}).limit(100)
+      ]);
+      NETWORK_DIRECTORY = others.data || [];
+      NETWORK_CHANNELS = chans.data || [];
+      NETWORK_NEEDS = needs.data || [];
+    } else {
+      // Lite (free, opt-in) accounts resolve profiles from two sources:
+      // 1) anyone they already have a connection with, regardless of that
+      //    business's current visibility toggle, so an existing chat never
+      //    disappears just because the other side turned visibility off.
+      // 2) a broader visible-only fetch, which for most lite accounts
+      //    returns nothing extra, but for a Ghana Enterprise business that
+      //    has cleared the 3-month rule, RLS (network_profiles_select)
+      //    lets this also return every visible Prestige member. The
+      //    scoping happens in the database, not in this query, so this
+      //    code does not need to know or guess who is on which plan.
+      NETWORK_CHANNELS = []; NETWORK_NEEDS = [];
+      const otherIds = Array.from(new Set(NETWORK_CONNECTIONS.map(c=>c.requester_id===uid?c.recipient_id:c.requester_id))).filter(Boolean);
+      const [connScoped, rlsScoped] = await Promise.all([
+        otherIds.length ? sb.from('network_profiles').select('*').in('business_id', otherIds) : Promise.resolve({data:[]}),
+        sb.from('network_profiles').select('*').neq('business_id', uid).eq('visible', true)
+      ]);
+      const merged = new Map();
+      (connScoped.data||[]).forEach(p=>merged.set(p.business_id, p));
+      (rlsScoped.data||[]).forEach(p=>merged.set(p.business_id, p));
+      NETWORK_DIRECTORY = Array.from(merged.values());
+      if(CFG.plan==='enterprise'){
+        const q = await sb.rpc('network_enterprise_qualification_status', { uid });
+        NETWORK_ENTERPRISE_STATUS = (q.data && q.data[0]) || null;
+      } else {
+        NETWORK_ENTERPRISE_STATUS = null;
+      }
+    }
     touchNetworkPresence();
     if(!NETWORK_PRESENCE_TIMER) NETWORK_PRESENCE_TIMER = setInterval(touchNetworkPresence, 4*60*1000);
   }catch(e){
@@ -2426,6 +2556,15 @@ function unsubscribeNetworkRealtime(){
   if(NETWORK_RT){ try{ sb.removeChannel(NETWORK_RT); }catch(e){} NETWORK_RT = null; }
 }
 function setNetworkTab(k){
+  const level = networkAccessLevel();
+  if(level!=='full' && ['seeking','channels'].includes(k)){
+    showToast('That part of the Network is included with Prestige. Requests and your profile stay free.');
+    return;
+  }
+  if(level!=='full' && k==='directory' && CFG.plan!=='enterprise'){
+    showToast('Seeing and connecting with other members is part of Prestige, or Ghana Enterprise after 3 months. Requests and your profile stay free.');
+    return;
+  }
   networkTab = k;
   unsubscribeNetworkRealtime();
   NETWORK_ACTIVE_CONNECTION = null; NETWORK_ACTIVE_CHANNEL = null;
@@ -2443,6 +2582,18 @@ function drawNetworkBody(){
 
 /* ---------- DIRECTORY ---------- */
 function networkDirectoryHtml(){
+  const level = networkAccessLevel();
+  const isEnterpriseLite = level!=='full' && CFG.plan==='enterprise';
+  if(isEnterpriseLite && NETWORK_ENTERPRISE_STATUS && !NETWORK_ENTERPRISE_STATUS.qualifies){
+    const since = NETWORK_ENTERPRISE_STATUS.member_since ? new Date(NETWORK_ENTERPRISE_STATUS.member_since).toLocaleDateString() : '';
+    const days = NETWORK_ENTERPRISE_STATUS.days_remaining;
+    return `<div class="card" style="text-align:center;padding:34px 20px">
+      <div style="font-size:32px;margin-bottom:10px">🔒</div>
+      <div class="disp" style="font-size:16px;font-weight:700;margin-bottom:8px">Prestige visibility unlocks soon</div>
+      <div style="font-size:12.5px;color:var(--ink-dim);max-width:420px;margin:0 auto 10px;line-height:1.7">Ghana Enterprise businesses can see, be seen by, and directly connect with Prestige members once they've been on TecXFRA Enterprise for 3 months. You joined on <b>${esc(since)}</b>, <b>${days} day${days===1?'':'s'}</b> to go.</div>
+      <div style="font-size:11px;color:var(--muted);max-width:420px;margin:0 auto">This is a fixed platform rule, not something either side can override. It exists so every Prestige connection made through the Network is with a business that's proven it's been running here for a while.</div>
+    </div>`;
+  }
   if(!NETWORK_PROFILE){
     return `<div class="card" style="text-align:center;padding:34px 20px">
       <div style="font-size:32px;margin-bottom:10px">🌐</div>
@@ -2452,6 +2603,7 @@ function networkDirectoryHtml(){
     </div>`;
   }
   return `
+    ${isEnterpriseLite ? `<div class="card" style="margin-bottom:14px;border-color:var(--teal);background:var(--teal-tint);font-size:11.5px;color:var(--teal-dim);line-height:1.6">You've cleared the 3-month Enterprise rule, so this shows Prestige members plus anyone you're already connected with, not the full member directory. Full directory search stays part of Prestige.</div>` : ''}
     <div class="card" style="margin-bottom:14px;padding:0;overflow:hidden">
       <div id="networkMap" style="height:260px;width:100%;background:var(--cream)"></div>
     </div>
@@ -2564,6 +2716,11 @@ function openConnectModal(targetId, targetName){
   </div></div>`;
 }
 async function sendConnectRequest(targetId){
+  if(networkAccessLevel()!=='full'){
+    closeModal();
+    showToast('Starting a new connection is part of Prestige. You can still receive and reply to requests for free.');
+    return;
+  }
   if(!(await requireSupabase())) return;
   const note = document.getElementById('connectNote')?.value?.trim() || '';
   try{
@@ -2841,9 +2998,18 @@ function networkProfileFormHtml(){
   const p = NETWORK_PROFILE || {};
   const lf = p.looking_for || [];
   const pct = networkProfileCompleteness(NETWORK_PROFILE);
+  const showEnterpriseRule = CFG.plan==='enterprise' && networkAccessLevel()!=='full';
+  const es = NETWORK_ENTERPRISE_STATUS;
   return `<div class="card" style="max-width:560px">
     <div class="card-title">My TecXFRA Network profile</div>
     <div style="font-size:11.5px;color:var(--ink-dim);margin-bottom:12px;line-height:1.6">This is what other verified members see in the Directory. It's separate from your internal CRM data, only what you choose to share externally.</div>
+    ${showEnterpriseRule ? `<div class="card" style="margin-bottom:16px;border-color:var(--line);background:var(--cream);font-size:11.5px;color:var(--ink-dim);line-height:1.7">
+      <b style="color:var(--navy)">Platform rule: Enterprise ↔ Prestige visibility.</b> Ghana Enterprise businesses see, are seen by, and can directly connect with Prestige members once they've been on TecXFRA Enterprise for 3 months. Any business on any plan can already be found and reply for free, this specific rule only governs the Prestige crossover.
+      ${es ? (es.qualifies
+          ? `<div style="margin-top:8px;color:var(--teal-dim);font-weight:600">✔ Unlocked, since ${es.member_since ? new Date(es.member_since).toLocaleDateString() : ''}.</div>`
+          : `<div style="margin-top:8px;color:var(--muted)">Member since ${es.member_since ? new Date(es.member_since).toLocaleDateString() : ''} · <b>${es.days_remaining} day${es.days_remaining===1?'':'s'}</b> until this unlocks.</div>`)
+        : ''}
+    </div>` : ''}
     <div style="margin-bottom:18px">
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-dim);margin-bottom:6px"><span>Profile completeness</span><span><b style="color:var(--navy)">${pct}%</b></span></div>
       <div class="progress-track"><div class="progress-fill" style="width:${pct}%;background:${pct>=80?'var(--green,#2e9e6e)':'var(--teal)'}"></div></div>
