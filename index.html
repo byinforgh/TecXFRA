@@ -2233,6 +2233,7 @@ const PLANS = [
       'Private industry channels, find suppliers, partners & collaborators by sector',
       'Post exactly what you are looking for: Collaboration, Partnership, Investment, Supply',
       'A verified badge on your public profile, signals real numbers, real operations',
+      'Prestige-depth Investor Data Room, unit economics, staffing cost, working capital, a use-of-funds builder and risk register, not just a revenue chart',
       'White-glove onboarding, custom domain, and a direct line for 1:1 coaching / audits',
       'Built for diaspora-run businesses, multi-location operators, and investment-ready founders'
     ]}
@@ -4050,8 +4051,8 @@ function renderInventory(){
       <datalist id="invList">${(DATA.inventory||[]).map(it=>`<option value="${esc(it.name)}">`).join('')}</datalist>
       ${stocked?`<label class="lbl">Qty to add</label><input class="inp" id="rQty" type="number" placeholder="e.g. 24">
       <label class="lbl">Par level (optional)</label><input class="inp" id="rPar" type="number" placeholder="e.g. 10">`:''}
-      <label class="lbl">${stocked?'Cost per unit (optional)':'What it costs you to deliver (optional)'}</label><input class="inp" id="rCost" type="number" placeholder="what it costs you">
-      <label class="lbl">${stocked?'Sale price (optional)':'Price (optional)'}</label><input class="inp" id="rPrice" type="number" placeholder="what you charge">
+      <label class="lbl">${stocked?'Cost per unit (optional)':'What it costs you to deliver (optional)'}</label><input class="inp" id="rCost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="what it costs you">
+      <label class="lbl">${stocked?'Sale price (optional)':'Price (optional)'}</label><input class="inp" id="rPrice" type="number" inputmode="decimal" step="0.01" min="0" placeholder="what you charge">
       <label class="lbl">Notes (optional)</label><textarea class="inp" id="rNotes" rows="2" placeholder="${stocked?'Supplier, variant, anything worth remembering':'What it includes, duration, anything worth remembering'}"></textarea>
       <button class="btn btn-primary btn-full" onclick="restock()">＋ ${stocked?'Add Stock':`Add ${esc(singular)}`}</button>
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
@@ -4092,8 +4093,8 @@ function openItemModal(id){
     <label class="lbl">Name</label><input class="inp" value="${esc(it.name||'')}" onchange="updateItem('${id}','name',this.value)">
     ${stocked?`<label class="lbl">Stock on hand</label><input class="inp" type="number" value="${esc(it.stock||0)}" onchange="updateItem('${id}','stock',parseFloat(this.value)||0)">
     <label class="lbl">Par level</label><input class="inp" type="number" value="${esc(it.par||0)}" onchange="updateItem('${id}','par',parseFloat(this.value)||0)">`:''}
-    <label class="lbl">Cost per unit</label><input class="inp" type="number" value="${esc(it.cost||0)}" onchange="updateItem('${id}','cost',parseFloat(this.value)||0)">
-    <label class="lbl">Sale price</label><input class="inp" type="number" value="${esc(it.price||0)}" onchange="updateItem('${id}','price',parseFloat(this.value)||0)">
+    <label class="lbl">Cost per unit</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(it.cost||0)}" onchange="updateItem('${id}','cost',parseFloat(this.value)||0)">
+    <label class="lbl">Sale price</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(it.price||0)}" onchange="updateItem('${id}','price',parseFloat(this.value)||0)">
     <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateItem('${id}','notes',this.value)">${esc(it.notes||'')}</textarea>
     <button class="btn btn-ghost btn-full" style="margin-top:10px;color:var(--coral)" onclick="removeItem('${id}')">Remove Item</button>
   </div></div>`;
@@ -4126,7 +4127,7 @@ function renderInvoicing(){
       <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
       <select class="inp" id="invContact"><option value="">, New name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
       <label class="lbl">Or new name</label><input class="inp" id="invNewName" placeholder="e.g. Kwame Enterprises">
-      <label class="lbl">Amount owed</label><input class="inp" id="invAmt" type="number">
+      <label class="lbl">Amount owed</label><input class="inp" id="invAmt" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
       <label class="lbl">Due date (optional)</label><input class="inp" id="invDue" type="date">
       <button class="btn btn-primary btn-full" onclick="addDebtor()">＋ Add Invoice</button>
     </div>
@@ -4137,7 +4138,7 @@ function renderInvoicing(){
     <label class="lbl">Or client name</label><input class="inp" id="sendInvName" placeholder="e.g. Kwame Enterprises">
     <label class="lbl">Client phone (optional, for WhatsApp)</label><input class="inp" id="sendInvPhone" placeholder="e.g. 0241234567">
     <label class="lbl">What's this for</label><input class="inp" id="sendInvDesc" placeholder="e.g. Logo design + business card set">
-    <label class="lbl">Amount</label><input class="inp" id="sendInvAmt" type="number">
+    <label class="lbl">Amount</label><input class="inp" id="sendInvAmt" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
     <label class="lbl">Due date (optional)</label><input class="inp" id="sendInvDue" type="date">
     <button class="btn btn-primary btn-full" onclick="generateInvoice()">＋ Generate Invoice</button>
     <div id="sendInvResult" style="margin-top:12px"></div>
@@ -4231,7 +4232,7 @@ function openDebtorModal(id){
   const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
     <div class="modal-head"><h3>${esc(c.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <label class="lbl">Amount owed</label><input class="inp" type="number" value="${esc(c.value||0)}" onchange="updateDebtor('${id}','value',parseFloat(this.value)||0)">
+    <label class="lbl">Amount owed</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(c.value||0)}" onchange="updateDebtor('${id}','value',parseFloat(this.value)||0)">
     <label class="lbl">Due date</label><input class="inp" type="date" value="${esc(c.dueDate||'')}" onchange="updateDebtor('${id}','dueDate',this.value)">
     <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="confirmMarkDebtPaid('${id}')">Mark Fully Paid</button>
   </div></div>`;
@@ -4349,7 +4350,7 @@ function renderExpenses(){
     <div class="card"><div class="card-title">Log an Expense</div>
       <label class="lbl">What</label><input class="inp" id="eItem" placeholder="e.g. Supplier delivery">
       <label class="lbl">Category</label><select class="inp" id="eCat"><option>Cost of Goods</option><option>Overheads</option><option>Marketing</option><option>Payroll</option><option>Other</option></select>
-      <label class="lbl">Amount</label><input class="inp" id="eAmt" type="number">
+      <label class="lbl">Amount</label><input class="inp" id="eAmt" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
       <label class="lbl">Date</label><input class="inp" id="eDate" type="date" value="${todayStr()}">
       <button class="btn btn-primary btn-full" onclick="addExpense()">＋ Log Expense</button>
     </div>
@@ -4368,7 +4369,7 @@ function openExpenseModal(id){
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">Changes here affect your revenue and expense totals immediately.</div>
     <label class="lbl">What</label><input class="inp" id="eeItem" value="${esc(e.item||'')}">
     <label class="lbl">Category</label><select class="inp" id="eeCat">${['Cost of Goods','Overheads','Marketing','Payroll','Other'].map(c=>`<option ${c===e.category?'selected':''}>${c}</option>`).join('')}</select>
-    <label class="lbl">Amount</label><input class="inp" id="eeAmt" type="number" value="${esc(e.amount||0)}">
+    <label class="lbl">Amount</label><input class="inp" id="eeAmt" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(e.amount||0)}">
     <label class="lbl">Date</label><input class="inp" id="eeDate" type="date" value="${esc(e.date||todayStr())}">
     <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="confirmEditExpense('${id}')">Save Changes</button>
     <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--coral)" onclick="archiveExpense('${id}');closeModal()">Archive This Expense</button>
@@ -4446,7 +4447,7 @@ function renderStaff(){
       <label class="lbl">Role</label><input class="inp" id="stRole" placeholder="e.g. Sales Associate">
       <label class="lbl">Department</label><input class="inp" id="stDept" placeholder="e.g. Front of House">
       <label class="lbl">Pay type</label><select class="inp" id="stPay"><option>Monthly</option><option>Daily</option><option>Weekly</option><option>Commission</option></select>
-      <label class="lbl">Pay rate (optional)</label><input class="inp" id="stRate" type="number" placeholder="e.g. 1500">
+      <label class="lbl">Pay rate (optional)</label><input class="inp" id="stRate" type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 1500">
       <button class="btn btn-primary btn-full" onclick="addStaff()">＋ Add</button>
     </div>
   </div>
@@ -4528,7 +4529,7 @@ function openStaffModal(id){
     <label class="lbl">Role</label><input class="inp" value="${esc(s.role||'')}" onchange="updateStaff('${id}','role',this.value)">
     <label class="lbl">Department</label><input class="inp" value="${esc(s.dept||'')}" onchange="updateStaff('${id}','dept',this.value)">
     <label class="lbl">Pay type</label><select class="inp" onchange="updateStaff('${id}','payType',this.value)">${['Monthly','Daily','Weekly','Commission','Owner'].map(p=>`<option ${p===s.payType?'selected':''}>${p}</option>`).join('')}</select>
-    <label class="lbl">Pay rate</label><input class="inp" type="number" value="${esc(s.payRate||0)}" onchange="updateStaff('${id}','payRate',parseFloat(this.value)||0)">
+    <label class="lbl">Pay rate</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(s.payRate||0)}" onchange="updateStaff('${id}','payRate',parseFloat(this.value)||0)">
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
       <div class="card-title" style="margin-bottom:8px">Shift Folder <span class="sub">${lastWorkedLabel(id)}, nothing ever deleted</span></div>
       <div id="staffShiftFolder-${id}"></div>
@@ -4879,14 +4880,65 @@ function renderRevenue(){
    editable by opening the browser console and poking at DATA. */
 function renderInvestor(){
   const pc = document.getElementById('pageContent');
+  const isPrestige = !!currentPlan().network;
   pc.innerHTML = `
     <div class="card" style="margin-bottom:14px;border-color:var(--navy);background:linear-gradient(135deg, var(--teal-tint), var(--paper))">
-      <div class="card-title">Investor Data Room <span class="pill pill-active" style="margin-left:8px">Enterprise</span></div>
+      <div class="card-title">Investor Data Room <span class="pill pill-active" style="margin-left:8px">${isPrestige?'Prestige':'Enterprise'}</span></div>
       <div style="font-size:12px;color:var(--ink-dim);line-height:1.7">A snapshot of your business built from your real numbers, computed on our servers so nothing here can be edited before you show it to a bank, investor, or client. Refresh it right before you walk into the room.</div>
     </div>
     <div id="investorBody"><div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:34px">Loading your snapshot…</div></div>
   `;
   loadInvestorSnapshot();
+}
+// Investor readiness score → a short, plain-English read of the number,
+// used both in the gauge metric and inline in the executive summary.
+function readinessLabel(score){
+  if(score>=80) return 'Investor-ready';
+  if(score>=55) return 'Getting there';
+  if(score>=30) return 'Early stage';
+  return 'Not yet ready';
+}
+function readinessColor(score){
+  if(score>=80) return 'green'; if(score>=55) return 'amber'; return 'coral';
+}
+// Auto-written, numbers-first executive summary. Every sentence pulls
+// directly from the snapshot already on screen, nothing here is
+// invented, so it can never say something the charts below don't back up.
+function investorExecutiveSummary(snap, cust, inv, repeatRate){
+  const name = snap.business_name || 'This business';
+  const months = snap.months_active_trading||0;
+  const growthTxt = snap.mom_growth_pct===null ? 'has not yet built a month-on-month comparison' : (snap.mom_growth_pct>=0 ? `grew revenue ${snap.mom_growth_pct}% month on month` : `saw revenue decline ${Math.abs(snap.mom_growth_pct)}% month on month`);
+  const staffTxt = snap.staff ? `runs with ${snap.staff.headcount} staff member${snap.staff.headcount===1?'':'s'} on record${snap.staff.monthly_payroll_estimate>0?`, an estimated ${money(snap.staff.monthly_payroll_estimate)}/month in payroll`:''}` : '';
+  const debtTxt = inv.outstanding_total>0 ? `carries ${money(inv.outstanding_total)} in uncollected invoices across ${inv.outstanding_count} account${inv.outstanding_count===1?'':'s'}` : 'has no outstanding uncollected invoices';
+  const retentionTxt = repeatRate!==null ? `${repeatRate}% of tracked buyers have purchased more than once` : 'has not yet logged enough repeat sales to measure retention';
+  return `${esc(name)} has ${months} month${months===1?'':'s'} of dated trading activity on TecXFRA and ${growthTxt}. The business ${debtTxt}, and ${retentionTxt}${staffTxt?`. It ${staffTxt}`:''}. Overall readiness score: ${snap.readiness_score}/100, ${readinessLabel(snap.readiness_score).toLowerCase()}.`;
+}
+function prestigeLockedCard(title){
+  return `<div class="card" style="border-style:dashed;text-align:center;padding:22px">
+    <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px">${esc(title)} <span style="font-size:10.5px;font-weight:600;color:var(--teal-dim)">🔒 Prestige</span></div>
+    <div style="font-size:11.5px;color:var(--ink-dim);margin-bottom:10px;max-width:420px;margin-left:auto;margin-right:auto">This section goes into the level of detail a serious investor or bank actually asks for, unit economics, staffing cost, working capital, use-of-funds, not just a revenue chart.</div>
+    <button class="btn btn-ghost" onclick="navTo('settings');setSettingsTab('plan');renderSettings();">Upgrade to Prestige →</button>
+  </div>`;
+}
+async function saveInvestorAsk(){
+  const amount = parseFloat(document.getElementById('invAskAmt').value);
+  const purpose = document.getElementById('invAskPurpose').value.trim().slice(0,300);
+  const useOfFunds = document.getElementById('invAskUse').value.trim().slice(0,600);
+  if(!Number.isFinite(amount) || amount<=0){ showToast('Enter a valid ask amount'); return; }
+  DATA.investorAsk = { amount, purpose, useOfFunds, updated: todayStr() };
+  await saveData(); showToast('Saved for this Data Room'); renderInvestor();
+}
+async function addInvestorRisk(){
+  const risk = document.getElementById('invRiskText').value.trim().slice(0,200);
+  const mitigation = document.getElementById('invMitigationText').value.trim().slice(0,300);
+  if(!risk){ showToast('Describe the risk first'); return; }
+  if(!Array.isArray(DATA.investorRisks)) DATA.investorRisks = [];
+  DATA.investorRisks.push({id:uid('RK'), risk, mitigation});
+  await saveData(); showToast('Added'); renderInvestor();
+}
+async function removeInvestorRisk(id){
+  DATA.investorRisks = (DATA.investorRisks||[]).filter(r=>r.id!==id);
+  await saveData(); renderInvestor();
 }
 async function loadInvestorSnapshot(){
   if(!(await requireSupabase())) return;
@@ -4903,13 +4955,21 @@ async function loadInvestorSnapshot(){
 function drawInvestorBody(snap){
   const body = document.getElementById('investorBody');
   if(!body) return;
+  const isPrestige = !!currentPlan().network;
   const months = (snap.revenue_by_month||[]).slice().reverse();
   const expByMonth = {}; (snap.expenses_by_month||[]).forEach(m=>{ expByMonth[m.month]=m.expenses; });
   const maxRev = Math.max(1, ...months.map(m=>m.revenue));
   const cust = snap.customers || {total:0,hot:0,warm:0,cold:0,repeat_buyers:0,buyers_seen:0};
   const inv = snap.invoices || {outstanding_count:0,outstanding_total:0,paid_count:0,paid_total:0};
+  const staff = snap.staff || {headcount:0,on_duty_now:0,monthly_payroll_estimate:0};
+  const invy = snap.inventory || {sku_count:0,value_at_cost:0,value_at_price:0,below_par_count:0};
+  const margin = (snap.gross_margin_by_month||[]).slice().reverse();
+  const breakdown = (snap.expense_breakdown||[]).slice();
+  const maxBreakdown = Math.max(1, ...breakdown.map(b=>b.total));
   const repeatRate = cust.buyers_seen>0 ? Math.round((cust.repeat_buyers/cust.buyers_seen)*100) : null;
   const sinceLabel = snap.on_platform_since ? new Date(snap.on_platform_since).toLocaleDateString('en-GB',{month:'short',year:'numeric'}) : ', ';
+  const ask = DATA.investorAsk || null;
+  const risks = DATA.investorRisks || [];
 
   // Presentation coaching: plain-English flags built off the same numbers
   // shown above, not a separate guess, so it always matches what's on
@@ -4926,12 +4986,17 @@ function drawInvestorBody(snap){
 
   body.innerHTML = `
   <div class="grid-metrics" style="margin-bottom:14px">
+    <div class="metric ${readinessColor(snap.readiness_score)}"><div class="ml">Readiness Score</div><div class="mv">${snap.readiness_score}/100</div><div class="ms">${readinessLabel(snap.readiness_score)}</div></div>
     <div class="metric navy"><div class="ml">On TecXFRA Since</div><div class="mv" style="font-size:16px">${sinceLabel}</div></div>
     <div class="metric ${snap.mom_growth_pct===null?'navy':snap.mom_growth_pct<0?'coral':'green'}"><div class="ml">Month-on-Month</div><div class="mv">${snap.mom_growth_pct===null?', ':(snap.mom_growth_pct>=0?'+':'')+snap.mom_growth_pct+'%'}</div></div>
     <div class="metric navy"><div class="ml">Total Contacts</div><div class="mv">${cust.total}</div></div>
     <div class="metric ${repeatRate===null?'navy':repeatRate<20?'coral':'green'}"><div class="ml">Repeat Buyer Rate</div><div class="mv">${repeatRate===null?', ':repeatRate+'%'}</div><div class="ms">${cust.repeat_buyers} of ${cust.buyers_seen} buyers</div></div>
     <div class="metric coral"><div class="ml">Outstanding Debt</div><div class="mv">${money(inv.outstanding_total)}</div><div class="ms">${inv.outstanding_count} invoice${inv.outstanding_count===1?'':'s'}</div></div>
     <div class="metric green"><div class="ml">Collected</div><div class="mv">${money(inv.paid_total)}</div><div class="ms">${inv.paid_count} invoice${inv.paid_count===1?'':'s'} paid</div></div>
+  </div>
+  <div class="card" style="border-color:var(--navy)"><div class="card-title">Executive Summary</div>
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8">${investorExecutiveSummary(snap, cust, inv, repeatRate)}</div>
+    ${snap.readiness_reasons && snap.readiness_reasons.length ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7"><b style="color:var(--navy)">Score is held back by:</b> ${snap.readiness_reasons.map(esc).join(' · ')}</div>` : ''}
   </div>
   <div class="card"><div class="card-title">Revenue by Month</div>
     <div style="display:flex;align-items:flex-end;gap:10px;height:150px;padding-top:10px">
@@ -4962,6 +5027,45 @@ function drawInvestorBody(snap){
       </ul>
     </div>
   </div>
+  ${!isPrestige ? prestigeLockedCard('Unit Economics, Staffing, Working Capital & Use of Funds') : `
+  <div class="card"><div class="card-title">Gross Margin by Month <span class="sub">revenue minus Cost of Goods</span></div>
+    <div class="scroll-tbl"><table><thead><tr><th>Month</th><th>Revenue</th><th>COGS</th><th>Gross Margin</th><th>Margin %</th></tr></thead><tbody>
+    ${margin.length ? margin.map(m=>`<tr><td>${m.month}</td><td class="mono">${money(m.revenue)}</td><td class="mono">${money(m.cogs)}</td><td class="mono">${money(m.gross_margin)}</td><td class="mono">${m.gross_margin_pct===null?', ':m.gross_margin_pct+'%'}</td></tr>`).join('') : `<tr><td colspan="5" class="empty">Not enough dated sales yet</td></tr>`}
+    </tbody></table></div>
+  </div>
+  <div class="two-col">
+    <div class="card"><div class="card-title">Where the Money Goes <span class="sub">expenses by category, last 6 months</span></div>
+      ${breakdown.length ? breakdown.map(b=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px"><span>${esc(b.category)}</span><span class="mono">${money(b.total)}</span></div><div style="height:7px;background:var(--line);border-radius:4px"><div style="height:100%;width:${Math.max(3,(b.total/maxBreakdown)*100)}%;background:var(--amber);border-radius:4px"></div></div></div>`).join('') : '<div class="empty">No expenses logged yet</div>'}
+    </div>
+    <div class="card"><div class="card-title">Staff & Payroll Position</div>
+      <div class="list-row"><span>Headcount on record</span><span class="mono">${staff.headcount}</span></div>
+      <div class="list-row"><span>On duty right now</span><span class="mono">${staff.on_duty_now}</span></div>
+      <div class="list-row"><span>Est. monthly payroll</span><span class="mono">${money(staff.monthly_payroll_estimate)}</span></div>
+      ${staff.headcount===0?'<div style="font-size:11px;color:var(--muted);margin-top:6px">A solo operation reads as key-person risk to an investor, add anyone who actually works in the business under Staff & Shifts.</div>':''}
+    </div>
+  </div>
+  <div class="card"><div class="card-title">Working Capital, Inventory Position</div>
+    <div class="grid-metrics">
+      <div class="metric navy"><div class="ml">SKUs Tracked</div><div class="mv">${invy.sku_count}</div></div>
+      <div class="metric navy"><div class="ml">Stock Value, at Cost</div><div class="mv">${money(invy.value_at_cost)}</div></div>
+      <div class="metric green"><div class="ml">Stock Value, at Sale Price</div><div class="mv">${money(invy.value_at_price)}</div></div>
+      <div class="metric ${invy.below_par_count>0?'coral':'navy'}"><div class="ml">Below Par Level</div><div class="mv">${invy.below_par_count}</div></div>
+    </div>
+  </div>
+  <div class="card"><div class="card-title">The Ask, Use of Funds</div>
+    ${ask ? `<div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;margin-bottom:10px"><b style="color:var(--navy)">Requesting ${money(ask.amount)}</b>${ask.purpose?` for ${esc(ask.purpose)}`:''}.${ask.useOfFunds?`<br><br>${esc(ask.useOfFunds)}`:''}<br><span style="font-size:10.5px;color:var(--muted)">Last updated ${fmtDate(ask.updated)}</span></div>` : '<div class="empty" style="margin-bottom:10px">Not set yet, fill this in before your next meeting.</div>'}
+    <label class="lbl">Amount you're raising</label><input class="inp" id="invAskAmt" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="${ask?esc(ask.amount):''}">
+    <label class="lbl">Purpose, one line</label><input class="inp" id="invAskPurpose" placeholder="e.g. Second location deposit + fit-out" value="${ask?esc(ask.purpose||''):''}">
+    <label class="lbl">Use of funds, the detail</label><textarea class="inp" id="invAskUse" rows="3" placeholder="Break down exactly what each part of this covers">${ask?esc(ask.useOfFunds||''):''}</textarea>
+    <button class="btn btn-primary btn-full" style="margin-top:6px" onclick="saveInvestorAsk()">Save Ask</button>
+  </div>
+  <div class="card"><div class="card-title">Risk Register <span class="sub">what you'd rather they ask than assume</span></div>
+    ${risks.length ? risks.map(r=>`<div class="list-row" style="align-items:flex-start"><div><b>${esc(r.risk)}</b>${r.mitigation?`<br><span style="font-size:11.5px;color:var(--ink-dim)">Mitigation: ${esc(r.mitigation)}</span>`:''}</div><span style="color:var(--muted);font-size:11px;cursor:pointer" onclick="removeInvestorRisk('${r.id}')">remove</span></div>`).join('') : '<div class="empty" style="margin-bottom:10px">None logged. Investors trust founders who name their own risks first.</div>'}
+    <label class="lbl" style="margin-top:10px">Risk</label><input class="inp" id="invRiskText" placeholder="e.g. Single supplier for main product line">
+    <label class="lbl">Mitigation (optional)</label><input class="inp" id="invMitigationText" placeholder="e.g. Second supplier being onboarded this quarter">
+    <button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="addInvestorRisk()">＋ Add to Risk Register</button>
+  </div>
+  `}
   <div class="card" style="text-align:center">
     <button class="btn btn-ghost" onclick="loadInvestorSnapshot()">↻ Refresh Snapshot</button>
     <button class="btn btn-ghost" onclick="window.print()">🖨️ Print / Save as PDF</button>
