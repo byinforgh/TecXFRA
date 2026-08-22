@@ -2642,6 +2642,28 @@ function renderNetworkDirGrid(){
 // function, not a second hand-copied template, means it is structurally
 // impossible for the preview to drift out of sync with the real thing.
 // isPreview swaps only the action row, everything above it is identical.
+// Maps each "Looking For" option to the room built for it in
+// network_channels (see migration 0041). Every option now has a real
+// destination, so a tag on a profile card is never a dead click.
+const NETWORK_LOOKING_FOR_CHANNEL_KEY = {
+  'Collaboration':'collaboration', 'Partnership':'partnership', 'Investment':'investment',
+  'Supply Chain':'supply_chain', 'Distribution':'distribution', 'Mentorship':'mentorship',
+  'Talent / Hire':'talent_hire', 'Marketing / Creative Partner':'marketing'
+};
+function openLookingForTag(label){
+  const level = networkAccessLevel();
+  if(level!=='full'){ setNetworkTab('channels'); return; } // reuses the standard Prestige-paywall toast
+  setNetworkTab('channels');
+  const key = NETWORK_LOOKING_FOR_CHANNEL_KEY[label];
+  const ch = key ? NETWORK_CHANNELS.find(c=>c.key===key) : null;
+  if(ch) setTimeout(()=>openNetworkChannel(ch.id), 0);
+  else showToast(`No dedicated room for "${label}" yet, browse Industry rooms instead.`);
+}
+function networkContactHref(kind, value){
+  const digits = (value||'').replace(/[^\d+]/g,'');
+  if(!digits) return '';
+  return kind==='whatsapp' ? `https://wa.me/${digits.replace(/^\+/,'')}` : `tel:${digits}`;
+}
 function networkCardHtml(p, isPreview){
   if(!p) return '';
   const ind = INDUSTRIES.find(i=>i.key===p.industry);
@@ -2663,9 +2685,14 @@ function networkCardHtml(p, isPreview){
     actionRow = `<div style="margin-top:auto">${actionBtn}</div>`;
     var nearChip = nearYou ? `<span class="chip" style="background:var(--teal-tint);color:var(--teal-dim)">📍 Near you</span>` : '';
   }
+  const avatar = p.logo_url
+    ? `<img src="${esc(p.logo_url)}" alt="" style="width:38px;height:38px;border-radius:10px;object-fit:cover;flex-shrink:0;border:1px solid var(--line)">`
+    : `<div style="width:38px;height:38px;border-radius:10px;background:var(--teal-tint);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${ind?ind.ic:'🏢'}</div>`;
+  const waHref = networkContactHref('whatsapp', p.whatsapp);
+  const telHref = networkContactHref('tel', p.phone);
   return `<div class="card" style="display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <div style="width:38px;height:38px;border-radius:10px;background:var(--teal-tint);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${ind?ind.ic:'🏢'}</div>
+      ${avatar}
       <div style="min-width:0">
         <div style="font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:5px">${esc(p.display_name)} ${p.verified?'<span title="Verified" style="color:var(--teal)">✔</span>':''}</div>
         <div style="font-size:10.5px;color:var(--muted)">${ind?ind.label:'General'}${p.hq_location?' · '+esc(p.hq_location):''}</div>
@@ -2677,9 +2704,10 @@ function networkCardHtml(p, isPreview){
     </div>
     ${p.tagline?`<div style="font-size:11.5px;font-weight:600;color:var(--navy);margin-bottom:6px">${esc(p.tagline)}</div>`:''}
     ${p.bio?`<div style="font-size:11.5px;color:var(--ink-dim);line-height:1.5;margin-bottom:8px">${esc(p.bio).slice(0,140)}${p.bio.length>140?'…':''}</div>`:''}
+    ${p.capabilities?`<div style="font-size:11px;color:var(--ink-dim);line-height:1.5;margin-bottom:8px;padding:8px 10px;background:var(--cream);border-radius:8px;border:1px solid var(--line-soft)"><b style="color:var(--navy);font-size:10px;letter-spacing:.03em;text-transform:uppercase;display:block;margin-bottom:2px">What they offer</b>${esc(p.capabilities).slice(0,180)}${p.capabilities.length>180?'…':''}</div>`:''}
     ${(p.founded_year||p.team_size)?`<div style="font-size:10px;color:var(--muted);margin-bottom:8px">${p.founded_year?'Est. '+esc(p.founded_year):''}${p.founded_year&&p.team_size?' · ':''}${p.team_size?esc(p.team_size)+' team':''}</div>`:''}
-    ${(p.looking_for&&p.looking_for.length)?`<div style="margin-bottom:8px">${p.looking_for.map(t=>`<span class="chip">${esc(t)}</span>`).join('')}</div>`:''}
-    ${(p.linkedin_url||p.x_url)?`<div style="margin-bottom:10px;font-size:11px">${p.linkedin_url?`<a href="${esc(p.linkedin_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--teal-dim);margin-right:10px">LinkedIn ↗</a>`:''}${p.x_url?`<a href="${esc(p.x_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--teal-dim)">X ↗</a>`:''}</div>`:''}
+    ${(p.looking_for&&p.looking_for.length)?`<div style="margin-bottom:8px">${p.looking_for.map(t=>`<span class="chip" ${isPreview?'':`style="cursor:pointer" title="Go to the ${esc(t)} room" onclick="openLookingForTag('${jsAttr(t)}')"`}>${esc(t)}</span>`).join('')}</div>`:''}
+    ${(telHref||waHref||p.linkedin_url||p.x_url)?`<div style="margin-bottom:10px;font-size:11px;display:flex;flex-wrap:wrap;gap:2px 10px">${telHref?`<a href="${esc(telHref)}" onclick="event.stopPropagation()" style="color:var(--teal-dim)">📞 Call</a>`:''}${waHref?`<a href="${esc(waHref)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--teal-dim)">💬 WhatsApp</a>`:''}${p.linkedin_url?`<a href="${esc(p.linkedin_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--teal-dim)">LinkedIn ↗</a>`:''}${p.x_url?`<a href="${esc(p.x_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--teal-dim)">X ↗</a>`:''}</div>`:''}
     ${actionRow}
   </div>`;
 }
@@ -3002,9 +3030,41 @@ async function locateNetworkProfile(){
     status.style.color = 'var(--coral,#c9633f)';
   }
 }
+let NETWORK_LOGO_PENDING_URL = null; // set right after a successful upload; committed to the row on Save profile
+// Uploads to the business's own folder in the network-logos bucket
+// (path is enforced server-side by storage RLS, see migration 0041,
+// so this can never write into another business's folder even if the
+// path here were tampered with). upsert:true means re-uploading the
+// same extension just overwrites the old file in place, no orphaned
+// old images pile up in storage.
+async function uploadNetworkLogo(fileInputEl){
+  const file = fileInputEl.files && fileInputEl.files[0];
+  if(!file) return;
+  if(file.size > 3*1024*1024){ showToast('Image must be under 3MB'); fileInputEl.value=''; return; }
+  const ext = (file.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'') || 'jpg';
+  const path = `${CUR_VENUE_ID}/logo.${ext}`;
+  const statusEl = document.getElementById('npLogoStatus');
+  if(statusEl){ statusEl.textContent = 'Uploading…'; statusEl.style.color = 'var(--muted)'; }
+  try{
+    const { error } = await sb.storage.from('network-logos').upload(path, file, { upsert:true, cacheControl:'3600' });
+    if(error) throw error;
+    const { data } = sb.storage.from('network-logos').getPublicUrl(path);
+    NETWORK_LOGO_PENDING_URL = data.publicUrl + '?v=' + Date.now(); // cache-bust so a re-upload shows immediately, not a stale CDN copy
+    const prev = document.getElementById('npLogoPreview');
+    if(prev){
+      if(prev.tagName==='IMG') prev.src = NETWORK_LOGO_PENDING_URL;
+      else prev.outerHTML = `<img id="npLogoPreview" src="${esc(NETWORK_LOGO_PENDING_URL)}" alt="" style="width:56px;height:56px;border-radius:12px;object-fit:cover;border:1px solid var(--line);flex-shrink:0">`;
+    }
+    if(statusEl){ statusEl.textContent = 'Uploaded, click Save profile to publish it.'; statusEl.style.color = 'var(--teal-dim)'; }
+  }catch(e){
+    console.error('logo upload failed', e);
+    if(statusEl){ statusEl.textContent = 'Upload failed, try a smaller image.'; statusEl.style.color = 'var(--coral,#c9633f)'; }
+  }
+  fileInputEl.value = '';
+}
 function networkProfileCompleteness(p){
   if(!p) return 0;
-  const fields = ['display_name','industry','bio','capabilities','website','whatsapp','tagline','founded_year','team_size','hq_location'];
+  const fields = ['display_name','industry','bio','capabilities','website','whatsapp','tagline','founded_year','team_size','hq_location','logo_url'];
   const filled = fields.filter(f=> p[f]!==null && p[f]!==undefined && String(p[f]).trim()!=='').length;
   const lfBonus = (p.looking_for && p.looking_for.length) ? 1 : 0;
   return Math.round(((filled+lfBonus) / (fields.length+1)) * 100);
@@ -3028,6 +3088,17 @@ function networkProfileFormHtml(){
     <div class="card-title">My TecXFRA Network profile</div>
     <div style="font-size:11.5px;color:var(--ink-dim);margin-bottom:12px;line-height:1.6">This is what other verified members see in the Directory. It's separate from your internal CRM data, only what you choose to share externally.</div>
     ${previewCard}
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;padding:14px;background:var(--cream);border-radius:10px;border:1px solid var(--line-soft)">
+      ${p.logo_url
+        ? `<img id="npLogoPreview" src="${esc(p.logo_url)}" alt="" style="width:56px;height:56px;border-radius:12px;object-fit:cover;border:1px solid var(--line);flex-shrink:0">`
+        : `<div id="npLogoPreview" style="width:56px;height:56px;border-radius:12px;background:var(--teal-tint);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🏢</div>`}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11.5px;font-weight:700;color:var(--navy);margin-bottom:4px">Logo or photo</div>
+        <div style="font-size:10.5px;color:var(--ink-dim);margin-bottom:6px">A real image, your logo or a photo of you, builds far more trust than the generic icon other members currently see. PNG, JPG or WEBP, under 3MB.</div>
+        <label class="btn btn-ghost" style="display:inline-block;cursor:pointer;font-size:11.5px;padding:7px 14px">Choose image<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="uploadNetworkLogo(this)"></label>
+        <span id="npLogoStatus" style="font-size:10.5px;color:var(--muted);margin-left:8px"></span>
+      </div>
+    </div>
     ${showEnterpriseRule ? `<div class="card" style="margin-bottom:16px;border-color:var(--line);background:var(--cream);font-size:11.5px;color:var(--ink-dim);line-height:1.7">
       <b style="color:var(--navy)">Platform rule: Enterprise ↔ Prestige visibility.</b> Ghana Enterprise businesses see, are seen by, and can directly connect with Prestige members once they've been on TecXFRA Enterprise for 3 months. Any business on any plan can already be found and reply for free, this specific rule only governs the Prestige crossover.
       ${es ? (es.qualifies
@@ -3070,7 +3141,8 @@ function networkProfileFormHtml(){
     <label class="lbl">What you do (short bio)</label>
     <textarea class="inp" id="npBio" rows="3" maxlength="400" placeholder="What your business does, in a couple of sentences">${esc(p.bio||'')}</textarea>
     <label class="lbl">Capabilities / what you offer</label>
-    <input class="inp" id="npCapabilities" value="${esc(p.capabilities||'')}" placeholder="e.g. Cold-chain logistics across the Greater Accra region">
+    <textarea class="inp" id="npCapabilities" rows="2" maxlength="180" placeholder="e.g. Cold-chain logistics across the Greater Accra region, same-day dispatch" oninput="document.getElementById('npCapCount').textContent=this.value.length">${esc(p.capabilities||'')}</textarea>
+    <div style="font-size:10px;color:var(--muted);margin:-8px 0 12px;text-align:right"><span id="npCapCount">${(p.capabilities||'').length}</span>/180</div>
     <label class="lbl">What you're looking for</label>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
       ${NETWORK_LOOKING_FOR_OPTIONS.map(o=>`<label style="display:flex;align-items:center;gap:6px;background:var(--cream);border:1.5px solid var(--line);border-radius:20px;padding:6px 12px;font-size:11.5px;cursor:pointer">
@@ -3079,8 +3151,17 @@ function networkProfileFormHtml(){
     </div>
     <label class="lbl">Website (optional)</label>
     <input class="inp" id="npWebsite" value="${esc(p.website||'')}" placeholder="https://…">
-    <label class="lbl">WhatsApp for direct enquiries (optional)</label>
-    <input class="inp" id="npWhatsapp" value="${esc(p.whatsapp||'')}" placeholder="e.g. 233…">
+    <div style="display:flex;gap:10px">
+      <div style="flex:1">
+        <label class="lbl">Business phone (optional)</label>
+        <input class="inp" id="npPhone" value="${esc(p.phone||'')}" placeholder="e.g. 0509 960 980" type="tel">
+      </div>
+      <div style="flex:1">
+        <label class="lbl">WhatsApp for direct enquiries (optional)</label>
+        <input class="inp" id="npWhatsapp" value="${esc(p.whatsapp||'')}" placeholder="e.g. 233…">
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin:-8px 0 12px">Shown on your card as tappable Call and WhatsApp links, phone doesn't have to match WhatsApp if you use different lines.</div>
     <div style="display:flex;gap:10px">
       <div style="flex:1">
         <label class="lbl">LinkedIn (optional)</label>
@@ -3117,15 +3198,18 @@ async function saveNetworkProfile(){
     capabilities: document.getElementById('npCapabilities').value.trim(),
     looking_for,
     website: document.getElementById('npWebsite').value.trim(),
+    phone: document.getElementById('npPhone').value.trim(),
     whatsapp: document.getElementById('npWhatsapp').value.trim(),
     linkedin_url: document.getElementById('npLinkedin').value.trim(),
     x_url: document.getElementById('npX').value.trim(),
+    logo_url: NETWORK_LOGO_PENDING_URL || (NETWORK_PROFILE && NETWORK_PROFILE.logo_url) || null,
     visible: document.getElementById('npVisible').checked,
     updated_at: new Date().toISOString()
   };
   try{
     const { error } = await sb.from('network_profiles').upsert(payload, { onConflict:'business_id' });
     if(error) throw error;
+    NETWORK_LOGO_PENDING_URL = null;
     showToast('Profile saved');
     await loadNetworkData();
     setNetworkTab('directory');
