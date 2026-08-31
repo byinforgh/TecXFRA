@@ -20,10 +20,17 @@
 <meta property="og:description" content="The complete Business OS for SME owners. Today, Expenses, CRM, Execution, Follow-Ups, Revenue, Accountability, in one place, run from your phone.">
 <meta property="og:url" content="https://www.tecxfra.com/">
 <meta property="og:image" content="https://www.tecxfra.com/og-image.png">
+<meta property="og:image:secure_url" content="https://www.tecxfra.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="TecXFRA, Complete Total Control">
+<meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="TecXFRA, Complete Total Control">
 <meta name="twitter:description" content="The complete Business OS for SME owners. Run your entire business from your phone.">
 <meta name="twitter:image" content="https://www.tecxfra.com/og-image.png">
+<meta name="twitter:image:alt" content="TecXFRA, Complete Total Control">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -213,7 +220,7 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 /* .main is now its own fixed-height, non-scrolling shell (height:100vh,
    overflow:hidden) and .content below is the ONLY element that actually
    scrolls. Previously the whole document/body scrolled, and .topbar
-   relied on position:sticky to stay put — sticky works in most cases,
+   relied on position:sticky to stay put, sticky works in most cases,
    but any ancestor quirk (flex stretch, dynamic mobile viewport resize,
    etc.) can break it, which is exactly what "top menu disappears on
    scroll" looks like. Making the topbar structurally outside the
@@ -230,11 +237,18 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 
 /* ============ SHARED UI ============ */
 .grid-metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:20px;}
-.metric{background:var(--paper); border:1px solid var(--line); border-radius:var(--r-md); padding:17px 18px; position:relative; overflow:hidden; touch-action:manipulation; -webkit-tap-highlight-color:rgba(74,168,184,.15);}
+/* min-width:0 + overflow-wrap on .mv: same gap as the .card fix below,
+   applied to .metric specifically. A currency string in a non-Ghana
+   locale (e.g. Naira/Rand amounts, or a plan with many digits) is long
+   enough at 27px that it can't shrink below its own min-content width,
+   which forced the metric card (and the grid track holding it) wider
+   than the phone viewport in some currencies/screens, this is the
+   "sometimes stretched" mobile report. */
+.metric{background:var(--paper); border:1px solid var(--line); border-radius:var(--r-md); padding:17px 18px; position:relative; overflow:hidden; min-width:0; touch-action:manipulation; -webkit-tap-highlight-color:rgba(74,168,184,.15);}
 .metric::before{content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--teal);}
 .metric.amber::before{background:var(--amber);} .metric.coral::before{background:var(--coral);} .metric.green::before{background:var(--green);} .metric.navy::before{background:var(--navy);}
 .metric .ml{font-size:10.5px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-bottom:8px;}
-.metric .mv{font-family:'Space Grotesk',sans-serif; font-size:27px; font-weight:700; color:var(--navy);}
+.metric .mv{font-family:'Space Grotesk',sans-serif; font-size:27px; font-weight:700; color:var(--navy); overflow-wrap:break-word;}
 .metric .ms{font-size:11px; color:var(--ink-dim); margin-top:5px;}
 /* FIX (18 Aug 2026, mobile layout audit): .card had no min-width or
    overflow containment of its own. A grid/flex item's default
@@ -277,7 +291,7 @@ input.inp,select.inp,textarea.inp{width:100%; background:var(--cream); border:1.
    IMPORTANT: this custom icon + padding-right + text-align only apply on
    devices with a mouse (desktop). On iOS/Android, the OS already renders
    its own calendar icon and day/month/year "pill" as part of the native
-   control, and that native content has its own fixed layout — reserving
+   control, and that native content has its own fixed layout, reserving
    38px of padding-right on top of it pushes the native content wider
    than the box, which is exactly what forced the "have to drag the date
    field sideways to see it" bug. Scoping this to pointer:fine keeps the
@@ -406,6 +420,15 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
   .plan-grid{grid-template-columns:1fr !important;}
   .sidebar-backdrop{display:none; position:fixed; inset:0; z-index:99; background:rgba(12,38,47,.45);}
   .sidebar-backdrop.show{display:block;}
+  /* Bookings/Orders pipeline board was hardcoded to 4 equal columns with
+     no responsive fallback, on a narrow Android phone that squeezes each
+     column under ~60px and either clips or forces the whole board (and
+     the page around it) wider than the viewport, this is the "sometimes
+     stretched" report. Two columns fit comfortably down to ~360px. */
+  .pipe-board{grid-template-columns:repeat(2,1fr) !important;}
+}
+@media(max-width:480px){
+  .pipe-board{grid-template-columns:1fr !important;}
 }
 </style>
 </head>
@@ -416,7 +439,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
      there's a valid session. Previously the wizard itself (the "Create
      your business" screen) was the default visible state, so on every
      refresh a logged-in user would see a flash of the signup wizard
-     while the session check ran in the background — easy to mistake for
+     while the session check ran in the background, easy to mistake for
      "it logged me out". Now that screen is hidden by default and this
      loader covers it until initAuthGate() has actually decided what to
      show (dashboard, wizard, or login). -->
@@ -550,7 +573,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
       <div class="wiz-eyebrow">Step 4 of 4</div>
       <div class="wiz-h">Choose your plan.</div>
       <div class="wiz-sub" id="wizPlanSub">TecXFRA rewards its first businesses: the very first 10 signups get their chosen plan free, permanently, 2 Enterprise, 3 Growth, 5 Starter spots. After that, every plan is a paid subscription, and Starter is priced to stay within reach of any business, anywhere.</div>
-      <div id="wizPlanGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:6px"></div>
+      <div id="wizPlanGrid" class="plan-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:6px"></div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">You can change plans anytime after signup in Settings.</div>
       <div class="wiz-nav"><button class="btn btn-ghost" onclick="wizGo(3)">← Back</button><button class="btn btn-primary" onclick="goToAccountCreation()">Continue, create your login →</button></div>
     </div>
@@ -703,7 +726,7 @@ const PAYSTACK_PUBLIC_KEY = 'pk_test_REPLACE_ME';
 // 024 123 4567 becomes '233241234567'). Every MoMo/Invoice/Cash request
 // opens WhatsApp with this number pre-filled so you're notified instantly,
 // no separate WhatsApp API integration needed while Paystack is paused.
-// The number given was "+2330509960980" — that's +233 (Ghana country
+// The number given was "+2330509960980", that's +233 (Ghana country
 // code) with the local leading 0 left in front of 509960980, but wa.me
 // links need the country code plus subscriber number with NO leading 0
 // (that's how Ghana's domestic 0-prefix format converts to
@@ -1005,7 +1028,7 @@ async function initAuthGate(){
 
   // Genuinely no pending setup on this device (e.g. confirmed on a
   // different device/browser than the one the wizard was filled in
-  // on) — send them into the wizard to set up their business, but
+  // on), send them into the wizard to set up their business, but
   // make it obvious they ARE logged in rather than looking broken.
   hideBootLoading();
   document.getElementById('wizard').style.display = 'flex';
@@ -1080,12 +1103,12 @@ const COUNTRIES = [
   {country:'Nigeria', currency:'NGN', sym:'₦', tax:'VAT', taxNote:'Standard VAT stays at 7.5% through 2026 under the Nigeria Tax Act 2025, a proposed rise to 12.5% was rejected by lawmakers. Personal income tax now exempts annual income under ₦800,000, and the minimum wage is exempt entirely. Verify current NRS (Nigeria Revenue Service, formerly FIRS) rates.', payroll:'PAYE (new progressive bands, ₦800,000 tax-free threshold) + Pension (employer/employee contributions)', updated:'2026'},
   {country:'Kenya', currency:'KES', sym:'KSh ', tax:'VAT', taxNote:'Standard VAT rate is 16% (unchanged since 2013). Verify current KRA rate.', payroll:'NSSF (6% employer/6% employee, Tier I+II, upper earnings limit rose to KES 108,000/month from Feb 2026) + SHIF (2.75% of gross, replaced NHIF) + Affordable Housing Levy (1.5% employee, matched by employer) + PAYE', updated:'2026'},
   {country:'South Africa', currency:'ZAR', sym:'R', tax:'VAT', taxNote:'Standard VAT rate held at 15% in the 2026 Budget (the proposed rise to 16% was withdrawn). VAT registration threshold raised to R2.3m/year (voluntary from R120,000) effective 1 April 2026. Verify current SARS rate.', payroll:'UIF + PAYE (2026/27 brackets adjusted 3.4% for inflation)', updated:'2026'},
-  {country:'United Kingdom', currency:'GBP', sym:'£', tax:'VAT', taxNote:'Standard VAT rate is 20% (unchanged), with a 5% reduced rate on some goods/services. VAT registration threshold stays at £90,000 (deregistration £88,000) from April 2026. Verify current HMRC rate and thresholds.', payroll:'PAYE + National Insurance (employee 8% between £12,570–£50,270, 2% above; employer 15% above £5,000/yr secondary threshold, thresholds frozen until 2031)', updated:'2026'},
+  {country:'United Kingdom', currency:'GBP', sym:'£', tax:'VAT', taxNote:'Standard VAT rate is 20% (unchanged), with a 5% reduced rate on some goods/services. VAT registration threshold stays at £90,000 (deregistration £88,000) from April 2026. Verify current HMRC rate and thresholds.', payroll:'PAYE + National Insurance (employee 8% between £12,570 to £50,270, 2% above; employer 15% above £5,000/yr secondary threshold, thresholds frozen until 2031)', updated:'2026'},
   {country:'United States', currency:'USD', sym:'$', tax:'Sales Tax', taxNote:'Sales tax varies by state, no federal VAT. Check your state and local rates.', payroll:'Federal/State withholding + FICA (Social Security & Medicare)'},
   {country:'Canada', currency:'CAD', sym:'C$', tax:'GST/HST', taxNote:'Federal GST is 5% everywhere. HST: Ontario 13%, Nova Scotia 14% (cut from 15% in Apr 2025), New Brunswick/Newfoundland & Labrador/PEI 15%. Separate PST/QST in BC (7%), Saskatchewan (6%), Manitoba (7%), Quebec (QST 9.975%). Alberta/territories: GST only, 5%. Verify your specific province.', payroll:'CPP (5.95% up to $74,600 YMPE, CPP2 4% up to $85,000) + EI (1.63%, Quebec 1.31% + QPIP) + federal/provincial withholding', updated:'2026'},
   {country:'India', currency:'INR', sym:'₹', tax:'GST', taxNote:'GST 2.0 (effective 22 Sep 2025) simplified the old 5/12/18/28% structure to just two main slabs: 5% (essentials/priority goods) and 18% (standard/default rate), plus a 40% slab for luxury and "sin" goods (tobacco, pan masala, high-end vehicles). Verify the current slab for your specific goods/services.', payroll:'EPF + ESI + TDS', updated:'2026'},
   {country:'United Arab Emirates', currency:'AED', sym:'AED ', tax:'VAT', taxNote:'Standard VAT rate is 5% (confirmed unchanged for 2026, though invoicing/refund rules tightened from 1 Jan 2026). Federal Corporate Tax is 0% up to AED 375,000 profit, 9% above it, Small Business Relief keeps eligible businesses under AED 3m revenue at 0% through 31 Dec 2026. Verify current FTA rates.', payroll:'No personal income tax; check End of Service Gratuity rules', updated:'2026'},
-  {country:'Germany / Eurozone', currency:'EUR', sym:'€', tax:'VAT (MwSt/TVA)', taxNote:'Germany\'s standard VAT (MwSt) is 19% (unchanged for 2026, a proposed rise to 21% is under political discussion, not yet decided), reduced rate 7% for food/books/etc. Verify your country\'s rate within the Eurozone.', payroll:'Social security ~19–20% employee-side (pension 18.6% split employer/employee, health 14.6%+~2.9% average add-on, long-term care 3.6%/4.2% childless, unemployment 2.6%) + income tax withholding', updated:'2026'},
+  {country:'Germany / Eurozone', currency:'EUR', sym:'€', tax:'VAT (MwSt/TVA)', taxNote:'Germany\'s standard VAT (MwSt) is 19% (unchanged for 2026, a proposed rise to 21% is under political discussion, not yet decided), reduced rate 7% for food/books/etc. Verify your country\'s rate within the Eurozone.', payroll:'Social security ~19 to 20% employee-side (pension 18.6% split employer/employee, health 14.6%+~2.9% average add-on, long-term care 3.6%/4.2% childless, unemployment 2.6%) + income tax withholding', updated:'2026'},
   {country:'Other / Not listed', currency:'USD', sym:'$', tax:'Local Tax', taxNote:'Set your own tax terminology and rate in Settings once you know your local requirements.', payroll:'Check your local labour & payroll authority'}
 ];
 // Dial codes for the owner phone / WhatsApp field, purely a UX convenience
@@ -1154,6 +1177,7 @@ let CUR_PAGE = 'today';
 let CUR_INDUSTRY_OBJ = null;
 function tracksStock(){ return !CUR_INDUSTRY_OBJ || CUR_INDUSTRY_OBJ.tracksStock !== false; }
 let cart = {};
+let lastSale = null; // last completed till sale, shown as a persistent confirmation on the POS page so it never depends on catching a toast
 let calMonth = new Date().getMonth(), calYear = new Date().getFullYear();
 let CUR_VENUE_ID = null;
 let CUR_USER_EMAIL = ''; // cached lowercase email of whoever's logged in, so
@@ -1314,7 +1338,7 @@ function esc(s){
    recorded here with a timestamp. The AI Assistant reads this list
    every time it answers, so the more a business feeds it, the
    sharper and more specific its answers get, instead of resetting
-   to generic advice every conversation. */
+  to generic advice every conversation. */
 async function addKnowledgeFact(text, source){
   if(!DATA.knowledge) DATA.knowledge = {facts:[], questionsAsked:0, goal:''};
   DATA.knowledge.facts.push({id:uid('K'), date:todayStr(), text, source: source||'system'});
@@ -1516,7 +1540,7 @@ async function viewArchivePeriod(kind, period){
     document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px;max-height:70vh;overflow:auto">
       <div class="disp" style="font-size:16px;font-weight:700;margin-bottom:10px">${kind}, ${period} <span style="color:var(--muted);font-weight:400;font-size:12px">(${rows.length} records)</span></div>
       <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.8">
-        ${rows.map(r=>`<div class="list-row"><span>${r.item||r.desc||r.category||r.text||r.id||', '}</span><span>${r.amount!=null?money(r.amount):(r.date||'')}</span></div>`).join('') || '<div style="color:var(--muted)">No records.</div>'}
+        ${rows.map(r=>`<div class="list-row"><span>${r.item||r.desc||r.category||r.text||r.id||'Archived entry'}</span><span>${r.amount!=null?money(r.amount):(r.date||'')}</span></div>`).join('') || '<div style="color:var(--muted)">No records.</div>'}
       </div>
       <button class="btn btn-ghost btn-full" style="margin-top:14px" onclick="closeModal()">Close</button>
     </div></div>`;
@@ -1587,7 +1611,7 @@ function seedData(industryKey){
 
 // A real, blank-canvas DATA object for an actual new signup or a
 // self-heal recovery. No demo names, no demo transactions, no fake
-// clients, an empty stock/expense table — a brand-new business opens
+// clients, an empty stock/expense table, a brand-new business opens
 // to nothing but their own future data. seedData() (below) still
 // exists and is only ever used for internal demo/testing, never for
 // a real account.
@@ -1731,9 +1755,9 @@ function cohortBanner(){
   const desc = WIZ_COHORT==='diaspora'
     ? 'Prestige, free for keeps, one of 10 spots reserved for this launch group.'
     : 'Your chosen plan, free for keeps, one of 10 spots reserved for this launch group.';
-  if(!s) return `<div style="font-size:11.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">🎉 ${label} — ${desc}</div>`;
+  if(!s) return `<div style="font-size:11.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">🎉 ${label}: ${desc}</div>`;
   if(s.remaining<=0) return `<div style="font-size:11.5px;font-weight:700;color:var(--muted);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">${label} is fully claimed, you'll continue on a normal paid signup below, still very welcome.</div>`;
-  return `<div style="font-size:11.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">🎉 ${label}, ${s.remaining} of ${s.cap} spot${s.remaining===1?'':'s'} left — ${desc}</div>`;
+  return `<div style="font-size:11.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">🎉 ${label}, ${s.remaining} of ${s.cap} spot${s.remaining===1?'':'s'} left: ${desc}</div>`;
 }
 // Claims one spot from whichever cohort this signup arrived through. Kept
 // fully separate from claimFoundingSlotIfChosen below: a cohort signup
@@ -1841,10 +1865,10 @@ function renderBizFloatLayers(){
   if(!layers.length) return;
   layers.forEach(layer=>{
     layer.innerHTML = INDUSTRIES.map((ind,i)=>{
-      const size = 40 + Math.round(Math.random()*34);           // 40–74px
-      const top = Math.round(Math.random()*88);                  // 0–88vh-ish
-      const left = Math.round(Math.random()*94);                 // 0–94vw-ish
-      const dur = 9 + Math.round(Math.random()*10);               // 9–19s
+      const size = 40 + Math.round(Math.random()*34);           // 40 to 74px
+      const top = Math.round(Math.random()*88);                  // 0 to 88vh-ish
+      const left = Math.round(Math.random()*94);                 // 0 to 94vw-ish
+      const dur = 9 + Math.round(Math.random()*10);               // 9 to 19s
       const delay = -(Math.random()*dur).toFixed(1);              // stagger start
       const opacity = (0.35 + Math.random()*0.35).toFixed(2);
       return `<div class="biz-chip" style="width:${size}px;height:${size}px;top:${top}%;left:${left}%;
@@ -1922,7 +1946,7 @@ async function finishSetup(setup){
     modules: setup.modules,
     // Real module/feature access always starts on Starter until an active
     // subscription exists (payment clears, or a founding slot is claimed
-    // below) — that part is correct by design. What was missing is any
+    // below), that part is correct by design. What was missing is any
     // record of which plan the owner actually chose in the wizard, so
     // Settings could tell them "you picked Growth, here's how to activate
     // it" instead of silently showing Starter with zero explanation, which
@@ -3689,13 +3713,30 @@ function quickInvoiceFor(id){
   setTimeout(()=>{
     const sel = document.getElementById('sendInvContact');
     if(sel){ sel.value = id; applyInvoiceContact(); }
-    document.getElementById('sendInvDesc')?.focus();
+    // Focus whichever "what's this for" control is actually visible,
+    // the picker when items exist, otherwise the free-text box.
+    const pick = document.getElementById('sendInvDescPick');
+    if(pick && (DATA.inventory||[]).length) pick.focus();
+    else document.getElementById('sendInvDesc')?.focus();
   }, 150);
 }
 async function updateContact(id, field, val){
   const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
   c[field]=val; if(field!=='notes') c.lastContact=todayStr();
-  await saveData(); renderCRM(); showToast('Updated');
+  await saveData();
+  // BUG FIX: this used to only re-render the CRM list in the background
+  // and toast "Updated", but a contact's modal, once opened, was never
+  // told to redraw itself. Tapping a stage pill (New -> Confirmed etc.)
+  // saved correctly and the underlying list updated, but the modal's own
+  // pill highlighting stayed frozen on the old stage, which read as "it
+  // says updated but doesn't move". Re-opening the modal on the same
+  // contact redraws it with the new value selected. If the Bookings
+  // pipeline board happens to be the visible page, refresh that board
+  // too so a stage move shows up there immediately as well.
+  if(document.querySelector('#modalRoot .modal-overlay.show')) openContactModal(id);
+  if(CUR_PAGE==='crm') renderCRM();
+  else if(CUR_PAGE==='bookings' && typeof renderBookings==='function') renderBookings();
+  showToast('Updated');
 }
 async function archiveContact(id){
   const idx = DATA.contacts.findIndex(x=>x.id===id); if(idx<0) return;
@@ -3985,8 +4026,8 @@ const COOKIES_HTML = `
   <h4>1. Essential Cookies & Storage (Always On)</h4>
   <p>These are required for TecXFRA to work and can't be switched off, they don't track you across other websites, and no consent banner is required for these under data protection law:</p>
   <ul>
-    <li><b>Session/auth tokens</b> — keep you logged in between visits, so you're not asked to sign in on every click.</li>
-    <li><b>Local app preferences</b> — such as your last-viewed module or sidebar state, stored on your own device.</li>
+    <li><b>Session/auth tokens:</b> keep you logged in between visits, so you're not asked to sign in on every click.</li>
+    <li><b>Local app preferences:</b> such as your last-viewed module or sidebar state, stored on your own device.</li>
   </ul>
 
   <h4>2. Analytics Cookies</h4>
@@ -4078,11 +4119,30 @@ function renderPOS(){
       <select class="inp" id="posCustomer"><option value="">Walk-in</option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
       <button class="btn btn-primary btn-full" onclick="checkout()">✓ Complete Sale</button>
     </div>
-  </div>`;
+  </div>
+  <div id="lastSaleCard"></div>`;
   document.getElementById('qsGrid').innerHTML = (DATA.inventory||[]).map(it=>`
     <button class="qs-item" onclick="addToCart('${it.id}')"><div class="qn">${esc(it.name)}</div><div class="qp">${money(it.price)}</div>${(tracksStock() && it.stock<=it.par)?'<div style="font-size:10px;color:var(--coral)">low stock</div>':''}</button>
   `).join('');
   drawCart();
+  drawLastSale();
+}
+// Persistent "it went through" confirmation at the bottom of the till,
+// separate from the toast (which disappears on its own), so the owner
+// can look down after ringing up a sale and see it actually saved,
+// what was in it, and the total, without it depending on catching a
+// toast in time. Clears itself once a new sale replaces it or the
+// owner navigates away and back with nothing left to show.
+function drawLastSale(){
+  const wrap = document.getElementById('lastSaleCard'); if(!wrap) return;
+  if(!lastSale){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `<div class="card" style="margin-top:16px;border-color:var(--green)">
+    <div class="card-title" style="color:var(--green)">✓ Sale Completed <span class="sub">${fmtDate(lastSale.date)} · ${esc(lastSale.time)}</span></div>
+    ${lastSale.items.map(li=>`<div class="list-row"><span>${esc(li.name)} <span style="color:var(--muted);font-size:11px">× ${li.qty}</span></span><span class="mono">${money(li.qty*li.price)}</span></div>`).join('')}
+    <div style="display:flex;justify-content:space-between;font-weight:700;padding:10px 4px 0;border-top:1px solid var(--line);margin-top:6px">
+      <span>Total${lastSale.customer && lastSale.customer!=='Walk-in'?` · ${esc(lastSale.customer)}`:''}</span><span class="mono" style="color:var(--green)">${money(lastSale.total)}</span>
+    </div>
+  </div>`;
 }
 function addToCart(id){
   const it = (DATA.inventory||[]).find(x=>x.id===id); if(!it) return;
@@ -4106,15 +4166,23 @@ async function checkout(){
   if(!ids.length){ showToast('Cart is empty'); return; }
   const custId = document.getElementById('posCustomer').value;
   const custName = custId ? DATA.contacts.find(c=>c.id===custId)?.name : 'Walk-in';
+  const saleItems = [];
+  let saleTotal = 0;
   ids.forEach(id=>{
     const c = cart[id];
     DATA.transactions.push({id:uid('T'), date:todayStr(), item:c.name, amount:c.qty*c.price, type:'sale', staff:CFG.ownerName, contact:custName});
+    saleItems.push({name:c.name, qty:c.qty, price:c.price});
+    saleTotal += c.qty*c.price;
     if(tracksStock()){
       const it = (DATA.inventory||[]).find(x=>x.id===id);
       if(it) it.stock = Math.max(0, (it.stock||0) - c.qty);
     }
   });
   cart = {};
+  // Confirmation shown at the bottom of the till after this, not just
+  // the toast, so completing a sale is visibly confirmed even if the
+  // toast is missed, this is what "make sure it went through" needs.
+  lastSale = { items: saleItems, total: saleTotal, customer: custName, date: todayStr(), time: new Date().toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}) };
   logAccountability('sales_made');
   await saveData(); showToast('Sale completed'); renderPOS();
   // Never block a sale, but once the plan's monthly transaction cap
@@ -4129,7 +4197,7 @@ function renderBookings(){
   document.getElementById('pageContent').innerHTML = `
   <div class="card">
     <div class="card-title">${CUR_INDUSTRY_OBJ.pipelineNoun} <span class="sub">click a contact's stage on the ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase()} page to move it</span></div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px" id="pipeBoard"></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px" id="pipeBoard" class="pipe-board"></div>
   </div>`;
   const board = PIPE_STAGES.map(stage=>{
     const items = (DATA.contacts||[]).filter(c=>(c.stage||'New')===stage || (stage==='New' && !['Confirmed','In Progress','Completed','Client'].includes(c.stage)));
@@ -4245,7 +4313,13 @@ function renderInvoicing(){
     <select class="inp" id="sendInvContact" onchange="applyInvoiceContact()"><option value="">, New name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
     <label class="lbl">Or client name</label><input class="inp" id="sendInvName" placeholder="e.g. Kwame Enterprises">
     <label class="lbl">Client phone (optional, for WhatsApp)</label><input class="inp" id="sendInvPhone" placeholder="e.g. 0241234567">
-    <label class="lbl">What's this for</label><input class="inp" id="sendInvDesc" placeholder="e.g. Logo design + business card set">
+    <label class="lbl">What's this for</label>
+    <select class="inp" id="sendInvDescPick" onchange="applyInvoiceService()">
+      <option value="">Pick from your ${CUR_INDUSTRY_OBJ.itemNoun.toLowerCase()}…</option>
+      ${(DATA.inventory||[]).map(it=>`<option value="${esc(it.id)}" data-price="${it.price||0}">${esc(it.name)}${it.price?` · ${money(it.price)}`:''}</option>`).join('')}
+      <option value="__other__">Other, type it in below</option>
+    </select>
+    <input class="inp" id="sendInvDesc" placeholder="e.g. Logo design + business card set" style="${(DATA.inventory||[]).length?'display:none':''}">
     <label class="lbl">Amount</label><input class="inp" id="sendInvAmt" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
     <label class="lbl">Due date (optional)</label><input class="inp" id="sendInvDue" type="date">
     <button class="btn btn-primary btn-full" onclick="generateInvoice()">＋ Generate Invoice</button>
@@ -4264,12 +4338,38 @@ function applyInvoiceContact(){
   // Left editable on purpose, a contact's saved phone can be out of date,
   // this just saves retyping the common case instead of forcing it.
 }
+// Lets the owner pick "what this invoice is for" from their own saved
+// items/services instead of always retyping it. Picking "Other" (or having
+// no items saved yet) reveals the free-text box as before. Picking a real
+// item also prefills the amount from that item's price when the amount
+// field is still empty, without overwriting anything already typed.
+function applyInvoiceService(){
+  const sel = document.getElementById('sendInvDescPick');
+  const descInput = document.getElementById('sendInvDesc');
+  const amtInput = document.getElementById('sendInvAmt');
+  if(!sel || !descInput) return;
+  const val = sel.value;
+  if(val === '__other__'){
+    descInput.style.display = '';
+    descInput.value = '';
+    descInput.focus();
+    return;
+  }
+  if(!val){ descInput.style.display = (DATA.inventory||[]).length ? 'none' : ''; return; }
+  const it = (DATA.inventory||[]).find(x=>x.id===val);
+  descInput.style.display = 'none';
+  descInput.value = it ? it.name : '';
+  if(it && it.price && !amtInput.value) amtInput.value = it.price;
+}
 async function generateInvoice(){
   const existingId = document.getElementById('sendInvContact').value;
   const existing = existingId ? DATA.contacts.find(x=>x.id===existingId) : null;
   const name = (existing ? existing.name : document.getElementById('sendInvName').value.trim());
   const phone = document.getElementById('sendInvPhone').value.trim() || (existing ? existing.phone : '');
-  const desc = document.getElementById('sendInvDesc').value.trim() || 'Services rendered';
+  const descPick = document.getElementById('sendInvDescPick');
+  const pickVal = descPick ? descPick.value : '';
+  const pickedItem = (pickVal && pickVal !== '__other__') ? (DATA.inventory||[]).find(x=>x.id===pickVal) : null;
+  const desc = (pickedItem ? pickedItem.name : document.getElementById('sendInvDesc').value.trim()) || 'Services rendered';
   const amt = parseFloat(document.getElementById('sendInvAmt').value);
   const due = document.getElementById('sendInvDue').value || null;
   if(!name){ showToast('Enter a client name'); return; }
@@ -4298,6 +4398,8 @@ async function generateInvoice(){
   document.getElementById('sendInvName').value = '';
   document.getElementById('sendInvPhone').value = '';
   document.getElementById('sendInvDesc').value = '';
+  document.getElementById('sendInvDesc').style.display = (DATA.inventory||[]).length ? 'none' : '';
+  if(document.getElementById('sendInvDescPick')) document.getElementById('sendInvDescPick').value = '';
   document.getElementById('sendInvAmt').value = '';
   document.getElementById('sendInvDue').value = '';
   loadRecentInvoices();
@@ -4443,7 +4545,7 @@ function renderExpenses(){
     <div class="metric amber" style="cursor:pointer" onclick="openExpensePeriodModal('qtr')"><div class="ml">This Quarter</div><div class="mv">${money(pt.qtr)}</div></div>
     <div class="metric amber" style="cursor:pointer" onclick="openExpensePeriodModal('year')"><div class="ml">This Year</div><div class="mv">${money(pt.year)}</div></div>
   </div>
-  <div class="card" style="border-color:var(--teal-tint)"><div class="card-title">Tax & Payroll, ${esc(CFG.country||', ')} <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change →</span></div>
+  <div class="card" style="border-color:var(--teal-tint)"><div class="card-title">Tax & Payroll, ${esc(CFG.country||'your country')} <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change →</span></div>
     <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7">
       <b style="color:var(--navy)">Tax:</b> ${esc(ci.tax)}. ${esc(ci.taxNote)}<br>
       <b style="color:var(--navy)">Payroll:</b> ${esc(ci.payroll)}
@@ -4696,14 +4798,14 @@ function openRevenueDayModal(dateKey){
   const exps = (DATA.expenses||[]).filter(x=>x.date===dateKey);
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px;max-height:80vh">
     <div class="modal-head"><h3>${fmtDate(dateKey)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="grid-metrics" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+    <div class="grid-metrics" style="grid-template-columns:repeat(auto-fit,minmax(108px,1fr));margin-bottom:14px">
       <div class="metric navy"><div class="ml">Revenue</div><div class="mv">${money(rev)}</div></div>
       <div class="metric coral"><div class="ml">Expenses</div><div class="mv">${money(exp)}</div></div>
       <div class="metric green"><div class="ml">Net</div><div class="mv">${money(net)}</div></div>
     </div>
     <div class="card-title" style="padding:0;margin-bottom:6px;font-size:12px">Sales / Revenue</div>
     <div class="scroll-tbl" style="max-height:160px"><table><thead><tr><th>Item</th><th>Contact</th><th>Amount</th></tr></thead><tbody>
-    ${sales.map(x=>`<tr><td>${esc(x.item||x.type||', ')}</td><td style="color:var(--ink-dim)">${esc(x.contact||', ')}</td><td class="mono">${money(x.amount)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">None</td></tr>'}
+    ${sales.map(x=>`<tr><td>${esc(x.item||x.type||'Sale')}</td><td style="color:var(--ink-dim)">${esc(x.contact||'Walk-in')}</td><td class="mono">${money(x.amount)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">None</td></tr>'}
     </tbody></table></div>
     <div class="card-title" style="padding:0;margin:14px 0 6px;font-size:12px">Expenses <span class="sub">tap to edit</span></div>
     <div class="scroll-tbl" style="max-height:160px"><table><thead><tr><th>Item</th><th>Category</th><th>Amount</th></tr></thead><tbody>
@@ -4741,7 +4843,7 @@ function openWeekModal(weekNo, year){
   const exp = items.filter(x=>x.__exp).reduce((s,x)=>s+(x.amount||0),0);
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
     <div class="modal-head"><h3>Week ${weekNo}, ${year}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="grid-metrics" style="grid-template-columns:repeat(3,1fr)">
+    <div class="grid-metrics" style="grid-template-columns:repeat(auto-fit,minmax(108px,1fr))">
       <div class="metric navy"><div class="ml">Revenue</div><div class="mv">${money(rev)}</div></div>
       <div class="metric coral"><div class="ml">Expenses</div><div class="mv">${money(exp)}</div></div>
       <div class="metric green"><div class="ml">Net</div><div class="mv">${money(rev-exp)}</div></div>
@@ -4770,7 +4872,7 @@ function openMonthModal(mk){
   const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
     <div class="modal-head"><h3>${MN[parseInt(m,10)-1]} ${y}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="grid-metrics" style="grid-template-columns:repeat(3,1fr)">
+    <div class="grid-metrics" style="grid-template-columns:repeat(auto-fit,minmax(108px,1fr))">
       <div class="metric navy"><div class="ml">Revenue</div><div class="mv">${money(rev)}</div></div>
       <div class="metric coral"><div class="ml">Expenses</div><div class="mv">${money(exp)}</div></div>
       <div class="metric green"><div class="ml">Net</div><div class="mv">${money(rev-exp)}</div></div>
@@ -4798,7 +4900,7 @@ function openRevenuePeriodModal(period){
     <div class="modal-head"><h3>Revenue, ${PERIOD_LABELS[period]}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="metric navy" style="margin-bottom:14px"><div class="ml">Total</div><div class="mv">${money(total)}</div></div>
     <div class="scroll-tbl" style="max-height:300px"><table><thead><tr><th>Date</th><th>Item</th><th>Contact</th><th>Amount</th></tr></thead><tbody>
-    ${items.map(x=>`<tr><td>${fmtDate(x.date)}</td><td>${esc(x.item||x.type||', ')}</td><td style="color:var(--ink-dim)">${esc(x.contact||', ')}</td><td class="mono">${money(x.amount)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">None</td></tr>'}
+    ${items.map(x=>`<tr><td>${fmtDate(x.date)}</td><td>${esc(x.item||x.type||'Sale')}</td><td style="color:var(--ink-dim)">${esc(x.contact||'Walk-in')}</td><td class="mono">${money(x.amount)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">None</td></tr>'}
     </tbody></table></div>
   </div></div>`;
 }
@@ -4807,7 +4909,7 @@ function openNetPeriodModal(period){
   const exp = (DATA.expenses||[]).filter(x=>periodDateFilter(x.date, period)).reduce((s,x)=>s+(x.amount||0),0);
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:400px">
     <div class="modal-head"><h3>Net, ${PERIOD_LABELS[period]}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="grid-metrics" style="grid-template-columns:repeat(3,1fr)">
+    <div class="grid-metrics" style="grid-template-columns:repeat(auto-fit,minmax(108px,1fr))">
       <div class="metric navy"><div class="ml">Revenue</div><div class="mv">${money(rev)}</div></div>
       <div class="metric coral"><div class="ml">Expenses</div><div class="mv">${money(exp)}</div></div>
       <div class="metric green"><div class="ml">Net</div><div class="mv">${money(rev-exp)}</div></div>
@@ -4844,7 +4946,7 @@ function openNetModal(){
   const exp = (DATA.expenses||[]).reduce((s,e)=>s+(e.amount||0),0);
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:400px">
     <div class="modal-head"><h3>Net, All Time</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="grid-metrics" style="grid-template-columns:repeat(3,1fr)">
+    <div class="grid-metrics" style="grid-template-columns:repeat(auto-fit,minmax(108px,1fr))">
       <div class="metric navy"><div class="ml">Revenue</div><div class="mv">${money(rev)}</div></div>
       <div class="metric coral"><div class="ml">Expenses</div><div class="mv">${money(exp)}</div></div>
       <div class="metric green"><div class="ml">Net</div><div class="mv">${money(rev-exp)}</div></div>
@@ -5208,7 +5310,7 @@ function copyMsg(i){ const t=getTemplates()[msgCat][i]; navigator.clipboard?.wri
 ============================================================ */
 const LOYALTY_TIERS = [
   {key:'one-time', label:'One-Time Buyer', desc:'Bought once, has not returned yet.'},
-  {key:'repeat', label:'Repeat Buyer', desc:'2–4 purchases, building preference.'},
+  {key:'repeat', label:'Repeat Buyer', desc:'2 to 4 purchases, building preference.'},
   {key:'loyal', label:'Loyal Customer', desc:'Buys consistently, trusts you fully.'},
   {key:'spotlight', label:'Spotlight Client', desc:'High spend, refers others, your best relationship.'}
 ];
@@ -5224,8 +5326,8 @@ const REFERRAL_SCRIPTS = [
 ];
 
 const REACTIVATION_SCRIPTS = [
-  {key:'newarrival', title:'New Arrival Re-entry', when:'Quiet for 30–60 days', body:`Hi [Name], hope all is well. We just got something in that made me think of you. [describe item]. I thought you should see it before I announce it. Let me know what you think.`},
-  {key:'resultstory', title:'Result Story Re-entry', when:'Quiet for 60–90 days', body:`Hi [Name], I was just working with a customer and the result made me think of you. [describe result]. Are you still thinking about [what they were interested in]?`},
+  {key:'newarrival', title:'New Arrival Re-entry', when:'Quiet for 30 to 60 days', body:`Hi [Name], hope all is well. We just got something in that made me think of you. [describe item]. I thought you should see it before I announce it. Let me know what you think.`},
+  {key:'resultstory', title:'Result Story Re-entry', when:'Quiet for 60 to 90 days', body:`Hi [Name], I was just working with a customer and the result made me think of you. [describe result]. Are you still thinking about [what they were interested in]?`},
   {key:'season', title:'Season Re-entry', when:'Around a major occasion', body:`Hi [Name], wishing you a wonderful [occasion]. We have some offers that might be useful for this time of year. Let me know if there's anything we can help with. 😊`},
   {key:'direct', title:'Direct Check-In', when:'Silent for 90+ days', body:`Hi [Name], it's been a while and I just wanted to check in. No agenda, just hoping you're doing well. If there's ever anything we can help with, we're here. 🙏`},
   {key:'pricedrop', title:'Price or Offer Change Re-entry', when:'When pricing, stock, or terms genuinely improve', body:`Hi [Name], wanted to give you a heads up before anyone else, [describe the specific change]. Thought of you since we last spoke about [what they wanted]. Still worth a look?`},
@@ -5330,7 +5432,7 @@ function renderPersona(){
     <div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px">Answer as specifically as you can. This feeds your AI Assistant and your Messages templates.</div>
     <label class="lbl">Give them a name (e.g. "Auntie Ama")</label><input class="inp" id="pName" value="${esc(p.name||'')}">
     <div class="wiz-row">
-      <div><label class="lbl">Age range</label><input class="inp" id="pAge" value="${esc(p.age||'')}" placeholder="e.g. 28–40"></div>
+      <div><label class="lbl">Age range</label><input class="inp" id="pAge" value="${esc(p.age||'')}" placeholder="e.g. 28 to 40"></div>
       <div><label class="lbl">Income / spend level</label><input class="inp" id="pIncome" value="${esc(p.income||'')}" placeholder="e.g. mid-income, spends 100-300/mo"></div>
     </div>
     <label class="lbl">Biggest pain point they come to you with</label><textarea class="inp" id="pPain" rows="2">${esc(p.pain||'')}</textarea>
@@ -5342,10 +5444,10 @@ function renderPersona(){
   ${p.name ? `<div class="card" style="border-color:var(--teal)"><div class="card-title">Your Current Persona</div>
     <div style="font-size:12.5px;line-height:1.8;color:var(--ink-dim)">
       <b style="color:var(--navy)">${esc(p.name)}</b>, ${esc(p.age||'age not set')}, ${esc(p.income||'spend not set')}.<br>
-      Struggles with: ${esc(p.pain||', ')}<br>
-      Found on: ${esc(p.where||', ')}<br>
-      Usually objects with: "${esc(p.objection||', ')}"<br>
-      Says yes when: ${esc(p.trigger||', ')}
+      Struggles with: ${esc(p.pain||'Not noted yet')}<br>
+      Found on: ${esc(p.where||'Not noted yet')}<br>
+      Usually objects with: "${esc(p.objection||'Not noted yet')}"<br>
+      Says yes when: ${esc(p.trigger||'Not noted yet')}
     </div>
   </div>` : ''}`;
 }
@@ -6081,13 +6183,13 @@ const GUIDE_STORE = [
    teaser:`The full system for turning WhatsApp into your sales team, customer service desk, marketing platform and CRM. All 15 chapters: profile and trust, catalogue, contact and label systems, status mastery, automation, closing conversations, the 30-day follow-up sequence, WhatsApp as a free CRM, the daily operating rhythm, and social-to-WhatsApp funnels.`,
    full:`LEVEL ONE, FOUNDATION. Chapter 1, the truth nobody tells you. Most businesses already have customers, they just cannot find them inside their own phone. 500 contacts with no names, no labels, no follow-up, a thousand unread messages, a status with a blurry photo and no caption. WhatsApp reaches almost every phone user in Ghana and gets opened far more reliably than email, so the platform is never the problem, the missing system is. If 500 contacts convert at even 1 percent this month at a 200 GHS average sale, that is 1,000 GHS sitting untouched in the phone right now, before any new customers and before any ads. Do this first: download WhatsApp Business, note everything missing from the profile, count contacts and unread messages, screenshot the starting point.\n\nChapter 2, build a profile that makes people trust you immediately. Scam fear is real in Ghana, mobile money fraud and ghost sellers have burned people, so a stranger messaging from an account with no name, no photo and no business identity gets suspicion, not interest. A WhatsApp Business profile is a shopfront, and an incomplete one reads to a customer the same way a shop with no sign and dark windows does. Complete every field under Settings, Business Profile: business name, not a personal name, category, a description using the formula what you do, plus who you serve, plus why choose you, plus how to act, in under 139 characters, real business hours, an email address, a website or social link, a location, and a Google Maps pin added via Google Maps, Share, then pasted into the Location field and tested. Use a clean, professional, high quality logo or product photo, never a blurry personal selfie.\n\nChapter 3, your catalogue is your digital shopfront. An empty or outdated catalogue is the same as a shop owner saying "just message me and I will tell you" when asked what they sell, most people simply walk out. People are meaningfully more likely to buy when product details are visible up front, and an active catalogue lifts enquiry rates. Build it under Business Tools, Catalogue: for every item add clear photos, the exact product name, a price always in GHS, a description covering size, colour, material and how to order, a link, and an item code. Include every product and service, packages and bundles, payment methods, delivery areas and charges, ordering steps, and one item that is simply a customer testimonial screenshot for social proof. Update it constantly rather than leaving it stale for months, and share the catalogue link in every new conversation, on status weekly, on every broadcast, and in every social bio.\n\nChapter 4, saving contacts the right way. A business with 500 contacts who cannot say who most of them are, and no record of what was discussed or bought, is a business with zero system, not zero customers. Every contact is worth somewhere between 1 GHS and 10,000 GHS depending entirely on what is known about them. Use the naming standard every time: Full Name, Business Name, Location, for example "Kofi Mensah, Mensah Traders, Koforidua," never just a number, a first name, or "Customer." Open each contact and add a note recording the date and how they were found, products they showed interest in, full purchase history, communication preferences, personal details shared, any objection raised, and whether they are a referral source. Turn on Google Contacts sync and weekly WhatsApp chat backup so a lost phone never means lost customers.\n\nChapter 5, your label system, know who everyone is. Labels are the single most under-used WhatsApp Business feature, and without them an inbox is just a pile with no order or priority. Create these eleven and apply them as relationships move: New Lead, reply within two hours and send the catalogue; Conversation, keep momentum, answer fast; Follow Up, they went quiet, message within three days; Sent Offer, follow up within 24 hours of silence; Paid, thank immediately and confirm delivery; Customer, check in regularly and ask for referrals; Outreach, you messaged first, follow up twice then move to Rejected if silent; Affiliate, someone who sends customers, nurture consistently; Rejected, said no this time, never delete or block, re-engage in 30 to 60 days; Visibility Partner, shares your content, reciprocate; Spotlight Client, your best clients, priority always. Run a daily label routine: filter Follow Up in the morning and message everyone, filter New Lead and Conversation mid-morning, filter Sent Offer in the afternoon for anything 24-plus hours silent, and check in personally with Customer and Spotlight Client contacts in the evening.\n\nLEVEL TWO, VISIBILITY. Chapter 6, status mastery, your free daily billboard. Status puts content directly in front of people who already know the business, completely free, but posting product after product with no story and no CTA kills reach, contacts are not a vending machine. Rotate ten status categories: product, service, testimonial, educational, behind the scenes, story, time-limited offer, FAQ, customer result, and personal brand. A working daily mix is three product or service posts, three educational or story posts, and three trust-building posts, nine total, every single one ending with a clear call to action, posted around 6 to 8am, 12 to 1pm, 5 to 7pm and 8 to 10pm. Run a five-post story funnel across a day when launching something: problem, story, solution, proof, then a direct CTA. Text-only statuses work too, a strong line of text with a CTA can outperform visual noise.\n\nChapter 7, the three ways to write over a picture or video. The Side Stack uses two to three words per line, left-aligned, building like a staircase from hook to CTA, best for questions and bold openers. The Full Cover fills the bottom half or whole screen with a headline that hits a pain point, a three to five sentence body, and a CTA at the very bottom, this is what triggers the "Read More" tap, which is engagement, not a problem. The 1 to 2 Liner is one or two centred lines over a strong image, the most under-used style in Ghana and an instant standout. Pick two brand colours, one for text and one for CTAs, and reuse them on every post; within two weeks people recognise the content before reading a word. Save every creation to the gallery before posting so the same asset can go straight to Facebook, Instagram and TikTok too, one creation, four platforms.\n\nChapter 8, status views, the silent buyers. Twenty views and zero replies is not rejection, it is research, someone rebuilding trust with the brand one silent view at a time. Recognise six viewer types: the Scout comparing options, the Shy Buyer unsure how to open, the Trust Builder who needs repetition before acting, the Busy One who meant to reply, the Cautious One still checking legitimacy, and the Almost-Ready Buyer waiting for the right trigger. Most buyers need to see content five to seven times before making contact, and a repeated viewer converts far more often than a first-time one, some observe for 30-plus days before acting. After three-plus views, send: "Hi [Name], I noticed you have been checking out our updates, thank you. Is there anything specific you were looking for, or something we can help with today?" For a long-term silent viewer, send a warmer version acknowledging the ongoing attention. Never block or remove a silent viewer, the person who watches for six months and then becomes the biggest client is a real, regular occurrence.\n\nChapter 9, broadcasts, groups and communities. A broadcast list sends privately to many people at once, each as an individual message, recipients cannot see each other, and the recipient must already have the number saved, maximum 256 per list, best for offers and updates. A group is one shared conversation everyone sees, useful for community building but can get noisy, up to 1024 members. Build five broadcast lists: Active Customers, Warm Leads, Partners and Affiliates, Suppliers, and VIP Spotlight Clients, and personalise every message with the person's name, sending two to three times a week maximum at peak hours. In groups, contribute value first and let private messages be where selling actually happens, being in forty groups and posting in none is noise, not networking, leave groups where customers are not present and nothing has been posted in 30-plus days. A Community groups several topic-based groups under one announcement channel, useful once an audience is genuinely large.\n\nChapter 10, automated messages that work for you 24 hours a day. A customer messaging at 11pm on a Sunday who gets nothing back has often chosen someone else by Monday morning, an instant automated reply is worth more than a perfect human one sent the next day. Set up four tools under Settings, Business Tools: a Welcome Message introducing the business and linking the catalogue with expected reply times; an Away Message covering off-hours with the same catalogue link and stated hours; Quick Replies triggered by typing a slash and a shortcut, at minimum hi, price, deliver, pay, order, thanks, followup and cat; and a Greeting Message that fires automatically for anyone returning after 14-plus days silent. Test everything by messaging from another number and by typing every slash shortcut to confirm it reads warm, accurate, and ends with a clear next step.\n\nLEVEL THREE, CLOSING AND SYSTEMS. Chapter 11, communication that closes deals. How a business communicates on WhatsApp is how it feels to the customer before price or product is even discussed. Abrupt openers and begging both destroy trust; a warm greeting, visible social proof, and honest scarcity build it. Reply to every new enquiry within 30 minutes during business hours, even a quick "let me get you the details now" buys goodwill. Keep voice notes under 90 seconds, opening with the person's name and ending with one clear action, and never send voice notes to a brand-new contact before text rapport exists. After 24 hours of a blue tick with no reply, send a no-pressure check-in; after 48-plus hours of full silence, share something new rather than repeating the same ask. Handle rude responses without matching the energy, wish them well, apply the Rejected label, and leave for 60 days. On price objections, ask about budget rather than defending the price. Use five qualifying questions early in a conversation (what exactly they need, who it is for, the timeline, budget range, and prior purchase history) and always close with a direct question that moves toward yes, "which would you like, A or B," "shall I set that aside," "we only have two left, should I hold one." A conversation that ends without a closing question has to restart from zero next time.\n\nChapter 12, the follow-up system. Very few sales close on first contact, most require several follow-ups, and most sellers give up after just one message, which is exactly why the fortune sits in the follow-up. Run a 30-day sequence: Day 1, warm first contact with the catalogue link, labelled New Lead; Day 3, a gentle check-in from a different angle, new arrivals or a fresh image; Day 7, a genuinely useful value message with no pitch; Day 14, social proof, a testimonial or result; Day 21, now make a specific offer, trust has been built across four prior touches; Day 30, an honest final reach-out acknowledging the repeated contact and leaving the door open with no pressure, this message alone often gets more replies than any other because of its honesty. Every follow-up must bring something new, a repeated "did you see my last message" signals nothing new to offer. Send a thank-you after every purchase and after every first conversation even without a sale, this alone is something almost no competitor does. Check in 48 hours after delivery, re-engage at 30 days, and ask every satisfied customer for both a testimonial and a referral.\n\nChapter 13, WhatsApp as your CRM. Large companies pay monthly for customer relationship management software; WhatsApp Business already has the essentials built in for free. Labels are the pipeline tracker from Chapter 5. Contact Notes are the customer record. Starred Messages are the vault, hold any message and tap the star to save payment confirmations, addresses, order specs, deadlines and testimonials for instant retrieval later. Archived Chats file away completed orders and concluded conversations without losing the history, an archived chat resurfaces automatically the moment that contact messages again. To reset an overwhelmed inbox, filter by Unread and work through 20 chats a session, replying, labelling, archiving or deleting spam, starring anything important first, at that pace even a thousand unread chats clear within 50 days. Turn on weekly backup and link WhatsApp Web for a second screen to work from.\n\nChapter 14, the daily, weekly and monthly operating system. Everything in this guide works when applied consistently, roughly 30 minutes a day, split across four short windows. Morning, around 6:30 to 8am: clear unread messages and label them, message every Follow Up contact, post the first three statuses of the day, and message anyone with three-plus status views who has not been contacted. Mid-morning: work New Lead and Conversation labels, chase any Sent Offer past 24 hours silent, post more statuses. Afternoon: update the catalogue, answer every new enquiry within two hours, post again for the commute window. Evening, the highest usage window in Ghana: personal check-ins with Customers and Spotlight Clients, final statuses of the day, reset the inbox, and prepare tomorrow's first posts. Run a weekly rhythm too: Monday reviews every stalled lead, Tuesday plans the week's content, Wednesday is catalogue and broadcast day, Thursday is customer care, Friday is outreach to ten new contacts, Saturday carries the week's strongest offer, and Sunday reviews the numbers and plans the week ahead. One extra sale a day, sustained, compounds into a meaningful annual number, not from luck but from consistent daily action.\n\nChapter 15, social media to WhatsApp funnels. Social media is the net, WhatsApp is the boat, and a business only grows when both are connected. The funnel runs in five stages: someone discovers the business on Facebook, Instagram, TikTok or Google, they tap the WhatsApp link, the automated welcome message fires, a real conversation qualifies and builds trust, and the sale moves them onto a broadcast list as a Customer. Build a direct link in the format wa.me/[country code][number], and use the pre-filled version, wa.me/[number]?text=a%20message, so the chat opens with a message already typed, this measurably increases how many people actually start the conversation. Put that link in the Facebook page bio and as the page's action button, end every post with a WhatsApp CTA, add it to the Instagram bio (the one clickable link there) and every story, add it to a TikTok Business bio and repeat the CTA on camera in every video, and add it as the primary contact on a free Google Business Profile. For paid reach, Facebook Ads Manager can run a Messages objective straight into WhatsApp with a small daily test budget before scaling whatever performs.\n\nThe cost of neglect. A business sitting on 500 contacts converting at just 1 percent is already leaving real money on the table every month, and unattended follow-up, unread messages, and a missing catalogue each compound that loss further, often adding up to several thousand GHS a month left unclaimed, not from a bad product or a bad market, but from a neglected phone.\n\nTry this today: screenshot your current WhatsApp Business profile and count your unread messages and total contacts, that is your starting line. This week: complete every field in your business profile using the description formula, build or refresh your catalogue with at least five fully detailed items, and create all eleven labels and apply them to your existing chats. This month: set up all four automated messages, build your five broadcast lists, run the full 30-day follow-up sequence on every open lead, and lock in the six daily alarms from Chapter 14 so the operating system runs itself.`},
   {key:'signal', t:'The Signal, Digital Skills System', price:19.99, related:['digital_shopfront_p1','power5','commentplaybook'], teaser:'10 full chapters most Ghanaian business owners never learn in one place: AI & ChatGPT for business, Social Media Marketing, WhatsApp Business Growth, Side Hustles & Online Income, Video Editing for TikTok & Reels, Personal Branding, Digital Sales & Closing, Graphic Design with Canva, a Content Creation System, and Small Business Growth Systems.',
-   full:`CHAPTER 1, AI & ChatGPT For Business. Work smarter, not harder, starting today. ChatGPT is a free tool that writes for you, thinks with you, and saves hours every week, a very smart assistant that never sleeps. Most businesses aren't using it yet, so starting today is a real advantage. It can write captions, draft customer replies, create product names, write WhatsApp broadcasts, and suggest marketing strategies, it doesn't replace you, it makes you faster and more consistent.\n\nHow to start: create a free account at chat.openai.com. Learn the basics of prompting, tell it who you are, what your business does, and exactly what you need. Weak prompt: "Write something for my business." Strong prompt: "I sell women's fashion in Accra. Write me 3 Instagram captions for a Monday morning post announcing a new Ankara collection. Keep it warm, fun, and end with a WhatsApp call to action." Start with small daily tasks, social captions first, then customer reply templates, then expand.\n\nAction steps: Today, create your free ChatGPT account. This week, write your first strong prompt and generate 5 captions, use the best one. This month, generate 20 content ideas and post from that list every week.\n\nCHAPTER 2, Social Media Marketing. Your customers are online, are you showing up? Over 9 million people in Ghana are active on Facebook; TikTok is growing fast among young buyers. The question isn't whether your customers are there, it's whether they can find you.\n\nHow to start: choose your main platform first, food or general goods → Facebook & WhatsApp; fashion or beauty → Instagram & TikTok; targeting 18–30 → TikTok. Don't try to be everywhere at once. Set up your business profile properly, professional photo, clear bio explaining what you sell and where, WhatsApp number, consistent business name everywhere. Use a simple weekly content plan: Monday, show a product or service; Wednesday, share a customer review or result; Friday, educate and share something useful; Saturday, promote a special offer. Engage before you expect engagement, reply to every comment and message; the algorithm shows your content to more people when you're active.\n\nAction steps: Today, pick your primary platform, complete your profile 100%. This week, post every day for 7 days and track what gets the most engagement; reply to everything within 2 hours. This month, use ChatGPT to build a content calendar and schedule posts in advance.\n\nCHAPTER 3, WhatsApp Business Growth. Your most powerful business tool is already on your phone. WhatsApp Business turns your ordinary WhatsApp into a professional tool with a catalog, automated messages, and broadcast lists. Almost every Ghanaian with a smartphone uses WhatsApp daily, most businesses use it like a chat app; the ones who grow treat it like a business system.\n\nHow to start: download WhatsApp Business (free) and set it up with your business number. Complete your profile fully, name, category, 2–3 sentence description, location, hours, email. Set up your catalog, products or services with photos, names and prices, which removes the "how much?" question that kills so many sales conversations. Create Quick Replies, /hi, /price, /location shortcuts that instantly send professional responses. Build a broadcast list, save every customer's number, and once you have 10+, send broadcasts for promotions, new arrivals, and updates.\n\nAction steps: Today, download WhatsApp Business and migrate your number; complete your entire profile. This week, add at least 5 products with photos and prices; set up 3 Quick Replies for common questions. This month, build your broadcast list to 50+ customers and send your first broadcast.\n\nCHAPTER 4, Side Hustles & Online Income. Your skills are worth money, here's how to start. A side hustle is income earned outside your main business, and the internet has created real, accessible ways to earn with skills you may already have: freelancing (Fiverr/Upwork, writing, design, video editing, social media, paid in dollars), virtual assistant work (managing emails, scheduling, social media for other businesses), selling digital products (create once, sell repeatedly), and affiliate marketing (recommend products, earn commission).\n\nHow to start: identify your sellable skill, design, photography, writing, video editing, cooking, tutoring are all sellable. Choose one path and start, don't try three things at once; earn your first income, then expand. Get your first client from your existing network, tell 10 people what you now offer, and ask 3 to try it at a discounted rate in exchange for a testimonial.\n\nAction steps: Today, write down 3 skills someone might pay you for. This week, post a simple offer on WhatsApp status and one Facebook group; create a free Fiverr or Upwork account. This month, deliver your first paid job, get a testimonial, post it publicly.\n\nCHAPTER 5, Video Editing For TikTok & Reels. Short videos are the fastest growing business tool in Ghana right now. A single well-made short video, TikTok, Instagram Reels, Facebook Reels, can reach thousands who've never heard of your business. Most people edit with CapCut, a free, easy-to-use app; you don't need a professional camera, just your phone, CapCut, and the willingness to start.\n\nThe structure of a short video that works: the Hook (first 2 seconds), stop the scroll with something surprising, bold, or useful immediately. The Body (next 15–45 seconds), deliver the value, show the product, tell the story, keep it moving with no long pauses. The Call to Action (last 3 seconds), "Comment YES," "WhatsApp me," "Visit our page", always end with the next step.\n\nHow to start with CapCut: download it free (Android & iPhone), open the templates section first, ready-made styles you fill with your own content. Film what you already have, your product, your process, a before-and-after, introducing yourself, answering a common customer question. Edit, trim clips, add auto-generated subtitles, add music from the built-in library, add a text overlay with your WhatsApp number.\n\nAction steps: Today, download CapCut, watch 3 videos from similar businesses and note what they do in the first 2 seconds. This week, film and edit your first short video and post it; done is better than perfect. This month, post at least 12 short videos, track which get the most views, and replicate that style.\n\nCHAPTER 6, Personal Branding. People buy from people, become someone they choose. Personal branding means becoming known, trusted and respected not just as a business, but as the person behind it. In Ghana's market people don't just buy products, they buy from people they know and trust. It's not about being famous, it's about being known to the right people.\n\nHow to start: define who you are as a business person, what do you stand for, who do you want to serve, what do you know that your customers would find valuable? Show up as yourself, record a short video talking about your business; people connect with people, not logos. Share your knowledge, teaching builds trust faster than selling. Tell your story, why did you start, what challenges did you overcome; stories are memorable, facts are forgotten. Be consistent, decide on 3 things to be known for and keep returning to them; consistency turns a first impression into a reputation.\n\nAction steps: Today, write 3 words that describe who you are as a business person; these become your brand pillars. This week, record a 30-second introduction video and post it; post one piece of content teaching something useful, no selling, just value. This month, share one honest personal story about your business journey.\n\nCHAPTER 7, Digital Sales & Closing. Posting gets attention. Closing gets paid. Most businesses post regularly, get views and reactions, but sales don't follow, almost always because of a gap in how conversations are handled.\n\nHow to start: respond to enquiries with warmth, wrong way: someone asks "how much?" and you just send a price with nothing else. Right way: "Hello! Thank you for reaching out. The price is GHS [X] and it includes [benefit 1] and [benefit 2]. Would you like me to send you more details or photos?" Handle hesitation with empathy, "Hi [Name], just checking in, did you get a chance to think about [product]? I'm here if you have questions. No pressure at all." Create urgency honestly, "I only have 3 left in stock," "this price is available until Friday", urgency must be real to be effective. Ask for the sale, "Shall I go ahead and reserve this for you?" or "Would you like to pay via MoMo now?", guide them to the next step.\n\nAction steps: Today, write a new warm response script for "how much?" This week, follow up with 5 people who enquired in the last 30 days but didn't buy; set up a Quick Reply for your most common sales conversation. This month, track every enquiry, find where the conversation breaks down, and fix that one point.\n\nCHAPTER 8, Graphic Design With Canva. Professional-looking visuals, no designer needed. Canva is a free design tool that lets any business owner create professional graphics, flyers and social posts with zero design experience. Before Canva, only businesses that could afford a designer had professional visuals, now anyone can create them in minutes.\n\nHow to start: create a free account at canva.com or download the app. Choose the right template size, Instagram Post (1080×1080) for square posts, WhatsApp Status (1080×1920) for vertical, Flyer (A4) for physical flyers. Customise a template, search for one matching your business type, change the text, colours and photos to your own. Build brand consistency, choose 2–3 colours and 1–2 fonts, use them in every design; this builds a recognisable brand look over time.\n\nAction steps: Today, create a free Canva account and browse templates for your business type. This week, design your first promotional post and a simple "About Our Business" graphic. This month, create 10 reusable design templates for your most common post types; this halves your content creation time.\n\nCHAPTER 9, Content Creation System. Stop creating randomly, build a system that works while you sleep. What most businesses get wrong: they create content when they feel like it, then go silent for weeks, the algorithm stops showing your content and your audience forgets you. A content system means a plan, a process and a schedule so content goes out consistently, whether you're inspired or not.\n\nHow to start: define your content pillars, 4–5 themes your content rotates between (e.g. for beauty: product showcases, beauty tips, customer results, behind the scenes, promotions). Create a simple weekly schedule, even 3 posts a week consistently beats 7 days in a row then silence for a month. Batch-create your content, set aside one day a week to create content for the whole week; this removes the daily stress of "what do I post today?" Use hooks that stop the scroll, "Are you still doing this wrong?", "This is why your business is not growing," "Last week a customer told me something that surprised me."\n\nAction steps: Today, define your 4–5 content pillars and write them down. This week, create a simple weekly content calendar; batch-create 7 pieces of content in one sitting. This month, study your best-performing post and create 3 more in the same style.\n\nCHAPTER 10, Small Business Growth Systems. Stop running your business, build one that runs. A business system is a set of processes that let your business run consistently even when you're tired, busy, or not present. Most small businesses in Ghana run on the owner's memory and energy, when the owner is sick, the business stops. In 2026, the most competitive Ghanaian businesses won't be the ones with the most money, they'll be the ones with the best systems.\n\nThe 5 core business systems: System 1, Visibility System: how people find you (Google Maps, social profiles, your listing, WhatsApp Business profile, referral programme). Action: write down every place a new customer could discover your business and make sure each is complete and up to date. System 2, Trust System: how people decide to buy from you instead of a competitor (reviews, testimonials, consistent branding, fast response times, professional presentation). Action: ask your 5 best customers for a WhatsApp review this week. System 3, Sales System: how you turn an interested person into a paying customer (enquiry response process, follow-up schedule, pricing structure, MoMo payment setup). Action: write a simple 5-step script for handling new enquiries. System 4, Customer Retention System: how you keep customers coming back (follow-up messages, loyalty offers, broadcast lists, appreciation gestures). Action: message every customer 2 weeks after purchase to check in and offer something relevant. System 5, Growth Review System: how you measure and improve (tracking monthly sales, monitoring which content performs best, setting small monthly goals). Action: set one business goal for next month, write it down, review it in 30 days.\n\nAction steps: Today, identify your weakest system from the five above and commit to fixing it this month. This week, set up Google My Business (business.google.com) as your visibility foundation; send a simple follow-up message to 10 previous customers. This month, define one monthly business goal and track it weekly. No goal means no growth direction.`},
+   full:`CHAPTER 1, AI & ChatGPT For Business. Work smarter, not harder, starting today. ChatGPT is a free tool that writes for you, thinks with you, and saves hours every week, a very smart assistant that never sleeps. Most businesses aren't using it yet, so starting today is a real advantage. It can write captions, draft customer replies, create product names, write WhatsApp broadcasts, and suggest marketing strategies, it doesn't replace you, it makes you faster and more consistent.\n\nHow to start: create a free account at chat.openai.com. Learn the basics of prompting, tell it who you are, what your business does, and exactly what you need. Weak prompt: "Write something for my business." Strong prompt: "I sell women's fashion in Accra. Write me 3 Instagram captions for a Monday morning post announcing a new Ankara collection. Keep it warm, fun, and end with a WhatsApp call to action." Start with small daily tasks, social captions first, then customer reply templates, then expand.\n\nAction steps: Today, create your free ChatGPT account. This week, write your first strong prompt and generate 5 captions, use the best one. This month, generate 20 content ideas and post from that list every week.\n\nCHAPTER 2, Social Media Marketing. Your customers are online, are you showing up? Over 9 million people in Ghana are active on Facebook; TikTok is growing fast among young buyers. The question isn't whether your customers are there, it's whether they can find you.\n\nHow to start: choose your main platform first, food or general goods → Facebook & WhatsApp; fashion or beauty → Instagram & TikTok; targeting 18 to 30 → TikTok. Don't try to be everywhere at once. Set up your business profile properly, professional photo, clear bio explaining what you sell and where, WhatsApp number, consistent business name everywhere. Use a simple weekly content plan: Monday, show a product or service; Wednesday, share a customer review or result; Friday, educate and share something useful; Saturday, promote a special offer. Engage before you expect engagement, reply to every comment and message; the algorithm shows your content to more people when you're active.\n\nAction steps: Today, pick your primary platform, complete your profile 100%. This week, post every day for 7 days and track what gets the most engagement; reply to everything within 2 hours. This month, use ChatGPT to build a content calendar and schedule posts in advance.\n\nCHAPTER 3, WhatsApp Business Growth. Your most powerful business tool is already on your phone. WhatsApp Business turns your ordinary WhatsApp into a professional tool with a catalog, automated messages, and broadcast lists. Almost every Ghanaian with a smartphone uses WhatsApp daily, most businesses use it like a chat app; the ones who grow treat it like a business system.\n\nHow to start: download WhatsApp Business (free) and set it up with your business number. Complete your profile fully, name, category, 2 to 3 sentence description, location, hours, email. Set up your catalog, products or services with photos, names and prices, which removes the "how much?" question that kills so many sales conversations. Create Quick Replies, /hi, /price, /location shortcuts that instantly send professional responses. Build a broadcast list, save every customer's number, and once you have 10+, send broadcasts for promotions, new arrivals, and updates.\n\nAction steps: Today, download WhatsApp Business and migrate your number; complete your entire profile. This week, add at least 5 products with photos and prices; set up 3 Quick Replies for common questions. This month, build your broadcast list to 50+ customers and send your first broadcast.\n\nCHAPTER 4, Side Hustles & Online Income. Your skills are worth money, here's how to start. A side hustle is income earned outside your main business, and the internet has created real, accessible ways to earn with skills you may already have: freelancing (Fiverr/Upwork, writing, design, video editing, social media, paid in dollars), virtual assistant work (managing emails, scheduling, social media for other businesses), selling digital products (create once, sell repeatedly), and affiliate marketing (recommend products, earn commission).\n\nHow to start: identify your sellable skill, design, photography, writing, video editing, cooking, tutoring are all sellable. Choose one path and start, don't try three things at once; earn your first income, then expand. Get your first client from your existing network, tell 10 people what you now offer, and ask 3 to try it at a discounted rate in exchange for a testimonial.\n\nAction steps: Today, write down 3 skills someone might pay you for. This week, post a simple offer on WhatsApp status and one Facebook group; create a free Fiverr or Upwork account. This month, deliver your first paid job, get a testimonial, post it publicly.\n\nCHAPTER 5, Video Editing For TikTok & Reels. Short videos are the fastest growing business tool in Ghana right now. A single well-made short video, TikTok, Instagram Reels, Facebook Reels, can reach thousands who've never heard of your business. Most people edit with CapCut, a free, easy-to-use app; you don't need a professional camera, just your phone, CapCut, and the willingness to start.\n\nThe structure of a short video that works: the Hook (first 2 seconds), stop the scroll with something surprising, bold, or useful immediately. The Body (next 15 to 45 seconds), deliver the value, show the product, tell the story, keep it moving with no long pauses. The Call to Action (last 3 seconds), "Comment YES," "WhatsApp me," "Visit our page", always end with the next step.\n\nHow to start with CapCut: download it free (Android & iPhone), open the templates section first, ready-made styles you fill with your own content. Film what you already have, your product, your process, a before-and-after, introducing yourself, answering a common customer question. Edit, trim clips, add auto-generated subtitles, add music from the built-in library, add a text overlay with your WhatsApp number.\n\nAction steps: Today, download CapCut, watch 3 videos from similar businesses and note what they do in the first 2 seconds. This week, film and edit your first short video and post it; done is better than perfect. This month, post at least 12 short videos, track which get the most views, and replicate that style.\n\nCHAPTER 6, Personal Branding. People buy from people, become someone they choose. Personal branding means becoming known, trusted and respected not just as a business, but as the person behind it. In Ghana's market people don't just buy products, they buy from people they know and trust. It's not about being famous, it's about being known to the right people.\n\nHow to start: define who you are as a business person, what do you stand for, who do you want to serve, what do you know that your customers would find valuable? Show up as yourself, record a short video talking about your business; people connect with people, not logos. Share your knowledge, teaching builds trust faster than selling. Tell your story, why did you start, what challenges did you overcome; stories are memorable, facts are forgotten. Be consistent, decide on 3 things to be known for and keep returning to them; consistency turns a first impression into a reputation.\n\nAction steps: Today, write 3 words that describe who you are as a business person; these become your brand pillars. This week, record a 30-second introduction video and post it; post one piece of content teaching something useful, no selling, just value. This month, share one honest personal story about your business journey.\n\nCHAPTER 7, Digital Sales & Closing. Posting gets attention. Closing gets paid. Most businesses post regularly, get views and reactions, but sales don't follow, almost always because of a gap in how conversations are handled.\n\nHow to start: respond to enquiries with warmth, wrong way: someone asks "how much?" and you just send a price with nothing else. Right way: "Hello! Thank you for reaching out. The price is GHS [X] and it includes [benefit 1] and [benefit 2]. Would you like me to send you more details or photos?" Handle hesitation with empathy, "Hi [Name], just checking in, did you get a chance to think about [product]? I'm here if you have questions. No pressure at all." Create urgency honestly, "I only have 3 left in stock," "this price is available until Friday", urgency must be real to be effective. Ask for the sale, "Shall I go ahead and reserve this for you?" or "Would you like to pay via MoMo now?", guide them to the next step.\n\nAction steps: Today, write a new warm response script for "how much?" This week, follow up with 5 people who enquired in the last 30 days but didn't buy; set up a Quick Reply for your most common sales conversation. This month, track every enquiry, find where the conversation breaks down, and fix that one point.\n\nCHAPTER 8, Graphic Design With Canva. Professional-looking visuals, no designer needed. Canva is a free design tool that lets any business owner create professional graphics, flyers and social posts with zero design experience. Before Canva, only businesses that could afford a designer had professional visuals, now anyone can create them in minutes.\n\nHow to start: create a free account at canva.com or download the app. Choose the right template size, Instagram Post (1080×1080) for square posts, WhatsApp Status (1080×1920) for vertical, Flyer (A4) for physical flyers. Customise a template, search for one matching your business type, change the text, colours and photos to your own. Build brand consistency, choose 2 to 3 colours and 1 to 2 fonts, use them in every design; this builds a recognisable brand look over time.\n\nAction steps: Today, create a free Canva account and browse templates for your business type. This week, design your first promotional post and a simple "About Our Business" graphic. This month, create 10 reusable design templates for your most common post types; this halves your content creation time.\n\nCHAPTER 9, Content Creation System. Stop creating randomly, build a system that works while you sleep. What most businesses get wrong: they create content when they feel like it, then go silent for weeks, the algorithm stops showing your content and your audience forgets you. A content system means a plan, a process and a schedule so content goes out consistently, whether you're inspired or not.\n\nHow to start: define your content pillars, 4 to 5 themes your content rotates between (e.g. for beauty: product showcases, beauty tips, customer results, behind the scenes, promotions). Create a simple weekly schedule, even 3 posts a week consistently beats 7 days in a row then silence for a month. Batch-create your content, set aside one day a week to create content for the whole week; this removes the daily stress of "what do I post today?" Use hooks that stop the scroll, "Are you still doing this wrong?", "This is why your business is not growing," "Last week a customer told me something that surprised me."\n\nAction steps: Today, define your 4 to 5 content pillars and write them down. This week, create a simple weekly content calendar; batch-create 7 pieces of content in one sitting. This month, study your best-performing post and create 3 more in the same style.\n\nCHAPTER 10, Small Business Growth Systems. Stop running your business, build one that runs. A business system is a set of processes that let your business run consistently even when you're tired, busy, or not present. Most small businesses in Ghana run on the owner's memory and energy, when the owner is sick, the business stops. In 2026, the most competitive Ghanaian businesses won't be the ones with the most money, they'll be the ones with the best systems.\n\nThe 5 core business systems: System 1, Visibility System: how people find you (Google Maps, social profiles, your listing, WhatsApp Business profile, referral programme). Action: write down every place a new customer could discover your business and make sure each is complete and up to date. System 2, Trust System: how people decide to buy from you instead of a competitor (reviews, testimonials, consistent branding, fast response times, professional presentation). Action: ask your 5 best customers for a WhatsApp review this week. System 3, Sales System: how you turn an interested person into a paying customer (enquiry response process, follow-up schedule, pricing structure, MoMo payment setup). Action: write a simple 5-step script for handling new enquiries. System 4, Customer Retention System: how you keep customers coming back (follow-up messages, loyalty offers, broadcast lists, appreciation gestures). Action: message every customer 2 weeks after purchase to check in and offer something relevant. System 5, Growth Review System: how you measure and improve (tracking monthly sales, monitoring which content performs best, setting small monthly goals). Action: set one business goal for next month, write it down, review it in 30 days.\n\nAction steps: Today, identify your weakest system from the five above and commit to fixing it this month. This week, set up Google My Business (business.google.com) as your visibility foundation; send a simple follow-up message to 10 previous customers. This month, define one monthly business goal and track it weekly. No goal means no growth direction.`},
   {key:'power5', t:'The Power of 5, Algorithm Hack', price:9.99, related:['sprint10','signal'], teaser:'A 5-part daily engagement routine, Likes, Comments, Shares, Saves, and 5 Minutes of replies, built to wake up a quiet social account. Small enough to do every morning, consistent enough to actually move the algorithm.',
    full:`Social media isn't a billboard, it's a conversation. If you don't talk, the algorithm thinks you're dead. Visibility is the fuel, trust is the engine, the Power of 5 is how you wake the machine up. It's five small daily actions, five minutes each, done every single day.\n\nStep 1, The 5 Likes. Instruction: like 5 posts from your target customers or industry leaders every morning. Goal: this puts your name in their notifications, you're "knocking on their door" without saying a word.\n\nStep 2, The 5 Comments (the 5-word rule). Instruction: leave 5 comments daily, minimum 5 words each, never emojis only. Goal: meaningful comments get pinned and liked by the poster, which drives people back to your profile to see who left them.\n\nStep 3, The 5 Shares. Instruction: share 5 pieces of valuable content to your WhatsApp Status or Instagram Stories. Goal: this positions you as a source of information, not just a seller, people follow sources, they scroll past sellers.\n\nStep 4, The 5 Saves. Instruction: save 5 trending or educational videos in your niche. Goal: this tells the algorithm this specific type of content is valuable to you, and it starts showing you more "winning" ideas you can adapt for your own posts.\n\nStep 5, The 5 Minutes. Instruction: spend 5 minutes every day responding to every single DM and comment you receive. Goal: speed is a currency, fast replies close sales that slow replies lose.\n\nThe Consistency Calendar: tick these 5 boxes every day. In 7 days you'll see a spark. In 30 days you'll see a fire. Miss a day here and there and the routine still works, the goal is a habit, not perfection, but the more consistent the 5 boxes, the faster the algorithm starts treating your account as active and worth showing to new people.`},
   {key:'sprint10', t:'The 10-Day Visibility Sprint', price:9.99, related:['power5','commentplaybook'], teaser:'A day-by-day, 10-day content sprint designed as a "shock to the system" for a quiet account, from waking up the algorithm on Day 1 through to a high-intensity closing push on Day 9 and a data review on Day 10. Exact daily goal, instruction, and task for each day.',
    full:`Why 10 days? The algorithm needs a shock to the system. Ten days of perfect, deliberate posting creates a "trend" that forces TikTok and Instagram to start pushing your content to new audiences beyond your existing followers. The one rule: miss a day and the engine stalls, don't break the chain.\n\nDay 1, Prime the Algorithm. Goal: wake up a sleeping account. Instruction: do not post a video yet, spend 15 minutes engaging with 10 competitors and 10 potential customers first. Task, the "Search Bar Hijack": search for your service in your city/town and comment thoughtfully on the top 3 videos that come up.\n\nDay 2, The "I'm Here" Hook. Goal: announce your presence without selling. Instruction: post a video using a "Relatable Struggle" hook. Task template: "I used to think [Common Mistake] was the only way to [Result], until I realised..."\n\nDay 3, Behind the Curtain. Goal: build the trust asset. Instruction: show the boring, unglamorous part of your business, people trust processes, not just finished products. Task: a 15-second clip of you working, packing, or organising, with a voiceover about your standards.\n\nDay 4, Expert Status. Goal: stop being a seller, become a teacher. Instruction: give away one "secret" for free that your competitors charge for. Task, "The 3-Step Fix": 3 quick tips that solve a common customer problem.\n\nDay 5, Controversy & Conversation. Goal: explode the comment section. Instruction: state an unpopular opinion about your industry. Task template: "Stop doing [X] if you want to actually achieve [Y]. Here is why..."\n\nDay 6, Proof of Life. Goal: social proof. Instruction: screenshot a DM, a review, or a MoMo receipt (blur the names). Task: tell the story of the result the customer got, not just the product they bought.\n\nDay 7, The Human Element. Goal: personal branding. Instruction: show your face, or tell your "why." Task: why did you start this business? People buy from people, not logos.\n\nDay 8, Demand Engineering. Goal: create FOMO (fear of missing out). Instruction: show that your stock is moving or your time is booking up. Task template: "Only 3 slots left this week" or "Last 5 items in this colour."\n\nDay 9, The Final Call. Goal: the hard sell. Instruction: use the Direct Response formula, Hook → Problem → Solution → Price → MoMo. Task: a clear, high-energy post telling people exactly how to buy, right now.\n\nDay 10, Review & Pivot. Goal: data analysis. Instruction: look at which of the last 9 days got the most shares and saves. Task: re-post that "winner" with a different caption and see if it performs again.\n\nTiming & Tech Specs: post during the exact windows that work for the Ghana market, the morning commute, the lunch break, and the 8:00pm wind-down. Use the 3-hashtag rule, 3 well-chosen hashtags outperform a wall of 20 generic ones.`},
   {key:'commentplaybook', t:'The Comment Playbook', price:19.99, related:['sprint10','signal','digital_shopfront_p1'], teaser:'How to get sales, followers and customers from other people\'s pages, posts and audiences, without ads. The 5 comment types, where to comment, a starter-to-advanced 30-day deployment plan, and the comment-to-DM script that turns a reply into a conversation.',
-   full:`Most businesses post content on their own page and then wait for people to find them. That wait is usually long. This approach flips it: instead of waiting for an audience to come to you, you go to where a big, active audience already exists, busy local pages, viral posts, high-traffic accounts, and leave comments valuable enough that people click your name to see who you are. Someone else already did the hard work of gathering that audience; a good comment borrows a sliver of their attention for free.\n\nThe 5 comment types, from safest to boldest: 1) The Value Comment, add a genuinely useful fact or tip related to the post; this is the safest type and rarely reads as promotional. 2) The Agreement-Plus Comment, agree with the post, then add a specific detail or experience of your own. 3) The Question Comment, ask something that makes the original poster or other readers want to reply, pulling engagement (and eyes) toward your name. 4) The Story Comment, a short, relevant personal or customer story that naturally implies what you do without stating it outright. 5) The Direct-But-Tasteful Mention, for pages where it's clearly welcome (e.g. "recommend a good X near me" threads), a brief, honest mention of your business with no hard pitch.\n\nWhere to comment: your own recent customers' posts and tags, local community/marketplace pages, viral or high-traffic posts in your city or niche, and threads where people are visibly asking for exactly what you sell. Avoid pages with heavy moderation against promotional comments, read the room before commenting type 5.\n\nStarter (Days 1–7): comment once a day using only Value or Agreement-Plus comments, no mentions yet. The goal is simply to get your name and face recognised without triggering "spam" instincts in moderators or readers.\n\nIntermediate: once your name starts getting recognised, begin building a comment-to-DM funnel, a Question or Story comment that gets a reply, followed by a warm, personal DM (never a copy-pasted pitch) to the person who engaged with you.\n\nAdvanced: consistently show up on the biggest, most active pages in your niche or city, becoming a recognisable "regular" whose comments people look for, at that point, even a Direct-But-Tasteful Mention reads as a known local voice, not spam.\n\nThe comment-to-DM script: after a genuine exchange in the comments, DM with something like, "Hey, saw your comment on [post], really agree with what you said about [specific detail]. Quick one: [natural question related to what you sell]." This works because it references a real, specific interaction, not a generic opener.\n\nHow to mention your business without being ignored or banned: never lead with your business name or a link, lead with value or a genuine reaction, and only mention what you do if it's directly relevant and welcomed by the context (e.g. someone asking for a recommendation). One clean, honest mention beats five that get deleted or reported.\n\nThe 30-day deployment plan: Week 1, Value/Agreement-Plus comments only, once daily, building recognition. Week 2, add Question and Story comments, start noticing who replies to you. Week 3, begin DMing people who've engaged with you more than once, using the comment-to-DM script. Week 4, track which pages and comment types produced actual replies or customers, and double down only on those; drop what didn't work.`}
+   full:`Most businesses post content on their own page and then wait for people to find them. That wait is usually long. This approach flips it: instead of waiting for an audience to come to you, you go to where a big, active audience already exists, busy local pages, viral posts, high-traffic accounts, and leave comments valuable enough that people click your name to see who you are. Someone else already did the hard work of gathering that audience; a good comment borrows a sliver of their attention for free.\n\nThe 5 comment types, from safest to boldest: 1) The Value Comment, add a genuinely useful fact or tip related to the post; this is the safest type and rarely reads as promotional. 2) The Agreement-Plus Comment, agree with the post, then add a specific detail or experience of your own. 3) The Question Comment, ask something that makes the original poster or other readers want to reply, pulling engagement (and eyes) toward your name. 4) The Story Comment, a short, relevant personal or customer story that naturally implies what you do without stating it outright. 5) The Direct-But-Tasteful Mention, for pages where it's clearly welcome (e.g. "recommend a good X near me" threads), a brief, honest mention of your business with no hard pitch.\n\nWhere to comment: your own recent customers' posts and tags, local community/marketplace pages, viral or high-traffic posts in your city or niche, and threads where people are visibly asking for exactly what you sell. Avoid pages with heavy moderation against promotional comments, read the room before commenting type 5.\n\nStarter (Days 1 to 7): comment once a day using only Value or Agreement-Plus comments, no mentions yet. The goal is simply to get your name and face recognised without triggering "spam" instincts in moderators or readers.\n\nIntermediate: once your name starts getting recognised, begin building a comment-to-DM funnel, a Question or Story comment that gets a reply, followed by a warm, personal DM (never a copy-pasted pitch) to the person who engaged with you.\n\nAdvanced: consistently show up on the biggest, most active pages in your niche or city, becoming a recognisable "regular" whose comments people look for, at that point, even a Direct-But-Tasteful Mention reads as a known local voice, not spam.\n\nThe comment-to-DM script: after a genuine exchange in the comments, DM with something like, "Hey, saw your comment on [post], really agree with what you said about [specific detail]. Quick one: [natural question related to what you sell]." This works because it references a real, specific interaction, not a generic opener.\n\nHow to mention your business without being ignored or banned: never lead with your business name or a link, lead with value or a genuine reaction, and only mention what you do if it's directly relevant and welcomed by the context (e.g. someone asking for a recommendation). One clean, honest mention beats five that get deleted or reported.\n\nThe 30-day deployment plan: Week 1, Value/Agreement-Plus comments only, once daily, building recognition. Week 2, add Question and Story comments, start noticing who replies to you. Week 3, begin DMing people who've engaged with you more than once, using the comment-to-DM script. Week 4, track which pages and comment types produced actual replies or customers, and double down only on those; drop what didn't work.`}
 ];
 let PURCHASED_GUIDES = [];
 function ownsGuide(key){
@@ -7391,7 +7493,7 @@ async function toggleLiveModule(el, key){
 /* ---------- Real viewport height (--app-vh) ----------
    Sets --app-vh once on load and again on resize/orientationchange only,
    never on scroll, this is what fixes the topbar needing a manual pull
-   to appear (see the CSS comment on body:has(#app.active) above) without
+  to appear (see the CSS comment on body:has(#app.active) above) without
    reintroducing the mid-scroll freeze that 100dvh caused. */
 function setAppVh(){
   document.documentElement.style.setProperty('--app-vh', (window.innerHeight * 0.01) + 'px');
