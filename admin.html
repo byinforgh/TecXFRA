@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TecXFRA — Admin</title>
+<title>TecXFRA, Admin</title>
 <meta name="robots" content="noindex, nofollow">
 <style>
   :root{ --teal:#4aa8b8; --teal-dim:#3a8b99; --navy:#123642; --navy-deep:#0c262f; --cream:#faf8f3; --ink:#0c262f; --line:#e4ded2; --danger:#c0584a; --ok:#3f8f5f; --amber:#c98a2e; }
   *{box-sizing:border-box}
-  /* html needs overflow-x:hidden too, not just body — a wide child (like
+  /* html needs overflow-x:hidden too, not just body, a wide child (like
      the data tables below) can still make the whole page pannable
      sideways on iOS Safari even with body alone constrained, which is
      exactly the "have to drag the whole screen right" bug reported. */
@@ -57,8 +57,16 @@
     0%{transform:translate(0,0) scale(1);}
     100%{transform:translate(-40px,60px) scale(1.12);}
   }
-  .wrap{max-width:900px;margin:0 auto;padding:32px 20px;position:relative;z-index:1}
-  body.pre-auth .wrap{min-height:100vh;display:flex;flex-direction:column;justify-content:center}
+  /* The pre-auth sign-in screen stays narrow and centered on purpose (a
+     900px-wide login card looks broken), but the dashboard itself was
+     stuck at that same 900px cap after login, so on a laptop/desktop
+     screen the entire admin panel sat as a narrow column in the middle
+     with empty space on both sides instead of using the screen. Only
+     the pre-auth state gets the narrow cap now; the signed-in panel
+     scales up to a real desktop width and only goes edge-to-edge (with
+     padding) below that. */
+  .wrap{max-width:1500px;margin:0 auto;padding:32px 20px;position:relative;z-index:1}
+  body.pre-auth .wrap{max-width:900px;min-height:100vh;display:flex;flex-direction:column;justify-content:center}
   .brand{display:flex;align-items:center;gap:10px;margin-bottom:28px}
   .brand .name{font-weight:700;font-size:18px}
   body.pre-auth .brand .name{color:#fff}
@@ -126,9 +134,21 @@
   .pill-active{background:#eaf5ee;color:var(--ok)}
   .pill-inactive{background:#f8ebe8;color:var(--danger)}
   .refresh-link{font-size:12px;color:var(--teal-dim);font-weight:700;background:none;border:none;cursor:pointer;padding:0}
+  /* Read/delivery drill-down modal for one announcement. admin.html had
+     no modal system at all before this, built to match the existing
+     card/pill visual language rather than introducing a new style. */
+  .ann-modal-overlay{position:fixed;inset:0;background:rgba(12,38,47,.5);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:200;overflow-y:auto}
+  .ann-modal-overlay.show{display:flex}
+  .ann-modal{background:#fff;border-radius:12px;max-width:560px;width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden}
+  .ann-modal-head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .ann-modal-body{padding:12px 18px 18px;overflow-y:auto}
+  .ann-modal-close{background:none;border:none;font-size:18px;cursor:pointer;color:#8a9394;padding:4px}
+  .ann-recip-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .ann-recip-row:last-child{border-bottom:none}
 </style>
 </head>
 <body class="pre-auth">
+<div id="annModalRoot"></div>
 <div class="wrap">
   <div class="brand">
     <div class="name">TecXFRA</div><div class="tag">· Admin</div>
@@ -137,7 +157,7 @@
   <!-- LOGIN -->
   <div id="loginCard" class="card">
     <h1>Admin sign-in</h1>
-    <div class="sub">Owner/admin access only — sign in with your existing TecXFRA login.</div>
+    <div class="sub">Owner/admin access only. Sign in with your existing TecXFRA login.</div>
     <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="you@example.com"></div>
     <div class="field"><label>Password</label><input id="loginPassword" type="password" placeholder="••••••••"></div>
     <div id="hcaptchaBox" style="display:none;margin-bottom:12px"></div>
@@ -184,9 +204,18 @@
     </div>
 
     <div id="tab-businesses" class="tab-panel">
-      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
         <div class="sub" style="margin-bottom:0">Every business signed up on TecXFRA</div>
-        <button class="refresh-link" onclick="loadBusinesses()">Refresh</button>
+        <div class="row" style="gap:8px;align-items:center">
+          <select id="bizPlanFilter" onchange="loadBusinesses()" style="width:auto;padding:6px 10px;font-size:12.5px">
+            <option value="all">All plans</option>
+            <option value="starter">Starter only</option>
+            <option value="growth">Growth only</option>
+            <option value="enterprise">Enterprise only</option>
+            <option value="prestige">Prestige only</option>
+          </select>
+          <button class="refresh-link" onclick="loadBusinesses()">Refresh</button>
+        </div>
       </div>
       <div id="bizTableWrap"></div>
     </div>
@@ -290,7 +319,7 @@ function esc(s){
 }
 
 // ⚠️ TODO(business): only needed while "Enable Captcha protection" is on in
-// Supabase Auth settings. Must match the same sitekey used in index.html —
+// Supabase Auth settings. Must match the same sitekey used in index.html,
 // from https://dashboard.hcaptcha.com (Sites → your site → Sitekey, the
 // PUBLIC key, not the secret).
 const HCAPTCHA_SITE_KEY = 'ccdeb32a-fcf6-48ac-9344-cd10e656ad0c';
@@ -366,7 +395,7 @@ function loginErr(msg){
 async function doLogin(){
   if(!SUPABASE_READY && !SUPABASE_LOAD_FAILED){ await supabaseReadyPromise; }
   if(!SUPABASE_READY){
-    loginErr('Could not load the login service. This is usually a browser extension (ad blocker / privacy tool) blocking the connection — try disabling extensions or opening this page in a private/incognito window, then reload.');
+    loginErr('Could not load the login service. This is usually a browser extension (ad blocker / privacy tool) blocking the connection, try disabling extensions or opening this page in a private/incognito window, then reload.');
     return;
   }
   const email = document.getElementById('loginEmail').value.trim();
@@ -380,7 +409,7 @@ async function doLogin(){
 }
 
 async function afterLogin(){
-  // Any authenticated user can call these admin_* RPCs — they internally
+  // Any authenticated user can call these admin_* RPCs, they internally
   // check is_admin() and throw 'not authorized' for anyone who isn't in
   // the admins table, so a non-admin login just gets a clear error here,
   // never any real data.
@@ -414,7 +443,12 @@ function switchTab(name){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('on', p.id==='tab-'+name));
 }
 
-function fmtDate(d){ return d ? new Date(d).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}) : '—'; }
+function fmtDate(d){ return d ? new Date(d).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}) : 'Not set'; }
+// BUG CAUGHT IN AUDIT: loadBusinesses() called fmtDateTime() for the new
+// "Last active" column but this function was never actually defined,
+// every business with a login timestamp would have thrown a runtime
+// error at render time and blanked the whole Businesses tab. Added here.
+function fmtDateTime(d){ return d ? new Date(d).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}) + ', ' + new Date(d).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}) : 'Not set'; }
 
 async function loadStats(){
   const wrap = document.getElementById('statGrid');
@@ -422,20 +456,36 @@ async function loadStats(){
   if(error || !data || !data.length){ wrap.innerHTML = '<div class="card empty">Could not load stats.</div>'; return; }
   const s = data[0];
   // Each card links to the tab that actually shows that number's detail
-  // (e.g. "Pending payments" -> the Payments tab). These used to be
-  // plain, dead divs with no onclick at all, so clicking anywhere on
-  // the Overview page did nothing, this wires them up.
+  // (e.g. "Pending payments" -> the Payments tab). BUG FIX: the plan
+  // cards (Starter/Growth/Enterprise) used to all route to the same
+  // switchTab('businesses') with no filter, so every one of them landed
+  // on the exact same "all businesses" table, clicking "Starter plan"
+  // looked identical to clicking "Total businesses". Passing a plan
+  // into goToBusinesses() sets the new plan filter before switching
+  // tabs, so each card now actually shows only what it claims to show.
   const cards = [
-    ['Total businesses', s.total_businesses, 'businesses'],
-    ['Starter plan', s.starter_count, 'businesses'],
-    ['Growth plan', s.growth_count, 'businesses'],
-    ['Enterprise plan', s.enterprise_count, 'businesses'],
-    ['Active paid subs', s.active_paid_count, 'businesses'],
-    ['Pending payments', s.pending_payment_count, 'payments'],
-    ['Signups (7d)', s.signups_last_7d, 'businesses'],
-    ['Signups (30d)', s.signups_last_30d, 'businesses'],
+    ['Total businesses', s.total_businesses, 'all'],
+    ['Starter plan', s.starter_count, 'starter'],
+    ['Growth plan', s.growth_count, 'growth'],
+    ['Enterprise plan', s.enterprise_count, 'enterprise'],
+    ['Active paid subs', s.active_paid_count, null, 'payments'],
+    ['Pending payments', s.pending_payment_count, null, 'payments'],
+    ['Signups (7d)', s.signups_last_7d, 'all'],
+    ['Signups (30d)', s.signups_last_30d, 'all'],
   ];
-  wrap.innerHTML = cards.map(([l,n,tab])=>`<div class="stat-card" role="button" tabindex="0" onclick="switchTab('${tab}')" onkeydown="if(event.key==='Enter')switchTab('${tab}')"><div class="n">${n ?? 0}</div><div class="l">${l}</div></div>`).join('');
+  wrap.innerHTML = cards.map(([l,n,plan,tab])=>{
+    const action = plan!==null ? `goToBusinesses('${plan}')` : `switchTab('${tab}')`;
+    return `<div class="stat-card" role="button" tabindex="0" onclick="${action}" onkeydown="if(event.key==='Enter'){${action}}"><div class="n">${n ?? 0}</div><div class="l">${l}</div></div>`;
+  }).join('');
+}
+// Sets the Businesses tab's plan filter, then switches to it. Shared by
+// every stat card above so "Starter plan" etc. actually filters instead
+// of dumping the same full list every time.
+function goToBusinesses(plan){
+  switchTab('businesses');
+  const sel = document.getElementById('bizPlanFilter');
+  if(sel){ sel.value = plan; }
+  loadBusinesses();
 }
 
 // Closes the sign-off's "subscriptions table sync" gap: cfg.plan self-heals
@@ -500,19 +550,30 @@ async function loadBusinesses(){
   const { data, error } = await sb.rpc('admin_list_businesses');
   if(error){ wrap.innerHTML = `<div class="card empty">Could not load businesses: ${error.message||error}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No businesses signed up yet.</div>'; return; }
+  const filterEl = document.getElementById('bizPlanFilter');
+  const filter = filterEl ? filterEl.value : 'all';
+  const rows = filter==='all' ? data : data.filter(b=>(b.plan||'starter')===filter);
+  if(!rows.length){ wrap.innerHTML = `<div class="card empty">No businesses on the ${esc(filter)} plan yet.</div>`; return; }
+  // "Last active" is the real sign-in from auth.users, not the signup
+  // date, this is what tells an early-adopter is actually opening the
+  // app versus having signed up once and never returned. Never signed
+  // in again since account creation shows as "Never" rather than a
+  // date, that distinction matters and shouldn't be hidden by falling
+  // back to created_at.
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
-      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Status</th><th>Signed up</th>
-    </tr></thead><tbody>${data.map(b=>`
+      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Status</th><th>Signed up</th><th>Last active</th>
+    </tr></thead><tbody>${rows.map(b=>`
       <tr>
         <td><b>${esc(b.business_name)||'Unnamed business'}</b></td>
-        <td>${esc(b.owner_name)||'—'}</td>
+        <td>${esc(b.owner_name)||'Not provided'}</td>
         <td>${b.owner_phone?`<a href="https://wa.me/${esc(b.owner_phone).replace(/\D/g,'')}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">${esc(b.owner_phone)}</a>`:'<span style="color:#b45309">Not provided</span>'}</td>
-        <td>${esc(b.owner_email)||'—'}</td>
-        <td>${esc(b.industry)||'—'}</td>
-        <td>${esc(b.country)||'—'}</td>
+        <td>${esc(b.owner_email)||'Not provided'}</td>
+        <td>${esc(b.industry)||'Not set'}</td>
+        <td>${esc(b.country)||'Not set'}</td>
         <td>${planPill(b.plan)}</td>
         <td>${statusPill(b.status)}</td>
         <td>${fmtDate(b.created_at)}</td>
+        <td>${b.last_sign_in_at ? fmtDateTime(b.last_sign_in_at) : '<span style="color:#b45309">Never</span>'}</td>
       </tr>`).join('')}</tbody></table></div>`;
 }
 
@@ -552,8 +613,8 @@ async function loadNetworkProfiles(){
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr><th>Business</th><th>Industry</th><th>HQ</th><th>Verified</th><th>Updated</th><th></th></tr></thead><tbody>${data.map(p=>`
       <tr data-business="${p.business_id}">
         <td>${esc(p.display_name)}</td>
-        <td>${esc(p.industry)||'—'}</td>
-        <td>${esc(p.hq_location)||'—'}</td>
+        <td>${esc(p.industry)||'Not set'}</td>
+        <td>${esc(p.hq_location)||'Not set'}</td>
         <td>${p.verified ? '<span class="pill pill-enterprise">✔ Verified</span>' : '<span class="pill pill-starter">Not verified</span>'}</td>
         <td>${fmtDate(p.updated_at)}</td>
         <td><button class="btn-ok" onclick="toggleNetworkVerified('${p.business_id}', ${!p.verified})">${p.verified?'Remove badge':'Verify'}</button></td>
@@ -617,19 +678,60 @@ async function postAnnouncement(){
 async function loadAnnouncements(){
   const wrap = document.getElementById('annListWrap');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
-  const { data, error } = await sb.rpc('admin_list_announcements', { p_limit: 20 });
+  const { data, error } = await sb.rpc('admin_list_announcements_with_stats', { p_limit: 20 });
   if(error){ wrap.innerHTML = `<div class="card empty">Could not load announcements: ${error.message||error}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">Nothing posted yet.</div>'; return; }
+  // Read count is always shown (mark_announcement_read only ever fires
+  // for notify_inapp announcements, so this is honest either way). Email
+  // counts only show when notify_email was actually on for that post,
+  // an announcement never emailed shouldn't imply 0 sent/0 failed as if
+  // sending was attempted and came up empty.
   wrap.innerHTML = data.map(a=>`
-    <div class="card" style="padding:14px 16px;margin-bottom:8px">
+    <div class="card" style="padding:14px 16px;margin-bottom:8px;cursor:pointer" onclick="openAnnRecipients('${a.id}','${esc(a.title).replace(/'/g,"\\'")}')">
       <div class="row" style="justify-content:space-between">
         <div style="font-weight:700;font-size:13.5px">${esc(a.title)}</div>
         <div style="font-size:11px;color:#8a9394">${fmtDate(a.created_at)}</div>
       </div>
       <div style="font-size:11px;color:var(--teal-dim);font-weight:700;margin:2px 0 6px">${ANN_KIND_LABEL[a.kind]||a.kind} ${a.notify_email?'· emailed':''}</div>
       <div style="font-size:13px;color:#3a4546;white-space:pre-line">${esc(a.body)}</div>
+      <div class="row" style="gap:14px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:11.5px;color:#657577">
+        <span>👁 ${a.read_count} of ${a.total_businesses} read</span>
+        ${a.notify_email ? `<span>✉ ${a.email_sent_count} sent${a.email_failed_count>0?`, ${a.email_failed_count} failed`:''}</span>` : ''}
+        <span style="color:var(--teal-dim);font-weight:700;margin-left:auto">View who →</span>
+      </div>
     </div>`).join('');
 }
+// Per-business drill-down: who has read this announcement and when, and
+// whether the email to them sent or failed. "Sent" means Resend accepted
+// it for delivery, not a confirmed open, worded that way in the UI on
+// purpose rather than overclaiming a delivery receipt we don't actually
+// have (that would need Resend webhooks, not wired up).
+async function openAnnRecipients(id, title){
+  const root = document.getElementById('annModalRoot');
+  root.innerHTML = `<div class="ann-modal-overlay show" onclick="if(event.target===this)closeAnnRecipients()">
+    <div class="ann-modal">
+      <div class="ann-modal-head">
+        <div style="font-weight:700;font-size:14px">${esc(title)}</div>
+        <button class="ann-modal-close" onclick="closeAnnRecipients()">✕</button>
+      </div>
+      <div class="ann-modal-body" id="annRecipBody"><div class="card empty">Loading…</div></div>
+    </div>
+  </div>`;
+  const { data, error } = await sb.rpc('admin_announcement_recipient_status', { p_announcement_id: id });
+  const body = document.getElementById('annRecipBody');
+  if(!body) return; // modal was closed before the request came back
+  if(error){ body.innerHTML = `<div class="card empty">Could not load: ${error.message||error}</div>`; return; }
+  if(!data || !data.length){ body.innerHTML = '<div class="card empty">No businesses to show yet.</div>'; return; }
+  body.innerHTML = data.map(r=>`
+    <div class="ann-recip-row">
+      <span><b>${esc(r.business_name)||'Unnamed business'}</b>${r.owner_email?` <span style="color:#8a9394">· ${esc(r.owner_email)}</span>`:''}</span>
+      <span style="display:flex;gap:8px;align-items:center;white-space:nowrap">
+        ${r.read_at ? `<span class="pill pill-active">Read ${fmtDateTime(r.read_at)}</span>` : '<span class="pill pill-inactive">Not read</span>'}
+        ${r.email_status==='sent' ? '<span class="pill pill-growth">Email sent</span>' : r.email_status==='failed' ? '<span class="pill pill-inactive">Email failed</span>' : ''}
+      </span>
+    </div>`).join('');
+}
+function closeAnnRecipients(){ document.getElementById('annModalRoot').innerHTML = ''; }
 
 const TICKET_STATUS_LABEL = {open:'Open', in_progress:'Being looked at', resolved:'Resolved'};
 function ticketStatusPill(status){
@@ -689,7 +791,7 @@ function renderList(rows){
         ${esc(r.owner_name)||'Unknown owner'} · ${r.owner_phone?`<a href="https://wa.me/${esc(r.owner_phone).replace(/\D/g,'')}" target="_blank" rel="noopener noreferrer">${esc(r.owner_phone)}</a>`:'no phone on file'} · ${esc(r.owner_email)||'no email'}
       </div>
       <div class="meta">
-        ${esc(r.provider.toUpperCase())} · requested plan: <b>${esc(p.plan)||'—'}</b> ·
+        ${esc(r.provider.toUpperCase())} · requested plan: <b>${esc(p.plan)||'Not specified'}</b> ·
         ${new Date(r.created_at).toLocaleString()}
       </div>
       <div class="row">
@@ -741,7 +843,7 @@ function renderGuideList(rows){
         ${esc(r.owner_name)||'Unknown owner'} · ${r.owner_phone?`<a href="https://wa.me/${esc(r.owner_phone).replace(/\D/g,'')}" target="_blank" rel="noopener noreferrer">${esc(r.owner_phone)}</a>`:'no phone on file'} · ${esc(r.owner_email)||'no email'}
       </div>
       <div class="meta">
-        ${esc(r.provider.toUpperCase())} · guide: <b>${esc(p.guide_key)||'—'}</b> ·
+        ${esc(r.provider.toUpperCase())} · guide: <b>${esc(p.guide_key)||'Not specified'}</b> ·
         ${new Date(r.created_at).toLocaleString()}
       </div>
       <div class="row">
