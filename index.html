@@ -803,7 +803,7 @@ function setAuthMode(mode){
   setAuthChannel('email');
   renderCaptcha();
 }
-function goToAccountCreation(){
+async function goToAccountCreation(){
   // Collect everything from the 3-step wizard, but don't save anything yet, 
   // there's no venue_id until the account actually exists.
   let modules = Array.from(document.querySelectorAll('.mod-check input')).filter(i=>i.checked).map(i=>i.closest('.mod-check').dataset.k);
@@ -824,9 +824,82 @@ function goToAccountCreation(){
     plan: wizPlan || 'growth'
   };
   try{ localStorage.setItem('tecxfra_pending_setup', JSON.stringify(PENDING_SETUP)); }catch(e){}
+  // CRITICAL SAFETY CHECK, added after a real incident: finishing the
+  // wizard used to jump straight to the sign-up/log-in screen with no
+  // check at all for whether this browser already had a valid session
+  // for a DIFFERENT, already-set-up business. If it did, and the person
+  // signed in there instead of creating a brand-new account (e.g.
+  // registering a client's business while still logged into their own),
+  // the wizard's answers were applied straight onto the account that was
+  // already signed in, silently replacing that business's real, saved
+  // data. This checks for exactly that situation before the auth screen
+  // is even shown, and blocks it with a clear, specific warning instead
+  // of a generic login form.
+  if(await requireSupabase()){
+    const { data:{ session } } = await sb.auth.getSession();
+    if(session){
+      showExistingSessionWarning(session);
+      return;
+    }
+  }
   document.getElementById('wizard').style.display = 'none';
   document.getElementById('authScreen').style.display = 'flex';
   setAuthMode('signup');
+}
+// Shown instead of the ordinary auth screen when someone finishes the
+// setup wizard while a different account is already signed in on this
+// browser. Names the account that's currently signed in (so it's
+// obvious this isn't a bug, it's a real, specific account) and makes
+// signing out, not signing back in, the one clearly correct next step.
+function showExistingSessionWarning(session){
+  const email = session.user.email || 'this account';
+  document.getElementById('wizard').style.display = 'none';
+  document.getElementById('authScreen').style.display = 'none';
+  let el = document.getElementById('existingSessionWarning');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'existingSessionWarning';
+    el.style.cssText = 'position:fixed;inset:0;background:var(--navy);display:flex;align-items:center;justify-content:center;padding:20px;z-index:500';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `
+    <div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:28px 24px;text-align:center">
+      <div style="font-size:34px;margin-bottom:10px">⚠️</div>
+      <div style="font-weight:700;font-size:17px;color:var(--navy);margin-bottom:10px">You're already signed in</div>
+      <div style="font-size:13.5px;color:#4a5556;line-height:1.6;margin-bottom:18px">
+        This browser is currently signed in as <b>${esc(email)}</b>. If you continue setting up a new business without signing out first, it will be created on top of the account that's already signed in, replacing its real business data.
+        <br><br>
+        If you're setting up a <b>different</b> business (for example, for a client), sign out of ${esc(email)} first, then come back and finish the setup wizard.
+      </div>
+      <button class="btn btn-primary btn-full" onclick="signOutThenResumeSetup()">Sign out & continue setting up the new business</button>
+      <button class="btn btn-full" style="margin-top:8px;background:none;border:1px solid var(--line)" onclick="cancelExistingSessionWarning()">Cancel, I didn't mean to do this</button>
+    </div>`;
+  el.style.display = 'flex';
+}
+async function signOutThenResumeSetup(){
+  // PENDING_SETUP (and its localStorage copy) is deliberately left
+  // alone here, signOut() itself intentionally clears it, so re-save it
+  // straight after so the wizard answers survive the sign-out and are
+  // ready to apply the instant the NEW account is created.
+  const saved = PENDING_SETUP;
+  await signOut();
+  PENDING_SETUP = saved;
+  try{ if(saved) localStorage.setItem('tecxfra_pending_setup', JSON.stringify(saved)); }catch(e){}
+  const el = document.getElementById('existingSessionWarning');
+  if(el) el.style.display = 'none';
+  document.getElementById('wizard').style.display = 'none';
+  document.getElementById('authScreen').style.display = 'flex';
+  setAuthMode('signup');
+}
+function cancelExistingSessionWarning(){
+  const el = document.getElementById('existingSessionWarning');
+  if(el) el.style.display = 'none';
+  PENDING_SETUP = null;
+  try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
+  // Back to whatever the still-signed-in account should actually be
+  // showing, not the wizard, that account's own data hasn't gone
+  // anywhere and this should feel like nothing happened.
+  loadAll().then(()=>{ if(CFG) boot(); });
 }
 function showLogin(){
   PENDING_SETUP = null;
@@ -1929,6 +2002,27 @@ function wizGo(step){
 // or copy needs to lie to a real Ghana business to make this work.
 const TECXFRA_TEST_ACCOUNTS = ['solutions@byinforgh.com'];
 async function finishSetup(setup){
+  // CRITICAL SAFETY CHECK, added after a real incident: this used to
+  // unconditionally build a brand-new CFG and reset DATA to empty,
+  // then save both, no matter whose account was actually signed in at
+  // the time. goToAccountCreation() now blocks the obvious path into
+  // this (see showExistingSessionWarning), but this is the last line
+  // of defense, e.g. a page reload mid-flow that skips straight to
+  // initAuthGate() with an already-valid session and a leftover
+  // PENDING_SETUP in localStorage. Before touching anything, check
+  // whether the currently signed-in account already has a real,
+  // saved business, and refuse to overwrite it if so.
+  try{
+    const { data: rows, error } = await sb.rpc('get_tenant_bootstrap');
+    if(!error){
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      const existingCfg = row && row.cfg && Object.keys(row.cfg).length;
+      if(existingCfg){
+        showExistingSessionWarning({ user: { email: CUR_USER_EMAIL || 'this account' } });
+        return;
+      }
+    }
+  }catch(e){ console.error('pre-setup existing-business check failed, proceeding cautiously', e); }
   let isTestAccount = false;
   try{
     const { data:{ user } } = await sb.auth.getUser();
@@ -7180,6 +7274,11 @@ function drawSettingsBody(){
     <div class="card" style="max-width:480px">
       <div class="card-title">Account</div>
       <div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px">Signed in as this business's owner account. Signing out just locks the app on this device, nothing is deleted.</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">Change password</div>
+      <label class="lbl">New password</label><input class="inp" id="acctNewPw" type="password" placeholder="At least 6 characters" autocomplete="new-password">
+      <label class="lbl">Confirm new password</label><input class="inp" id="acctNewPw2" type="password" placeholder="Type it again" autocomplete="new-password">
+      <button class="btn btn-primary" style="margin-top:8px" onclick="changeAccountPassword()">Update password</button>
+      <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
       <button class="btn btn-ghost" onclick="signOut()">Sign out</button>
     </div>
     <div class="card" style="max-width:480px">
@@ -7227,6 +7326,21 @@ function drawSettingsBody(){
       ${(DATA.staff||[]).map(s=>`<div class="list-row"><span><b>${esc(s.name)}</b> · ${esc(s.role)}</span><span class="pill pill-cold">${esc(s.dept)}</span></div>`).join('')}
       <button class="btn btn-ghost" style="margin-top:10px" onclick="navTo('staff')">Open Staff & Shifts →</button>
     </div>`;
+  }
+}
+async function changeAccountPassword(){
+  const pw1 = document.getElementById('acctNewPw').value;
+  const pw2 = document.getElementById('acctNewPw2').value;
+  if(pw1.length < 6){ showToast('Password needs to be at least 6 characters'); return; }
+  if(pw1 !== pw2){ showToast('Those two passwords don\'t match'); return; }
+  try{
+    const { error } = await sb.auth.updateUser({ password: pw1 });
+    if(error) throw error;
+    document.getElementById('acctNewPw').value = '';
+    document.getElementById('acctNewPw2').value = '';
+    showToast('Password updated');
+  }catch(e){
+    showToast(e && e.message ? e.message : 'Could not update password, try again');
   }
 }
 async function submitProblemReport(){
