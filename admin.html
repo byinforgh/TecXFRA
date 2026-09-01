@@ -195,11 +195,23 @@
       <div id="mismatchWrap"></div>
 
       <div class="row" style="justify-content:space-between;margin:24px 0 12px">
-        <div class="sub" style="margin-bottom:0">Backups. This project may not have automated daily backups (that needs a paid Supabase tier), so run this manually on a regular schedule, weekly at minimum, and store the file somewhere safe, not just on this device.</div>
+        <div class="sub" style="margin-bottom:0">Backups. Automated nightly snapshots now run on their own (see below), the manual export is still worth running before anything risky, download it and store the file somewhere safe, not just on this device.</div>
       </div>
       <div class="card">
         <button class="btn" onclick="downloadFullBackup()">⬇ Export Full Backup (JSON)</button>
         <span id="backupStatus" class="sub" style="margin-left:10px"></span>
+      </div>
+      <div class="card" style="margin-top:10px">
+        <div class="card-title" style="margin-bottom:4px">Automated nightly backups</div>
+        <div class="sub" style="margin-bottom:10px">Runs every night at 02:00 UTC via pg_cron, snapshots every business's cfg/data, keeps the last 14 days, prunes anything older automatically. This is separate from Supabase's own plan-level backups (this project is on Free tier, which has none), so this is the real safety net right now.</div>
+        <div id="backupAutoStatus" class="sub">Loading…</div>
+        <div style="margin-top:10px">
+          <label class="sub" style="display:block;margin-bottom:4px">Restore a business from a snapshot</label>
+          <div class="row" style="gap:8px">
+            <select id="backupBizSelect" style="flex:1;padding:6px 10px;font-size:12.5px" onchange="loadBackupPoints()"><option value="">Pick a business…</option></select>
+          </div>
+          <div id="backupPointsWrap" style="margin-top:8px"></div>
+        </div>
       </div>
     </div>
 
@@ -435,6 +447,7 @@ async function afterLogin(){
   loadStats();
   loadBusinesses();
   loadFoundingClaims();
+  loadBackupAutoStatus();
   loadAdmins();
   loadAnnouncements();
   loadNetworkProfiles();
@@ -504,6 +517,49 @@ function goToBusinesses(plan){
 // Run weekly at minimum, save the downloaded file somewhere durable
 // (Google Drive, not just this laptop). See the runbook doc for the
 // restore procedure.
+// Automated nightly backup status + restore, shown right alongside the
+// existing manual export so the two read as one "Backups" story rather
+// than two disconnected features.
+async function loadBackupAutoStatus(){
+  const el = document.getElementById('backupAutoStatus');
+  const { data, error } = await sb.rpc('admin_backup_status');
+  if(error){ el.textContent = `Could not load backup status: ${error.message||error}`; return; }
+  if(!data || !data.last_backup_at){
+    el.innerHTML = '<span style="color:#b45309">No automated backup has run yet.</span>';
+    return;
+  }
+  el.innerHTML = `Last run: <b>${fmtDateTime(data.last_backup_at)}</b>, ${data.businesses_covered_last_run} business(es) covered, ${data.total_snapshots_stored} snapshots stored, ${data.retention_days}-day retention.`;
+  // Reuse whatever the Businesses table already loaded rather than a
+  // second RPC call, this only needs venue_id + name for the dropdown.
+  const { data: bizList } = await sb.rpc('admin_list_businesses');
+  const sel = document.getElementById('backupBizSelect');
+  if(sel && bizList){
+    sel.innerHTML = '<option value="">Pick a business…</option>' +
+      bizList.map(b=>`<option value="${b.venue_id}">${esc(b.business_name)||'Unnamed business'}</option>`).join('');
+  }
+}
+async function loadBackupPoints(){
+  const venueId = document.getElementById('backupBizSelect').value;
+  const wrap = document.getElementById('backupPointsWrap');
+  if(!venueId){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = '<div class="sub">Loading snapshots…</div>';
+  const { data, error } = await sb.rpc('admin_list_tenant_backups', { p_venue_id: venueId });
+  if(error){ wrap.innerHTML = `<div class="sub">Could not load: ${error.message||error}</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="sub">No snapshots yet for this business.</div>'; return; }
+  wrap.innerHTML = data.map(b=>`
+    <div class="ann-recip-row">
+      <span>${fmtDateTime(b.backed_up_at)}</span>
+      <button class="refresh-link" style="color:var(--danger)" onclick="confirmRestoreBackup('${b.id}','${esc(b.business_name).replace(/'/g,"\\'")}','${b.backed_up_at}')">Restore this</button>
+    </div>`).join('');
+}
+async function confirmRestoreBackup(backupId, name, backedUpAt){
+  if(!confirm(`Restore ${name} to how it looked at ${fmtDateTime(backedUpAt)}? This replaces their CURRENT saved data with this snapshot, whatever they've done since this snapshot will be lost. Only ${name}'s own data is touched, nothing else on the platform.`)) return;
+  const { data, error } = await sb.rpc('admin_restore_tenant_backup', { p_backup_id: backupId });
+  if(error){ alert(`Could not restore: ${error.message||error}`); return; }
+  if(data && data.success===false){ alert(data.message || 'Restore did not complete.'); return; }
+  alert(`${name} restored to the ${fmtDateTime(backedUpAt)} snapshot.`);
+  loadBusinesses();
+}
 async function downloadFullBackup(){
   const status = document.getElementById('backupStatus');
   status.textContent = 'Exporting…';
