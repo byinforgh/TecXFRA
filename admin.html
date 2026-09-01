@@ -218,6 +218,11 @@
         </div>
       </div>
       <div id="bizTableWrap"></div>
+      <div class="row" style="justify-content:space-between;margin:22px 0 12px;flex-wrap:wrap;gap:10px">
+        <div class="sub" style="margin-bottom:0">Founding & cohort slot holders, one-time free spots. Releasing one frees it back up for a genuine new signup, it never touches that business's actual saved data.</div>
+        <button class="refresh-link" onclick="loadFoundingClaims()">Refresh</button>
+      </div>
+      <div id="foundingClaimsWrap"></div>
     </div>
 
     <div id="tab-payments" class="tab-panel">
@@ -429,6 +434,7 @@ async function afterLogin(){
   refreshGuides();
   loadStats();
   loadBusinesses();
+  loadFoundingClaims();
   loadAdmins();
   loadAnnouncements();
   loadNetworkProfiles();
@@ -544,6 +550,57 @@ function statusPill(status){
   return `<span class="pill ${cls}">${status||'inactive'}</span>`;
 }
 
+// Founding/cohort slot holders: shows who's occupying a one-time free
+// spot, with real login activity next to it, so it's an informed
+// decision, not a guess, before releasing anything.
+async function loadFoundingClaims(){
+  const wrap = document.getElementById('foundingClaimsWrap');
+  wrap.innerHTML = '<div class="card empty">Loading…</div>';
+  const { data, error } = await sb.rpc('admin_list_founding_claims');
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load: ${error.message||error}</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No founding or cohort slots claimed yet.</div>'; return; }
+  wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
+      <th>Business</th><th>Slot</th><th>Claimed</th><th>Last active</th><th>Sub status</th><th></th>
+    </tr></thead><tbody>${data.map(r=>`
+      <tr>
+        <td><b>${esc(r.business_name)||'Unnamed business'}</b></td>
+        <td>${r.source==='founding_tier'?'Founding':'Cohort'}: ${esc(r.tier_or_cohort)}</td>
+        <td>${fmtDate(r.claimed_at)}</td>
+        <td>${r.last_sign_in_at ? fmtDateTime(r.last_sign_in_at) : '<span style="color:#b45309">Never</span>'}</td>
+        <td>${statusPill(r.subscription_status)}</td>
+        <td><button class="refresh-link" style="color:var(--danger)" onclick="confirmReleaseSlot('${r.venue_id}','${esc(r.business_name).replace(/'/g,"\\'")}')">Release slot</button></td>
+      </tr>`).join('')}</tbody></table></div>`;
+}
+async function confirmReleaseSlot(venueId, name){
+  if(!confirm(`Release ${name}'s founding slot? This frees it up for a new signup and marks their subscription inactive. Their actual business data (contacts, records, everything) is not touched, and this can be undone later by granting them a plan again.`)) return;
+  const { data, error } = await sb.rpc('admin_release_founding_slot', { p_venue_id: venueId });
+  if(error){ alert(`Could not release: ${error.message||error}`); return; }
+  if(data && data.success===false){ alert(data.message || 'Nothing to release.'); return; }
+  loadFoundingClaims();
+  loadBusinesses();
+  loadStats();
+}
+// Manually put a business on a paid plan (e.g. paid outside Paystack),
+// deliberately separate from the founding/cohort claim functions so it
+// can never consume a free slot meant for a genuine new signup.
+function openGrantPlan(venueId, name){
+  const plan = prompt(`Grant which paid plan to "${name}"?\nType one of: starter, growth, enterprise, prestige`, 'growth');
+  if(!plan) return;
+  const clean = plan.trim().toLowerCase();
+  if(!['starter','growth','enterprise','prestige'].includes(clean)){ alert('Not a valid plan, must be starter, growth, enterprise, or prestige.'); return; }
+  grantPaidPlan(venueId, clean, name);
+}
+async function grantPaidPlan(venueId, plan, name){
+  const { data, error } = await sb.rpc('admin_grant_paid_plan', { p_venue_id: venueId, p_plan: plan, p_period_end: null });
+  if(error){ alert(`Could not grant plan: ${error.message||error}`); return; }
+  // admin.html has no toast system, alert() is the existing convention
+  // here for confirmations (see confirmReleaseSlot above), matching it
+  // rather than referencing a showToast() that doesn't exist in this file.
+  alert(`${name} is now on ${plan}.`);
+  loadBusinesses();
+  loadStats();
+}
+
 async function loadBusinesses(){
   const wrap = document.getElementById('bizTableWrap');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
@@ -561,7 +618,7 @@ async function loadBusinesses(){
   // date, that distinction matters and shouldn't be hidden by falling
   // back to created_at.
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
-      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Status</th><th>Signed up</th><th>Last active</th>
+      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Status</th><th>Signed up</th><th>Last active</th><th></th>
     </tr></thead><tbody>${rows.map(b=>`
       <tr>
         <td><b>${esc(b.business_name)||'Unnamed business'}</b></td>
@@ -574,6 +631,7 @@ async function loadBusinesses(){
         <td>${statusPill(b.status)}</td>
         <td>${fmtDate(b.created_at)}</td>
         <td>${b.last_sign_in_at ? fmtDateTime(b.last_sign_in_at) : '<span style="color:#b45309">Never</span>'}</td>
+        <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}','${esc(b.business_name).replace(/'/g,"\\'")}')">Grant paid plan</button></td>
       </tr>`).join('')}</tbody></table></div>`;
 }
 
