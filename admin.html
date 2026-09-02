@@ -133,6 +133,22 @@
   .pill-prestige{background:#123642;color:#fff}
   .pill-active{background:#eaf5ee;color:var(--ok)}
   .pill-inactive{background:#f8ebe8;color:var(--danger)}
+  /* Plan SOURCE, not the plan itself, this is what was missing: two
+     businesses can both say "Starter" while one is a free founding slot
+     and the other is a genuine paying customer, and there was no way to
+     tell them apart at a glance. Deliberately distinct visual language
+     from the plan pills above (dot + label, not a filled pill) so the
+     two concepts never get read as the same kind of badge. */
+  .src-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.02em}
+  .src-tag::before{content:'';width:7px;height:7px;border-radius:50%;display:inline-block}
+  .src-founder::before{background:var(--amber)}
+  .src-founder{color:var(--amber)}
+  .src-manual::before{background:var(--teal-dim)}
+  .src-manual{color:var(--teal-dim)}
+  .src-paid::before{background:var(--ok)}
+  .src-paid{color:var(--ok)}
+  .src-none::before{background:#b9c2c3}
+  .src-none{color:#7a8a8c}
   .refresh-link{font-size:12px;color:var(--teal-dim);font-weight:700;background:none;border:none;cursor:pointer;padding:0}
   /* Read/delivery drill-down modal for one announcement. admin.html had
      no modal system at all before this, built to match the existing
@@ -601,6 +617,17 @@ function planPill(plan){
   const cls = plan==='prestige'?'pill-prestige':plan==='enterprise'?'pill-enterprise':plan==='growth'?'pill-growth':'pill-starter';
   return `<span class="pill ${cls}">${(plan||'starter')}</span>`;
 }
+// The badge that was missing: "founder" (occupying a one-time free
+// founding/cohort slot), "manual" (granted here in admin, not through
+// Paystack), "paid" (a real active subscription payment), or "none" (no
+// active grant at all). Read this BEFORE clicking "Grant paid plan" on
+// anyone, granting a plan to someone who's "founder" converts them off
+// their free slot's provider, which is sometimes exactly what you want
+// (see Shugbites) but should never happen by accident again.
+function sourcePill(source){
+  const label = {founder:'Founder slot', manual:'Manual grant', paid:'Paid', none:'No plan'}[source] || 'No plan';
+  return `<span class="src-tag src-${source||'none'}">${label}</span>`;
+}
 function statusPill(status){
   const cls = status==='active'?'pill-active':'pill-inactive';
   return `<span class="pill ${cls}">${status||'inactive'}</span>`;
@@ -615,23 +642,36 @@ async function loadFoundingClaims(){
   const { data, error } = await sb.rpc('admin_list_founding_claims');
   if(error){ wrap.innerHTML = `<div class="card empty">Could not load: ${error.message||error}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No founding or cohort slots claimed yet.</div>'; return; }
+  // Founding/cohort slot holders: shows who's occupying a one-time free
+  // spot, with real login activity AND real data-in-the-app next to it,
+  // so releasing one is an informed decision, not a guess. "Never" here
+  // now means never bootstrapped the app at all (checked against both
+  // last_active_at and last_sign_in_at), and "No data added" flags
+  // accounts that signed up but never actually used the platform, the
+  // two together are what actually separates a genuine early adopter
+  // from an abandoned signup, a login alone doesn't prove usage.
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
-      <th>Business</th><th>Slot</th><th>Claimed</th><th>Last active</th><th>Sub status</th><th></th>
-    </tr></thead><tbody>${data.map(r=>`
+      <th>Business</th><th>Slot</th><th>Claimed</th><th>Last active</th><th>Activity</th><th>Sub status</th><th></th>
+    </tr></thead><tbody>${data.map(r=>{
+      const lastActive = r.last_active_at && (!r.last_sign_in_at || new Date(r.last_active_at) > new Date(r.last_sign_in_at))
+        ? r.last_active_at : r.last_sign_in_at;
+      return `
       <tr>
         <td><b>${esc(r.business_name)||'Unnamed business'}</b></td>
         <td>${r.source==='founding_tier'?'Founding':'Cohort'}: ${esc(r.tier_or_cohort)}</td>
         <td>${fmtDate(r.claimed_at)}</td>
-        <td>${r.last_sign_in_at ? fmtDateTime(r.last_sign_in_at) : '<span style="color:#b45309">Never</span>'}</td>
+        <td>${lastActive ? fmtDateTime(lastActive) : '<span style="color:#b45309">Never</span>'}</td>
+        <td>${r.has_real_data ? '<span class="src-tag src-paid">Has data</span>' : '<span class="src-tag src-none">No data added</span>'}</td>
         <td>${statusPill(r.subscription_status)}</td>
         <td><button class="refresh-link" style="color:var(--danger)" onclick="confirmReleaseSlot('${r.venue_id}','${esc(r.business_name).replace(/'/g,"\\'")}')">Release slot</button></td>
-      </tr>`).join('')}</tbody></table></div>`;
+      </tr>`;}).join('')}</tbody></table></div>`;
 }
 async function confirmReleaseSlot(venueId, name){
-  if(!confirm(`Release ${name}'s founding slot? This frees it up for a new signup and marks their subscription inactive. Their actual business data (contacts, records, everything) is not touched, and this can be undone later by granting them a plan again.`)) return;
+  if(!confirm(`Release ${name}'s founding slot? This frees it up for a new signup. If the free slot IS their only active grant, their subscription is marked inactive too, if they've since been given a separate manual/paid plan, that plan is left untouched. Their actual business data (contacts, records, everything) is never touched either way, and this can be undone later by granting them a plan again.`)) return;
   const { data, error } = await sb.rpc('admin_release_founding_slot', { p_venue_id: venueId });
   if(error){ alert(`Could not release: ${error.message||error}`); return; }
   if(data && data.success===false){ alert(data.message || 'Nothing to release.'); return; }
+  alert(`Released: ${data.released}.${data.subscription_deactivated ? ' Subscription marked inactive.' : ' Their separate active subscription was left untouched.'}`);
   loadFoundingClaims();
   loadBusinesses();
   loadStats();
@@ -639,20 +679,46 @@ async function confirmReleaseSlot(venueId, name){
 // Manually put a business on a paid plan (e.g. paid outside Paystack),
 // deliberately separate from the founding/cohort claim functions so it
 // can never consume a free slot meant for a genuine new signup.
-function openGrantPlan(venueId, name){
+function openGrantPlan(venueId, name, currentSource){
+  // BUG FIX: granting a plan to someone already on a founding/cohort free
+  // slot silently overwrites their subscription's provider away from
+  // 'founding_free' (this is exactly what happened to Shugbites). That's
+  // sometimes exactly the intent, converting a founder into a genuine
+  // paying customer, but it should never be a silent side effect. Warn
+  // first so it's always a deliberate choice.
+  if(currentSource==='founder'){
+    if(!confirm(`${name} already holds an active FOUNDING slot. Granting a plan here will replace that with a manual paid grant, this is how you convert a founder into a genuine paying customer, but it does NOT release their founding slot on its own. If they're fully converting, release their slot separately afterwards (Founding & Cohort tab) so it can go to a new signup.\n\nContinue granting a plan?`)) return;
+  }
   const plan = prompt(`Grant which paid plan to "${name}"?\nType one of: starter, growth, enterprise, prestige`, 'growth');
   if(!plan) return;
   const clean = plan.trim().toLowerCase();
   if(!['starter','growth','enterprise','prestige'].includes(clean)){ alert('Not a valid plan, must be starter, growth, enterprise, or prestige.'); return; }
-  grantPaidPlan(venueId, clean, name);
+  // BUG FIX: this used to always send p_period_end: null, so nothing
+  // manually granted here ever showed a renewal date, no matter what was
+  // verbally agreed with the business owner. Now actually asks.
+  const periodInput = prompt(`When does this renew? Type a date as YYYY-MM-DD, type "1st" for the 1st of next month, or leave blank for no fixed renewal date.`, '1st');
+  let periodEnd = null;
+  if(periodInput && periodInput.trim()){
+    const t = periodInput.trim().toLowerCase();
+    if(t === '1st'){
+      const d = new Date(); d.setUTCMonth(d.getUTCMonth()+1, 1); d.setUTCHours(0,0,0,0);
+      periodEnd = d.toISOString();
+    } else if(/^\d{4}-\d{2}-\d{2}$/.test(t)){
+      periodEnd = new Date(t + 'T00:00:00Z').toISOString();
+    } else {
+      alert('Renewal date not understood, use YYYY-MM-DD, "1st", or leave blank. Nothing was granted, try again.');
+      return;
+    }
+  }
+  grantPaidPlan(venueId, clean, name, periodEnd);
 }
-async function grantPaidPlan(venueId, plan, name){
-  const { data, error } = await sb.rpc('admin_grant_paid_plan', { p_venue_id: venueId, p_plan: plan, p_period_end: null });
+async function grantPaidPlan(venueId, plan, name, periodEnd){
+  const { data, error } = await sb.rpc('admin_grant_paid_plan', { p_venue_id: venueId, p_plan: plan, p_period_end: periodEnd });
   if(error){ alert(`Could not grant plan: ${error.message||error}`); return; }
   // admin.html has no toast system, alert() is the existing convention
   // here for confirmations (see confirmReleaseSlot above), matching it
   // rather than referencing a showToast() that doesn't exist in this file.
-  alert(`${name} is now on ${plan}.`);
+  alert(`${name} is now on ${plan}${periodEnd ? `, renews ${fmtDate(periodEnd)}` : ', no fixed renewal date'}.`);
   loadBusinesses();
   loadStats();
 }
@@ -667,15 +733,22 @@ async function loadBusinesses(){
   const filter = filterEl ? filterEl.value : 'all';
   const rows = filter==='all' ? data : data.filter(b=>(b.plan||'starter')===filter);
   if(!rows.length){ wrap.innerHTML = `<div class="card empty">No businesses on the ${esc(filter)} plan yet.</div>`; return; }
-  // "Last active" is the real sign-in from auth.users, not the signup
-  // date, this is what tells an early-adopter is actually opening the
-  // app versus having signed up once and never returned. Never signed
-  // in again since account creation shows as "Never" rather than a
-  // date, that distinction matters and shouldn't be hidden by falling
-  // back to created_at.
+  // "Last active" now prefers last_active_at, a real per-load stamp set
+  // by get_tenant_bootstrap, over last_sign_in_at, which Supabase only
+  // bumps on a genuine new sign-in and NOT on every page load using a
+  // kept-alive session, so it went stale for anyone who doesn't
+  // re-enter their password often even while actively using the app
+  // daily. last_sign_in_at is kept as the fallback for accounts that
+  // predate this column. Never signed in AND never bootstrapped since
+  // account creation shows as "Never" rather than a date, that
+  // distinction matters and shouldn't be hidden by falling back to
+  // created_at.
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
-      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Status</th><th>Signed up</th><th>Last active</th><th></th>
-    </tr></thead><tbody>${rows.map(b=>`
+      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Source</th><th>Status</th><th>Renews</th><th>Signed up</th><th>Last active</th><th></th>
+    </tr></thead><tbody>${rows.map(b=>{
+      const lastActive = b.last_active_at && (!b.last_sign_in_at || new Date(b.last_active_at) > new Date(b.last_sign_in_at))
+        ? b.last_active_at : b.last_sign_in_at;
+      return `
       <tr>
         <td><b>${esc(b.business_name)||'Unnamed business'}</b></td>
         <td>${esc(b.owner_name)||'Not provided'}</td>
@@ -684,11 +757,13 @@ async function loadBusinesses(){
         <td>${esc(b.industry)||'Not set'}</td>
         <td>${esc(b.country)||'Not set'}</td>
         <td>${planPill(b.plan)}</td>
+        <td>${sourcePill(b.plan_source)}</td>
         <td>${statusPill(b.status)}</td>
+        <td>${b.current_period_end ? fmtDate(b.current_period_end) : '<span style="color:#b45309">Not set</span>'}</td>
         <td>${fmtDate(b.created_at)}</td>
-        <td>${b.last_sign_in_at ? fmtDateTime(b.last_sign_in_at) : '<span style="color:#b45309">Never</span>'}</td>
-        <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}','${esc(b.business_name).replace(/'/g,"\\'")}')">Grant paid plan</button></td>
-      </tr>`).join('')}</tbody></table></div>`;
+        <td>${lastActive ? fmtDateTime(lastActive) : '<span style="color:#b45309">Never</span>'}</td>
+        <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}','${esc(b.business_name).replace(/'/g,"\\'")}','${b.plan_source}')">Grant paid plan</button></td>
+      </tr>`;}).join('')}</tbody></table></div>`;
 }
 
 async function loadCohortAdmin(){
