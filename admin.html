@@ -235,16 +235,28 @@
       <div class="row" style="justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
         <div class="sub" style="margin-bottom:0">Every business signed up on TecXFRA</div>
         <div class="row" style="gap:8px;align-items:center">
-          <select id="bizPlanFilter" onchange="loadBusinesses()" style="width:auto;padding:6px 10px;font-size:12.5px">
+          <select id="bizPlanFilter" onchange="setPlanFilter()" style="width:auto;padding:6px 10px;font-size:12.5px">
             <option value="all">All plans</option>
             <option value="starter">Starter only</option>
             <option value="growth">Growth only</option>
             <option value="enterprise">Enterprise only</option>
             <option value="prestige">Prestige only</option>
           </select>
+          <select id="bizSourceFilter" onchange="setSourceFilter()" style="width:auto;padding:6px 10px;font-size:12.5px">
+            <option value="all">All sources</option>
+            <option value="founder">Founder slot only</option>
+            <option value="manual">Manual grant only</option>
+            <option value="paid">Paid only</option>
+            <option value="none">No plan only</option>
+          </select>
           <button class="refresh-link" onclick="loadBusinesses()">Refresh</button>
         </div>
       </div>
+      <!-- The stat cards on Overview (Active paid subs, Signups 7d/30d) used
+           to route here with no actual filter applied, "1 active paid sub"
+           and "everyone" looked identical. This badge shows exactly what's
+           being filtered on, with a one-click way back to the full list. -->
+      <div id="bizQuickFilterBadge" style="display:none;margin-bottom:10px;font-size:12.5px;color:var(--teal-dim)"></div>
       <div id="bizTableWrap"></div>
       <div class="row" style="justify-content:space-between;margin:22px 0 12px;flex-wrap:wrap;gap:10px">
         <div class="sub" style="margin-bottom:0">Founding & cohort slot holders, one-time free spots. Releasing one frees it back up for a genuine new signup, it never touches that business's actual saved data.</div>
@@ -490,36 +502,56 @@ async function loadStats(){
   const { data, error } = await sb.rpc('admin_platform_stats');
   if(error || !data || !data.length){ wrap.innerHTML = '<div class="card empty">Could not load stats.</div>'; return; }
   const s = data[0];
-  // Each card links to the tab that actually shows that number's detail
-  // (e.g. "Pending payments" -> the Payments tab). BUG FIX: the plan
-  // cards (Starter/Growth/Enterprise) used to all route to the same
-  // switchTab('businesses') with no filter, so every one of them landed
-  // on the exact same "all businesses" table, clicking "Starter plan"
-  // looked identical to clicking "Total businesses". Passing a plan
-  // into goToBusinesses() sets the new plan filter before switching
-  // tabs, so each card now actually shows only what it claims to show.
+  // BUG FIX (caught in audit): "Active paid subs" used to route to
+  // switchTab('payments') -- the PENDING PAYMENT REQUESTS tab, nothing to
+  // do with who's actually paying. "Signups (7d)"/"(30d)" used to route
+  // through the plan filter with value 'all', which just shows every
+  // business ever, the 7d/30d part was never actually applied anywhere.
+  // Every card here now carries a real filter descriptor that
+  // goToBusinesses() can act on, so "1 active paid sub" shows exactly 1
+  // row (Shugbites), not all 11.
   const cards = [
-    ['Total businesses', s.total_businesses, 'all'],
-    ['Starter plan', s.starter_count, 'starter'],
-    ['Growth plan', s.growth_count, 'growth'],
-    ['Enterprise plan', s.enterprise_count, 'enterprise'],
-    ['Active paid subs', s.active_paid_count, null, 'payments'],
-    ['Pending payments', s.pending_payment_count, null, 'payments'],
-    ['Signups (7d)', s.signups_last_7d, 'all'],
-    ['Signups (30d)', s.signups_last_30d, 'all'],
+    ['Total businesses', s.total_businesses, {kind:'all'}],
+    ['Starter plan', s.starter_count, {kind:'plan', value:'starter'}],
+    ['Growth plan', s.growth_count, {kind:'plan', value:'growth'}],
+    ['Enterprise plan', s.enterprise_count, {kind:'plan', value:'enterprise'}],
+    ['Prestige plan', s.prestige_count, {kind:'plan', value:'prestige'}],
+    ['Active paid subs', s.active_paid_count, {kind:'active-paid'}],
+    ['Pending payments', s.pending_payment_count, {kind:'payments-tab'}],
+    ['Signups (7d)', s.signups_last_7d, {kind:'signups', days:7}],
+    ['Signups (30d)', s.signups_last_30d, {kind:'signups', days:30}],
   ];
-  wrap.innerHTML = cards.map(([l,n,plan,tab])=>{
-    const action = plan!==null ? `goToBusinesses('${plan}')` : `switchTab('${tab}')`;
+  wrap.innerHTML = cards.map(([l,n,filter])=>{
+    const action = `goToBusinesses(${JSON.stringify(filter).replace(/"/g,'&quot;')})`;
     return `<div class="stat-card" role="button" tabindex="0" onclick="${action}" onkeydown="if(event.key==='Enter'){${action}}"><div class="n">${n ?? 0}</div><div class="l">${l}</div></div>`;
   }).join('');
 }
-// Sets the Businesses tab's plan filter, then switches to it. Shared by
-// every stat card above so "Starter plan" etc. actually filters instead
-// of dumping the same full list every time.
-function goToBusinesses(plan){
+// Single source of truth for what the Businesses table currently shows.
+// Both the stat cards and the two manual filter dropdowns write into
+// this, loadBusinesses() is the only thing that reads it.
+let BIZ_FILTER = {kind:'all'};
+function setPlanFilter(){
+  const v = document.getElementById('bizPlanFilter').value;
+  BIZ_FILTER = v==='all' ? {kind:'all'} : {kind:'plan', value:v};
+  document.getElementById('bizSourceFilter').value = 'all';
+  loadBusinesses();
+}
+function setSourceFilter(){
+  const v = document.getElementById('bizSourceFilter').value;
+  BIZ_FILTER = v==='all' ? {kind:'all'} : {kind:'source', value:v};
+  document.getElementById('bizPlanFilter').value = 'all';
+  loadBusinesses();
+}
+// Sets the Businesses tab's filter from a stat card, then switches to it.
+function goToBusinesses(filter){
+  if(filter.kind==='payments-tab'){ switchTab('payments'); return; }
   switchTab('businesses');
-  const sel = document.getElementById('bizPlanFilter');
-  if(sel){ sel.value = plan; }
+  BIZ_FILTER = filter;
+  // Reflect plan-based quick filters in the dropdown, everything else
+  // (active-paid, signups) resets both dropdowns and shows in the badge
+  // below instead, since they don't map onto a single dropdown option.
+  document.getElementById('bizPlanFilter').value = filter.kind==='plan' ? filter.value : 'all';
+  document.getElementById('bizSourceFilter').value = 'all';
   loadBusinesses();
 }
 
@@ -722,17 +754,53 @@ async function grantPaidPlan(venueId, plan, name, periodEnd){
   loadBusinesses();
   loadStats();
 }
+// BUG FIX (raised in audit): there was no way at all to take a business
+// OFF an active plan, "Grant paid plan" only ever added or replaced one.
+// Deliberately separate from confirmReleaseSlot, which only touches
+// founding/cohort slots, this works on any active subscription regardless
+// of source, and never touches founding_members either.
+async function confirmDeactivate(venueId, name){
+  if(!confirm(`Take ${name} off their current plan? Their subscription status becomes "canceled". If they still hold a founding slot, that's untouched, release it separately if you want it back in the pool too. Their business data is never touched, and this can be undone by granting them a plan again.`)) return;
+  const { data, error } = await sb.rpc('admin_deactivate_subscription', { p_venue_id: venueId });
+  if(error){ alert(`Could not deactivate: ${error.message||error}`); return; }
+  if(data && data.success===false){ alert(data.message || 'Nothing to deactivate.'); return; }
+  alert(`${name} is now deactivated.`);
+  loadBusinesses();
+  loadStats();
+}
 
 async function loadBusinesses(){
   const wrap = document.getElementById('bizTableWrap');
+  const badge = document.getElementById('bizQuickFilterBadge');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
   const { data, error } = await sb.rpc('admin_list_businesses');
   if(error){ wrap.innerHTML = `<div class="card empty">Could not load businesses: ${error.message||error}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No businesses signed up yet.</div>'; return; }
-  const filterEl = document.getElementById('bizPlanFilter');
-  const filter = filterEl ? filterEl.value : 'all';
-  const rows = filter==='all' ? data : data.filter(b=>(b.plan||'starter')===filter);
-  if(!rows.length){ wrap.innerHTML = `<div class="card empty">No businesses on the ${esc(filter)} plan yet.</div>`; return; }
+
+  // BUG FIX (raised in audit): this used to only ever read the plan
+  // dropdown, so "Active paid subs" and "Signups (7d)/(30d)" cards had
+  // nothing real to filter by and just showed everyone. BIZ_FILTER is
+  // now the single source of truth, set by either dropdown or by a stat
+  // card via goToBusinesses().
+  let rows = data;
+  let badgeText = '';
+  const f = BIZ_FILTER || {kind:'all'};
+  if(f.kind === 'plan'){
+    rows = data.filter(b=>(b.plan||'starter')===f.value);
+  } else if(f.kind === 'source'){
+    rows = data.filter(b=>(b.plan_source||'none')===f.value);
+  } else if(f.kind === 'active-paid'){
+    rows = data.filter(b=>b.status==='active' && (b.plan_source==='manual' || b.plan_source==='paid'));
+    badgeText = `Showing genuinely active PAID businesses only (${rows.length}). <a href="#" onclick="BIZ_FILTER={kind:'all'};loadBusinesses();return false" style="color:inherit">Clear filter</a>`;
+  } else if(f.kind === 'signups'){
+    const cutoff = Date.now() - f.days*24*60*60*1000;
+    rows = data.filter(b=>new Date(b.created_at).getTime() >= cutoff);
+    badgeText = `Showing businesses signed up in the last ${f.days} days (${rows.length}). <a href="#" onclick="BIZ_FILTER={kind:'all'};loadBusinesses();return false" style="color:inherit">Clear filter</a>`;
+  }
+  badge.style.display = badgeText ? 'block' : 'none';
+  badge.innerHTML = badgeText;
+
+  if(!rows.length){ wrap.innerHTML = `<div class="card empty">No businesses match this filter.</div>`; return; }
   // "Last active" now prefers last_active_at, a real per-load stamp set
   // by get_tenant_bootstrap, over last_sign_in_at, which Supabase only
   // bumps on a genuine new sign-in and NOT on every page load using a
@@ -744,10 +812,11 @@ async function loadBusinesses(){
   // distinction matters and shouldn't be hidden by falling back to
   // created_at.
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
-      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Source</th><th>Status</th><th>Renews</th><th>Signed up</th><th>Last active</th><th></th>
+      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Source</th><th>Status</th><th>Renews</th><th>Signed up</th><th>Last active</th><th colspan="2"></th>
     </tr></thead><tbody>${rows.map(b=>{
       const lastActive = b.last_active_at && (!b.last_sign_in_at || new Date(b.last_active_at) > new Date(b.last_sign_in_at))
         ? b.last_active_at : b.last_sign_in_at;
+      const nameJs = esc(b.business_name).replace(/'/g,"\\'");
       return `
       <tr>
         <td><b>${esc(b.business_name)||'Unnamed business'}</b></td>
@@ -762,7 +831,8 @@ async function loadBusinesses(){
         <td>${b.current_period_end ? fmtDate(b.current_period_end) : '<span style="color:#b45309">Not set</span>'}</td>
         <td>${fmtDate(b.created_at)}</td>
         <td>${lastActive ? fmtDateTime(lastActive) : '<span style="color:#b45309">Never</span>'}</td>
-        <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}','${esc(b.business_name).replace(/'/g,"\\'")}','${b.plan_source}')">Grant paid plan</button></td>
+        <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}','${nameJs}','${b.plan_source}')">Grant paid plan</button></td>
+        <td>${b.status==='active' ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${b.venue_id}','${nameJs}')">Deactivate</button>` : ''}</td>
       </tr>`;}).join('')}</tbody></table></div>`;
 }
 
