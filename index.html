@@ -1176,6 +1176,12 @@ const COUNTRIES = [
   {country:'Nigeria', currency:'NGN', sym:'₦', tax:'VAT', taxNote:'Standard VAT stays at 7.5% through 2026 under the Nigeria Tax Act 2025, a proposed rise to 12.5% was rejected by lawmakers. Personal income tax now exempts annual income under ₦800,000, and the minimum wage is exempt entirely. Verify current NRS (Nigeria Revenue Service, formerly FIRS) rates.', payroll:'PAYE (new progressive bands, ₦800,000 tax-free threshold) + Pension (employer/employee contributions)', updated:'2026'},
   {country:'Kenya', currency:'KES', sym:'KSh ', tax:'VAT', taxNote:'Standard VAT rate is 16% (unchanged since 2013). Verify current KRA rate.', payroll:'NSSF (6% employer/6% employee, Tier I+II, upper earnings limit rose to KES 108,000/month from Feb 2026) + SHIF (2.75% of gross, replaced NHIF) + Affordable Housing Levy (1.5% employee, matched by employer) + PAYE', updated:'2026'},
   {country:'South Africa', currency:'ZAR', sym:'R', tax:'VAT', taxNote:'Standard VAT rate held at 15% in the 2026 Budget (the proposed rise to 16% was withdrawn). VAT registration threshold raised to R2.3m/year (voluntary from R120,000) effective 1 April 2026. Verify current SARS rate.', payroll:'UIF + PAYE (2026/27 brackets adjusted 3.4% for inflation)', updated:'2026'},
+  {country:'Rwanda', currency:'RWF', sym:'RWF ', tax:'VAT', taxNote:'Standard VAT rate is 18%. Registration is mandatory above RWF 20 million annual turnover (voluntary below). New VAT/digital-services-tax rules for nonresident online sellers took effect in 2026. Verify current RRA rate.', payroll:'RSSB pension 12% total, split 6% employer/6% employee, scheduled to rise 2 points a year to 20% by 2030, plus a 0.3% maternity contribution each side. PAYE is progressive: 0% to RWF 720,000/year, 20% to RWF 1,200,000/year, 30% above.', updated:'2026'},
+  {country:'Egypt', currency:'EGP', sym:'E£', tax:'VAT', taxNote:'Standard VAT rate is 14%. Verify current Egyptian Tax Authority rate and any reduced-rate categories that apply to your goods or services.', payroll:'NOSI social insurance: employee 11% / employer 18.75%, capped at an insurable salary of EGP 16,700/month from Jan 2026 (the cap rises 15% a year through 2027). PAYE is progressive 0% to 27.5%, with an EGP 20,000 annual exemption.', updated:'2026'},
+  {country:"Côte d'Ivoire", currency:'XOF', sym:'CFA ', tax:'TVA', taxNote:"Standard TVA rate is 18%, with a reduced 9% rate on specific goods (e.g. jute/sisal packaging for agriculture) introduced Jan 2026. Verify current DGI rate.", payroll:"CNPS: employee 6.3% (retirement branch only, capped) + employer 14.15% to 17.15% (retirement 7.7%, family benefits 5%, maternity 0.75%, work injury 2 to 5% by sector). ITS income tax is progressive and, since the 2024 reform, calculated directly on gross salary.", updated:'2026'},
+  {country:'Senegal', currency:'XOF', sym:'CFA ', tax:'TVA', taxNote:'Standard TVA rate is 18%. Verify current DGID rate.', payroll:'IPRES retirement: employee 5.6% + employer 8.4% (general regime, capped monthly). CSS 7%, employer-only (family benefits + work injury/illness, capped). IRPP income tax is progressive from 0% up to 40%, with a 43% ceiling rate above 50,000,000 FCFA/year.', updated:'2026'},
+  {country:'Tanzania', currency:'TZS', sym:'TSh ', tax:'VAT', taxNote:'Standard VAT rate is 18%. Verify current TRA rate.', payroll:'NSSF 10% employee + 10% employer, no salary cap. SDL (Skills Development Levy) 3.5% to 4.5%, employer-only, for employers with 10+ staff. WCF 0.5%, employer-only. PAYE is progressive: 0% to TZS 270,000/month, then graduated up to 30%.', updated:'2026'},
+  {country:'Uganda', currency:'UGX', sym:'USh ', tax:'VAT', taxNote:'Standard VAT rate is 18%. Verify current URA rate.', payroll:"NSSF 5% employee + 10% employer, no salary cap. Local Service Tax is banded by monthly salary, capped around UGX 100,000/year for top earners. PAYE is progressive: 0% to UGX 235,000/month, then up to 40% above UGX 410,000/month (a proposed rise in the tax-free threshold to UGX 335,000 was pending as of mid-2026, verify before relying on it).", updated:'2026'},
   {country:'United Kingdom', currency:'GBP', sym:'£', tax:'VAT', taxNote:'Standard VAT rate is 20% (unchanged), with a 5% reduced rate on some goods/services. VAT registration threshold stays at £90,000 (deregistration £88,000) from April 2026. Verify current HMRC rate and thresholds.', payroll:'PAYE + National Insurance (employee 8% between £12,570 to £50,270, 2% above; employer 15% above £5,000/yr secondary threshold, thresholds frozen until 2031)', updated:'2026'},
   {country:'United States', currency:'USD', sym:'$', tax:'Sales Tax', taxNote:'Sales tax varies by state, no federal VAT. Check your state and local rates.', payroll:'Federal/State withholding + FICA (Social Security & Medicare)'},
   {country:'Canada', currency:'CAD', sym:'C$', tax:'GST/HST', taxNote:'Federal GST is 5% everywhere. HST: Ontario 13%, Nova Scotia 14% (cut from 15% in Apr 2025), New Brunswick/Newfoundland & Labrador/PEI 15%. Separate PST/QST in BC (7%), Saskatchewan (6%), Manitoba (7%), Quebec (QST 9.975%). Alberta/territories: GST only, 5%. Verify your specific province.', payroll:'CPP (5.95% up to $74,600 YMPE, CPP2 4% up to $85,000) + EI (1.63%, Quebec 1.31% + QPIP) + federal/provincial withholding', updated:'2026'},
@@ -1874,6 +1880,24 @@ function foundingBadge(tierKey){
 // -locked to Prestige at Step 4, no other plan is shown or selectable, this
 // is a deliberate business rule, not a bug, keep this list in sync with the
 // African entries in COUNTRIES above.
+// DECISION (2026-09-03, confirmed by YJ): Rwanda, Egypt, Côte d'Ivoire,
+// Senegal, Tanzania and Uganda have accurate COUNTRIES tax/payroll data
+// (see above) but deliberately do NOT appear in this list yet. This is
+// not an oversight, it's a hard blocker: PAYSTACK_SUPPORTED_CURRENCIES
+// below only settles GHS/NGN/ZAR/KES/USD, and PLAN_PRICING has no rows
+// for RWF/EGP/XOF/TZS/UGX. Adding a country here without a real priced
+// currency row would silently bill them in USD at the cheap Starter/
+// Growth rate instead of the Prestige anchor price, a real billing bug,
+// not just a rough edge. Côte d'Ivoire and Senegal have a second blocker:
+// the whole app is English-only, no French localisation exists.
+// Before adding any of these six here, all of the following must be true:
+//   1. A real, calibrated PLAN_PRICING row exists for that currency
+//      (not a guess), OR a confirmed manual local payment channel YJ can
+//      actually reconcile (mobile money / bank transfer) is in place.
+//   2. For Côte d'Ivoire / Senegal specifically: French UI localisation.
+//   3. Real signup interest from that country, not speculative expansion.
+// Ghana/Nigeria/Kenya/South Africa were proven first before this list
+// existed at all, same sequencing applies to any future addition.
 const TECXFRA_AFRICAN_COUNTRIES = ['Ghana','Nigeria','Kenya','South Africa'];
 function wizCountryIsAfrican(){
   const sel = document.getElementById('setupCountry');
@@ -2589,8 +2613,8 @@ function renderNetwork(){
     <div class="card" style="margin-bottom:14px;border-color:var(--teal);background:linear-gradient(135deg, var(--teal-tint), var(--paper))">
       ${level==='full' ? introFull : introLite}
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      ${visibleTabs.map(k=>`<button class="tab-pill ${networkTab===k?'active':''}" onclick="setNetworkTab('${k}')">${{directory:'Directory',seeking:'Seeking',connections:'Requests',channels:'Channels',profile:'My Profile'}[k]}</button>`).join('')}
+    <div id="networkTabRow" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      ${visibleTabs.map(k=>`<button class="tab-pill ${networkTab===k?'active':''}" data-nettab="${k}" onclick="setNetworkTab('${k}')">${{directory:'Directory',seeking:'Seeking',connections:'Requests',channels:'Channels',profile:'My Profile'}[k]}</button>`).join('')}
       ${level!=='full' ? `<button class="tab-pill" style="border-style:dashed" onclick="navTo('settings');setSettingsTab('plan');renderSettings();">🔒 Search &amp; Channels, Prestige →</button>` : ''}
     </div>
     <div id="networkBody"><div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:34px">Loading network…</div></div>
@@ -2687,6 +2711,8 @@ function setNetworkTab(k){
   networkTab = k;
   unsubscribeNetworkRealtime();
   NETWORK_ACTIVE_CONNECTION = null; NETWORK_ACTIVE_CHANNEL = null;
+  const row = document.getElementById('networkTabRow');
+  if(row) row.querySelectorAll('.tab-pill[data-nettab]').forEach(el=>el.classList.toggle('active', el.dataset.nettab===k));
   drawNetworkBody();
 }
 function drawNetworkBody(){
