@@ -263,6 +263,11 @@
         <button class="refresh-link" onclick="loadFoundingClaims()">Refresh</button>
       </div>
       <div id="foundingClaimsWrap"></div>
+      <div class="row" style="justify-content:space-between;margin:22px 0 12px;flex-wrap:wrap;gap:10px">
+        <div class="sub" style="margin-bottom:0">Abandoned signups, accounts that never named a business, never saved any config or data, and hold no plan or slot. Safe to clear off the record. Anything with real saved data (even "My Business"-style minimal accounts) is deliberately never listed here.</div>
+        <button class="refresh-link" onclick="loadAbandonedSignups()">Refresh</button>
+      </div>
+      <div id="abandonedWrap"></div>
     </div>
 
     <div id="tab-payments" class="tab-panel">
@@ -475,6 +480,7 @@ async function afterLogin(){
   loadStats();
   loadBusinesses();
   loadFoundingClaims();
+  loadAbandonedSignups();
   loadBackupAutoStatus();
   loadAdmins();
   loadAnnouncements();
@@ -705,6 +711,39 @@ async function confirmReleaseSlot(venueId, name){
   if(data && data.success===false){ alert(data.message || 'Nothing to release.'); return; }
   alert(`Released: ${data.released}.${data.subscription_deactivated ? ' Subscription marked inactive.' : ' Their separate active subscription was left untouched.'}`);
   loadFoundingClaims();
+  loadBusinesses();
+  loadStats();
+}
+// Lists accounts that meet the strict abandoned-signup bar (see the
+// server-side function for the exact criteria: no business name, no
+// saved cfg, no saved data, no founding/cohort slot, no active plan).
+// Deliberately separate from "No plan only" in the businesses filter
+// above, that filter also catches real minimal accounts like "My
+// Business" which have actual saved data and must never be offered for
+// deletion here.
+async function loadAbandonedSignups(){
+  const wrap = document.getElementById('abandonedWrap');
+  wrap.innerHTML = '<div class="card empty">Loading…</div>';
+  const { data, error } = await sb.rpc('admin_list_abandoned_signups');
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load: ${error.message||error}</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No abandoned signups right now.</div>'; return; }
+  wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
+      <th>Owner email</th><th>Signed up</th><th>Last sign-in</th><th></th>
+    </tr></thead><tbody>${data.map(r=>`
+      <tr>
+        <td>${esc(r.owner_email)||'Not provided'}</td>
+        <td>${fmtDate(r.created_at)}</td>
+        <td>${r.last_sign_in_at ? fmtDateTime(r.last_sign_in_at) : '<span style="color:#b45309">Never</span>'}</td>
+        <td><button class="refresh-link" style="color:var(--danger)" onclick="confirmDeleteAbandoned('${r.venue_id}','${esc(r.owner_email||'this account').replace(/'/g,"\\'")}')">Delete</button></td>
+      </tr>`).join('')}</tbody></table></div>`;
+}
+async function confirmDeleteAbandoned(venueId, email){
+  if(!confirm(`Permanently clear ${email}? This removes their business record, any subscription row and any backup snapshots from TecXFRA, so they stop appearing anywhere on the platform. The account's login itself is left alone, if they ever sign back in, they land on a completely blank new signup. This is only ever allowed for accounts with zero saved business data, real businesses are never affected.\n\nThis cannot be undone. Continue?`)) return;
+  const { data, error } = await sb.rpc('admin_delete_abandoned_signup', { p_venue_id: venueId });
+  if(error){ alert(`Could not delete: ${error.message||error}`); return; }
+  if(data && data.success===false){ alert(data.message || 'Could not delete.'); return; }
+  alert(`${email} cleared.`);
+  loadAbandonedSignups();
   loadBusinesses();
   loadStats();
 }
