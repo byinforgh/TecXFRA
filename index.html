@@ -1363,6 +1363,13 @@ async function syncSubscription(){
       CUR_USER_EMAIL = email;
       if(CFG && TECXFRA_TEST_ACCOUNTS.includes(email)) CFG.plan = CFG.demoPlanOverride || 'prestige';
     }catch(e){ /* non-fatal, only affects the whitelisted test account */ }
+    // TecXPARTNER heartbeat: keep this business's own snapshot fresh so
+    // referrers who signed this business up get accurate, current counts.
+    // Cheap, fire-and-forget, never blocks the rest of sync.
+    if(CFG){
+      try{ await sb.rpc('sync_partner_snapshot', { p_business_name: CFG.bizName, p_plan: CFG.plan, p_sub_active: CUR_SUBSCRIPTION && CUR_SUBSCRIPTION.status==='active' }); }
+      catch(e){ console.error('sync_partner_snapshot failed', e); }
+    }
   }catch(e){ console.error('syncSubscription failed', e); }
 }
 async function setDemoPlan(planKey){
@@ -1816,6 +1823,22 @@ const WIZ_COHORT = (function(){
     return (v==='diaspora' || v==='ghana') ? v : null;
   }catch(e){ return null; }
 })();
+// ---- TecXPARTNER referral code, captured the same way as WIZ_COHORT above.
+// A signup link like https://www.tecxfra.com/?ref=KOFISHOP1A2B carries the
+// referring business's code through the wizard; applyReferralCodeIfPresent()
+// (called once, right after a brand-new business finishes setup) is what
+// actually attributes it server-side. See tecxpartner_schema.sql.
+const WIZ_REF = (function(){
+  try{
+    const v = new URLSearchParams(window.location.search).get('ref');
+    return (v && /^[A-Za-z0-9]{4,24}$/.test(v)) ? v : null;
+  }catch(e){ return null; }
+})();
+async function applyReferralCodeIfPresent(){
+  if(!WIZ_REF) return;
+  try{ await sb.rpc('apply_referral_code', { p_code: WIZ_REF }); }
+  catch(e){ console.error('apply_referral_code failed', e); }
+}
 let COHORT_SLOTS = null; // {diaspora:{cap,used,remaining}, ghana:{...}}
 async function loadCohortSlots(){
   if(!WIZ_COHORT) return;
@@ -2099,6 +2122,10 @@ async function finishSetup(setup){
     if(WIZ_COHORT) await claimCohortSlotIfChosen(setup.plan);
     else await claimFoundingSlotIfChosen(setup.plan);
   }
+  // TecXPARTNER: attribute this brand-new signup to whoever's ?ref= link it
+  // arrived through, independent of cohort/founding-slot status, a referred
+  // business can be on any plan and still count toward its referrer's tier.
+  await applyReferralCodeIfPresent();
   await boot();
   if(isTestAccount){
     showToast(`Internal test account, Prestige granted directly. No founding slot used.`);
@@ -7324,7 +7351,8 @@ function drawSettingsBody(){
     </div>`;
   } else if(settingsTab==='account'){
     const sub = CUR_SUBSCRIPTION;
-    b.innerHTML = `<div class="card" style="max-width:480px">
+    b.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+    <div class="card" style="max-width:480px;flex:1;min-width:280px">
       <div class="card-title">Subscription status</div>
       <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;margin-bottom:14px">
         Plan: <b style="color:var(--navy)">${currentPlan().label}</b><br>
@@ -7334,6 +7362,11 @@ function drawSettingsBody(){
       </div>
       <button class="btn btn-ghost" onclick="syncSubscription().then(()=>{renderSettings();showToast('Refreshed')})">Refresh status</button>
       ${sub && sub.status==='active' ? `<button class="btn btn-ghost" style="margin-left:8px;color:var(--danger,#c0584a)" onclick="cancelSubscriptionFlow()">Cancel plan</button>` : ''}
+    </div>
+    <div class="card" style="max-width:480px;flex:1;min-width:280px" id="partnerStatusCard">
+      <div class="card-title">TecXPARTNER Status</div>
+      <div style="font-size:12px;color:var(--muted)">Loading…</div>
+    </div>
     </div>
     <div class="card" style="max-width:480px">
       <div class="card-title">Account</div>
@@ -7356,6 +7389,7 @@ function drawSettingsBody(){
       <div id="myTicketsList" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"></div>
     </div>`;
     loadMyTickets();
+    loadPartnerStatus();
   } else if(settingsTab==='data'){
     const counts = {contacts:(DATA.contacts||[]).length, transactions:(DATA.transactions||[]).length,
       expenses:(DATA.expenses||[]).length, messageLog:(DATA.messageLog||[]).length,
@@ -7436,6 +7470,60 @@ async function loadMyTickets(){
   }catch(e){
     const el3 = document.getElementById('myTicketsList'); if(el3) el3.innerHTML = '<div class="empty">Could not load your reports right now.</div>';
   }
+}
+// ============================================================
+// TECXPARTNER (Settings → Account)
+// ============================================================
+async function loadPartnerStatus(){
+  const el = document.getElementById('partnerStatusCard'); if(!el) return;
+  try{
+    const [{ data: status, error: e1 }, { data: code, error: e2 }] = await Promise.all([
+      sb.rpc('get_my_partner_status'),
+      sb.rpc('get_or_create_partner_code')
+    ]);
+    if(e1) throw e1;
+    if(e2) console.error('get_or_create_partner_code failed', e2);
+    renderPartnerStatus(status, code);
+  }catch(e){
+    console.error('loadPartnerStatus failed', e);
+    el.innerHTML = `<div class="card-title">TecXPARTNER Status</div><div style="font-size:12px;color:var(--muted)">Could not load your TecXPARTNER status right now.</div>`;
+  }
+}
+function renderPartnerStatus(status, fallbackCode){
+  const el = document.getElementById('partnerStatusCard'); if(!el) return;
+  if(!status){ el.innerHTML = `<div class="card-title">TecXPARTNER Status</div><div style="font-size:12px;color:var(--muted)">Could not load your TecXPARTNER status right now.</div>`; return; }
+  const code = status.code || fallbackCode || '';
+  const link = status.referral_link || (code ? `https://www.tecxfra.com/?ref=${code}` : '');
+  const active = status.active_referrals || {starter:0,growth:0,enterprise:0,pending:0};
+  const totalActive = (active.starter||0) + (active.growth||0) + (active.enterprise||0);
+  const nextMilestone = totalActive < 3 ? 3 : (totalActive < 5 ? 5 : (totalActive < 10 ? 10 : null));
+  const toNext = nextMilestone ? nextMilestone - totalActive : 0;
+  const pct = nextMilestone ? Math.min(100, Math.round((totalActive/nextMilestone)*100)) : 100;
+  el.innerHTML = `
+    <div class="card-title">TecXPARTNER Status ${status.badge_eligible ? '<span class="pill pill-active" style="margin-left:6px">✓ Badged Partner</span>' : ''}</div>
+    ${!status.partner_account_active ? `<div style="font-size:11.5px;color:var(--coral);background:var(--coral-tint);border-radius:8px;padding:8px 10px;margin-bottom:10px">Your own TecXFRA account needs to be active to earn TecXPARTNER payouts (Rule 4).</div>` : ''}
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;margin-bottom:10px">
+      Active Referrals: <b style="color:var(--navy)">${totalActive}</b> total
+      <span style="color:var(--muted)"> (${active.starter||0} Starter · ${active.growth||0} Growth · ${active.enterprise||0} Enterprise${active.pending?` · ${active.pending} pending 2-month lock`:''})</span><br>
+      Estimated payout next settlement (5th): <b style="color:var(--navy)">${money(status.projected_next_payout||0)}</b>${status.last_payout ? `<br>Last settled (${esc(status.last_payout.period)}): <b style="color:var(--navy)">${money(status.last_payout.amount)}</b> <span class="pill ${status.last_payout.status==='paid'?'pill-active':'pill-cold'}" style="margin-left:4px">${status.last_payout.status==='paid'?'Paid':'Due'}</span>` : ''}
+    </div>
+    ${nextMilestone ? `
+    <div style="margin-bottom:10px">
+      <div style="height:8px;border-radius:6px;background:var(--line-soft);overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--teal);border-radius:6px"></div></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${toNext} more active shop${toNext===1?'':'s'} to unlock the next payout tier (${nextMilestone})</div>
+    </div>` : `<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Past 10 active shops in a tier, every additional one keeps adding to your monthly payout.</div>`}
+    <label class="lbl">Your referral link</label>
+    <div style="display:flex;gap:6px">
+      <input class="inp" id="partnerRefLink" value="${esc(link)}" readonly style="font-size:11.5px">
+      <button class="btn btn-ghost" onclick="copyPartnerLink()" style="flex-shrink:0">Copy</button>
+    </div>
+  `;
+}
+function copyPartnerLink(){
+  const inp = document.getElementById('partnerRefLink'); if(!inp) return;
+  inp.select(); inp.setSelectionRange(0,99999);
+  try{ navigator.clipboard ? navigator.clipboard.writeText(inp.value) : document.execCommand('copy'); showToast('Referral link copied'); }
+  catch(e){ showToast('Could not copy, select and copy manually'); }
 }
 async function saveBusinessSettings(){
   CFG.bizName = document.getElementById('setBizName').value.trim() || CFG.bizName;
