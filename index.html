@@ -2517,6 +2517,11 @@ function navTo(page){
         <button class="btn btn-primary" onclick="navTo('today')">← Back to Today</button>
       </div>`;
     }
+    // Defensive reset: any wide .scroll-tbl (multi-column tables that need
+    // to be swiped sideways on narrow screens) should always open scrolled
+    // all the way left so the first column, usually Date, is never the
+    // part that's already off-screen on arrival.
+    document.querySelectorAll('.scroll-tbl').forEach(el=>{ el.scrollLeft = 0; });
   }
   // .content is now the real scrolling element (see .main/.content CSS),
   // not the window, so reset that on every page switch instead.
@@ -3371,6 +3376,8 @@ async function saveNetworkProfile(){
 function renderToday(){
   const t = todayStr();
   const todaySales = (DATA.transactions||[]).filter(x=>x.date===t).reduce((s,x)=>s+x.amount,0);
+  const todayExpenses = (DATA.expenses||[]).filter(x=>x.date===t).reduce((s,x)=>s+(x.amount||0),0);
+  const todayNet = todaySales - todayExpenses;
   const dueFollowups = (DATA.followups||[]).filter(f=>!f.done && f.due<=t);
   const lowStock = tracksStock() ? (DATA.inventory||[]).filter(i=>i.stock<=i.par) : (DATA.inventory||[]);
   const todayEvents = (DATA.events||[]).filter(e=>e.date===t);
@@ -3397,6 +3404,8 @@ function renderToday(){
   html += renderInsightsCard();
   html += `<div class="grid-metrics">
     <div class="metric navy" style="cursor:pointer" onclick="navTo('revenue')"><div class="ml">Revenue Today</div><div class="mv">${money(todaySales)}</div><div class="ms">${(DATA.transactions||[]).filter(x=>x.date===t).length} sales logged</div></div>
+    <div class="metric coral" style="cursor:pointer" onclick="navTo('expenses')"><div class="ml">Expenses Today</div><div class="mv">${money(todayExpenses)}</div><div class="ms">${(DATA.expenses||[]).filter(x=>x.date===t).length} logged, tap to manage</div></div>
+    <div class="metric ${todayNet>=0?'green':'coral'}" style="cursor:pointer" onclick="navTo('revenue')"><div class="ml">Net Today</div><div class="mv">${money(todayNet)}</div><div class="ms">${todayNet>=0?'revenue minus expenses':'spending more than you\'re making'}</div></div>
     <div class="metric coral" style="cursor:pointer" onclick="navTo('followups')"><div class="ml">Follow-ups Due</div><div class="mv">${dueFollowups.length}</div><div class="ms">across all ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase()}</div></div>
     <div class="metric amber" style="cursor:pointer" onclick="${CFG.modules.includes('inventory')?"navTo('inventory')":"enableSellingTools()"}"><div class="ml">${tracksStock()?'Low Stock':CUR_INDUSTRY_OBJ.itemNoun}</div><div class="mv">${lowStock.length}</div><div class="ms">${CFG.modules.includes('inventory')?(tracksStock()?'items at/under par':'listed, tap to manage'):'tap to turn on inventory'}</div></div>
     <div class="metric green" style="cursor:pointer" onclick="navTo('crm')"><div class="ml">Hot Leads</div><div class="mv">${hotLeads}</div><div class="ms">ready to close</div></div>
@@ -3411,6 +3420,13 @@ function renderToday(){
       <div class="card">
         <div class="card-title">Today's Calendar</div>
         ${todayEvents.length ? todayEvents.map(e=>`<div class="list-row"><span>${esc(e.time)}, ${esc(e.title)}</span></div>`).join('') : '<div class="empty">Nothing scheduled today.</div>'}
+      </div>
+      <div class="card">
+        <div class="card-title">Today's Money <span class="sub" onclick="navTo('expenses')" style="cursor:pointer">see all →</span></div>
+        <div class="list-row"><span>Revenue</span><span class="mono" style="color:var(--navy);font-weight:700">${money(todaySales)}</span></div>
+        <div class="list-row"><span>Expenses</span><span class="mono" style="color:var(--coral);font-weight:700">${money(todayExpenses)}</span></div>
+        <div class="list-row" style="border-bottom:none"><span><b>Net</b></span><span class="mono" style="color:${todayNet>=0?'var(--green,#3a7a5d)':'var(--coral)'};font-weight:700"><b>${money(todayNet)}</b></span></div>
+        ${(DATA.expenses||[]).filter(x=>x.date===t).length ? `<div style="margin-top:8px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Logged today</div>${(DATA.expenses||[]).filter(x=>x.date===t).map(x=>`<div class="list-row" style="cursor:pointer" onclick="openExpenseModal('${x.id}')"><span>${esc(x.item)}</span><span class="mono">${money(x.amount)}</span></div>`).join('')}` : ''}
       </div>
     </div>
     <div>
@@ -4672,10 +4688,25 @@ function renderExpenses(){
     </div>
   </div>
   <div class="two-col">
-    <div class="card"><div class="card-title">Recent Expenses <span class="sub">click a row to edit</span> ${oldCount?`<span class="sub" style="cursor:pointer" onclick="archiveOldExpenses()">· archive ${oldCount} older than 90 days →</span>`:''}</div>
-      <div class="scroll-tbl"><table><thead><tr><th>Date</th><th>Item</th><th>Category</th><th>Amount</th><th></th></tr></thead><tbody>
-      ${(DATA.expenses||[]).slice().reverse().map(e=>`<tr style="cursor:pointer" onclick="openExpenseModal('${e.id}')"><td>${fmtDate(e.date)}</td><td>${esc(e.item)}</td><td style="color:var(--ink-dim)">${esc(e.category)}</td><td class="mono">${money(e.amount)}</td><td><span style="cursor:pointer;color:var(--muted);font-size:11px" onclick="event.stopPropagation();archiveExpense('${e.id}')">archive</span></td></tr>`).join('') || '<tr><td colspan="5" class="empty">None yet</td></tr>'}
-      </tbody></table></div>
+    <div class="card"><div class="card-title">Recent Expenses <span class="sub">tap a row to edit</span> ${oldCount?`<span class="sub" style="cursor:pointer" onclick="archiveOldExpenses()">· archive ${oldCount} older than 90 days →</span>`:''}</div>
+      <!-- FIX (Sep 2026, "date extending off screen" on mobile): this used to
+           be a <table> inside .scroll-tbl, which forces a 520px min-width so
+           it can be swiped sideways, on a phone viewport that meant the row
+           opened already scrolled past the Date column and part of Item, so
+           the date looked like it had run off the edge of the screen with
+           no obvious way back to it. list-row already wraps naturally at
+           any width everywhere else in the app (Today's Due Today list,
+           etc.), switching this table to the same pattern means every field
+           is always on-screen, nothing to scroll sideways to find. -->
+      <div style="max-height:440px;overflow-y:auto;-webkit-overflow-scrolling:touch">
+      ${(DATA.expenses||[]).slice().reverse().map(e=>`<div class="list-row" style="cursor:pointer" onclick="openExpenseModal('${e.id}')">
+        <span style="min-width:0"><b>${esc(e.item)}</b><br><span style="color:var(--muted);font-size:11px">${fmtDate(e.date)} · ${esc(e.category)}</span></span>
+        <span style="display:flex;align-items:center;gap:12px;white-space:nowrap">
+          <span class="mono">${money(e.amount)}</span>
+          <span style="cursor:pointer;color:var(--muted);font-size:11px" onclick="event.stopPropagation();archiveExpense('${e.id}')">archive</span>
+        </span>
+      </div>`).join('') || '<div class="empty">None yet</div>'}
+      </div>
     </div>
     <div class="card"><div class="card-title">Log an Expense</div>
       <label class="lbl">What</label><input class="inp" id="eItem" placeholder="e.g. Supplier delivery">
@@ -4701,27 +4732,34 @@ function openExpenseModal(id){
     <label class="lbl">Category</label><select class="inp" id="eeCat">${['Cost of Goods','Overheads','Marketing','Payroll','Other'].map(c=>`<option ${c===e.category?'selected':''}>${c}</option>`).join('')}</select>
     <label class="lbl">Amount</label><input class="inp" id="eeAmt" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(e.amount||0)}">
     <label class="lbl">Date</label><input class="inp" id="eeDate" type="date" value="${esc(e.date||todayStr())}">
-    <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="confirmEditExpense('${id}')">Save Changes</button>
+    <button class="btn btn-primary btn-full" style="margin-top:8px" id="eeSaveBtn" onclick="saveExpenseEdit('${id}')">Save Changes</button>
     <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--coral)" onclick="archiveExpense('${id}');closeModal()">Archive This Expense</button>
   </div></div>`;
 }
-function confirmEditExpense(id){
-  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:380px">
-    <div class="modal-head"><h3>Confirm Edit</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div style="font-size:13px;color:var(--ink-dim);line-height:1.6">You're about to change this expense record. This updates your expense totals and reports right away. Are you sure?</div>
-    <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-ghost" style="flex:1" onclick="openExpenseModal('${id}')">Back</button>
-      <button class="btn btn-primary" style="flex:1" onclick="saveExpenseEdit('${id}')">Yes, Save</button>
-    </div>
-  </div></div>`;
-}
+/* FIX (Sep 2026, "Save button not working" on Edit Expense): this used to be
+   a two-step flow, Save Changes opened a second "Confirm Edit" modal that
+   replaced the first one. On mobile, tapping Save Changes while the on-screen
+   keyboard was still open (from editing Amount/Date) meant the browser's
+   viewport was mid-resize as the second modal tried to render, so the
+   confirm dialog could paint off-screen or the tap could land before the
+   new modal was interactive, if you then blindly tapped Yes, Save while it
+   looked frozen, nothing happened. Editing an expense's own fields isn't a
+   destructive action (Archive already has its own separate, clearly labelled
+   button with no confirm step), so this now saves directly on one tap, and
+   blurs whatever field still has focus first so the keyboard closes and the
+   layout settles before anything re-renders. */
 async function saveExpenseEdit(id){
   const e = (DATA.expenses||[]).find(x=>x.id===id); if(!e) return;
-  const item = document.getElementById('eeItem').value.trim().slice(0,200);
-  const amount = parseFloat(document.getElementById('eeAmt').value);
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  const itemEl = document.getElementById('eeItem'), amtEl = document.getElementById('eeAmt');
+  const item = (itemEl ? itemEl.value : '').trim().slice(0,200);
+  const amount = parseFloat(amtEl ? amtEl.value : NaN);
   if(!item || !Number.isFinite(amount) || amount<=0 || amount>1e12){ showToast('Enter an item and a valid positive amount'); return; }
+  const btn = document.getElementById('eeSaveBtn'); if(btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
   e.item = item; e.category = document.getElementById('eeCat').value; e.amount = amount; e.date = document.getElementById('eeDate').value || e.date;
-  await saveData(); closeModal(); showToast('Expense updated'); renderExpenses();
+  const ok = await saveData();
+  if(!ok){ if(btn){ btn.disabled = false; btn.textContent = 'Save Changes'; } return; }
+  closeModal(); showToast('Expense updated'); renderExpenses();
 }
 async function archiveOldExpenses(){
   const t = todayStr(); const cutoff = new Date(t+'T00:00:00'); cutoff.setDate(cutoff.getDate()-90);
@@ -7635,12 +7673,30 @@ async function toggleLiveModule(el, key){
    never on scroll, this is what fixes the topbar needing a manual pull
   to appear (see the CSS comment on body:has(#app.active) above) without
    reintroducing the mid-scroll freeze that 100dvh caused. */
+/* FIX (Sep 2026, topbar still needing a manual pull on some devices):
+   window.innerHeight, measured once at first paint, can lag behind iOS
+   Safari's real chrome state, on first load the address bar is often still
+   fully expanded (or mid-animation) so innerHeight briefly reports shorter
+   than the viewport ends up being once Safari settles a moment later, and
+   since this only re-ran on resize/orientationchange, --app-vh stayed
+   pinned to that too-short value until something else forced a resize
+   event, which is what the manual pull was really doing. visualViewport,
+   where available, reflects the real interactive viewport and fires its
+   own 'resize' event whenever the browser chrome or keyboard actually
+   changes size, not on every scroll frame, so listening to it catches the
+   settle without reintroducing the 100dvh mid-scroll freeze. The two
+   short setTimeout re-checks after load are a defensive re-measure for the
+   brief window while iOS is still animating the chrome on first paint. */
 function setAppVh(){
-  document.documentElement.style.setProperty('--app-vh', (window.innerHeight * 0.01) + 'px');
+  const h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  document.documentElement.style.setProperty('--app-vh', (h * 0.01) + 'px');
 }
 setAppVh();
 window.addEventListener('resize', setAppVh);
 window.addEventListener('orientationchange', ()=>setTimeout(setAppVh, 120));
+if(window.visualViewport){ window.visualViewport.addEventListener('resize', setAppVh); }
+setTimeout(setAppVh, 300);
+setTimeout(setAppVh, 1000);
 /* ---------- Mobile sidebar controls ----------
    openSidebarUI/closeSidebarUI/toggleSidebarUI keep the sidebar and its
    backdrop in sync (tapping the dimmed backdrop over the page closes the
