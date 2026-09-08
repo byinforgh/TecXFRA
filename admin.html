@@ -199,6 +199,7 @@
       <button class="tab" data-tab="announcements" onclick="switchTab('announcements')">Announcements</button>
       <button class="tab" data-tab="admins" onclick="switchTab('admins')">Admins</button>
       <button class="tab" data-tab="network" onclick="switchTab('network')">Network</button>
+      <button class="tab" data-tab="partners" onclick="switchTab('partners')">TecXPARTNER</button>
       <button class="tab" data-tab="tickets" onclick="switchTab('tickets')">Support Tickets</button>
     </div>
 
@@ -333,6 +334,14 @@
         <button class="refresh-link" onclick="loadAnnouncements()">Refresh</button>
       </div>
       <div id="annListWrap"></div>
+    </div>
+
+    <div id="tab-partners" class="tab-panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+        <div class="sub" style="margin-bottom:0">Every business's TecXPARTNER status: referred shops, what's due this cycle, and payout history. Settlement runs automatically on the 5th (see tecxpartner_schema.sql), amounts here are already calculated, "Mark Paid" is just recording that the MoMo transfer went out.</div>
+        <button class="refresh-link" onclick="loadPartnersAdmin()">Refresh</button>
+      </div>
+      <div id="partnersTableWrap"></div>
     </div>
 
     <div id="tab-tickets" class="tab-panel">
@@ -489,6 +498,7 @@ async function afterLogin(){
   loadCohortAdmin();
   loadPlanMismatches();
   loadTickets();
+  loadPartnersAdmin();
 }
 
 function switchTab(name){
@@ -873,6 +883,38 @@ async function loadBusinesses(){
         <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}','${nameJs}','${b.plan_source}')">Grant paid plan</button></td>
         <td>${b.status==='active' ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${b.venue_id}','${nameJs}')">Deactivate</button>` : ''}</td>
       </tr>`;}).join('')}</tbody></table></div>`;
+}
+
+async function loadPartnersAdmin(){
+  const wrap = document.getElementById('partnersTableWrap'); if(!wrap) return;
+  wrap.innerHTML = '<div class="card empty">Loading…</div>';
+  const { data, error } = await sb.rpc('admin_list_partner_status');
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load TecXPARTNER status: ${error.message||error}. Has tecxpartner_schema.sql been run yet?</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No businesses have a TecXPARTNER code yet, this fills in as businesses visit Settings → Account.</div>'; return; }
+  wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
+      <th>Business</th><th>Code</th><th>Partner account</th><th>Starter active</th><th>Growth active</th><th>Enterprise active</th><th>Pending (2-mo lock)</th><th>Due now</th><th>Last period</th><th>Last status</th><th></th>
+    </tr></thead><tbody>${data.map(p=>{
+      const dueNow = Number(p.current_due||0);
+      return `
+      <tr>
+        <td><b>${esc(p.business_name)||'Unnamed business'}</b></td>
+        <td style="font-family:monospace;font-size:11.5px">${esc(p.code)||'—'}</td>
+        <td>${statusPill(p.partner_active?'active':'inactive')}</td>
+        <td>${p.starter_active||0}</td>
+        <td>${p.growth_active||0}</td>
+        <td>${p.enterprise_active||0}</td>
+        <td>${p.pending||0}</td>
+        <td><b>${dueNow ? 'GHS '+dueNow.toFixed(2) : '—'}</b></td>
+        <td>${esc(p.last_period)||'—'}</td>
+        <td>${p.last_status ? `<span class="pill ${p.last_status==='paid'?'pill-active':'pill-inactive'}">${esc(p.last_status)}</span>` : '—'}</td>
+        <td>${(p.last_status==='due') ? `<button class="refresh-link" onclick="markPartnerPaid('${p.venue_id}','${esc(p.last_period)}')">Mark Paid</button>` : ''}</td>
+      </tr>`;}).join('')}</tbody></table></div>`;
+}
+async function markPartnerPaid(venueId, period){
+  if(!confirm(`Mark this TecXPARTNER payout (${period}) as paid via MoMo?`)) return;
+  const { error } = await sb.rpc('admin_mark_partner_payout_paid', { p_venue_id: venueId, p_period: period });
+  if(error){ alert('Could not mark as paid: ' + (error.message||error)); return; }
+  loadPartnersAdmin();
 }
 
 async function loadCohortAdmin(){
