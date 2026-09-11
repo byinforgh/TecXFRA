@@ -680,6 +680,9 @@ async function initSupabase(){
               hideBootLoading();
               document.getElementById('app').classList.remove('active');
               document.getElementById('authScreen').style.display = 'none';
+              window.scrollTo(0, 0);
+              document.documentElement.scrollTop = 0;
+              document.body.scrollTop = 0;
               renderIndustryGrid(); populateWizCountry();
               document.getElementById('wizard').style.display = 'flex';
               wizGo(1);
@@ -1056,6 +1059,9 @@ async function signOut(){
   hideBootLoading();
   document.getElementById('app').classList.remove('active');
   document.getElementById('authScreen').style.display = 'none';
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
   renderIndustryGrid(); populateWizCountry();
   document.getElementById('wizard').style.display = 'flex';
   wizGo(1);
@@ -2161,6 +2167,18 @@ async function boot(){
     document.getElementById('wizard').style.display = 'none';
     hideBootLoading();
     document.getElementById('app').classList.add('active');
+    // FIX (Sep 2026, topbar "have to keep dragging it down"): the wizard
+    // screen above is a normal tall page the user has usually scrolled
+    // down through (e.g. to reach the plan picker), and body:has(#app.active)
+    // only locks scrolling going forward, it never resets the scroll
+    // position that was already there. Without this, the dashboard shell
+    // renders at that leftover offset, cropping the topbar off the top of
+    // the screen, iOS then can't scroll it back (body is overflow:hidden),
+    // only elastic overscroll (a manual drag) nudges it, which is exactly
+    // the workaround this was requiring every time. Reset before paint.
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
     document.getElementById('sbBizName').textContent = CFG.bizName;
     document.getElementById('sbIndustry').textContent = CUR_INDUSTRY_OBJ.label;
     document.getElementById('sbOwnerName').textContent = CFG.ownerName;
@@ -2175,6 +2193,11 @@ async function boot(){
     console.error('boot failed', e);
     hideBootLoading();
     document.getElementById('app').classList.add('active');
+    // same leftover-scroll fix as the success path above, this path also
+    // flips #app to active and is just as reachable from a scrolled wizard
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
     document.getElementById('wizard').style.display = 'none';
     const main = document.getElementById('pageContent') || document.body;
     if(main){
@@ -2621,7 +2644,19 @@ let NETWORK_RT = null;             // current realtime subscription handle
 let NETWORK_ENTERPRISE_STATUS = null;
 const NETWORK_LOOKING_FOR_OPTIONS = ['Collaboration','Partnership','Investment','Supply Chain','Distribution','Mentorship','Talent / Hire','Marketing / Creative Partner'];
 
-function jsAttr(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' '); }
+// SECURITY (Sep 2026): jsAttr() is used to embed values inside a nested
+// onclick="fn('...')" JS string. It used to only backslash-escape for the
+// JS-string boundary (the inner '...'), but never touched the outer HTML
+// attribute boundary (the "..." onclick itself sits in). A double-quote
+// character in the source value, e.g. a Network profile's display_name
+// (any business can set this, it's rendered in every other business's
+// directory) or a looking_for tag, closed the onclick="..." attribute
+// early and let an attacker inject arbitrary attributes/HTML/script,
+// executed in the browser of anyone who viewed that profile card, a
+// live cross-tenant stored XSS. JS-escape first (so a literal quote
+// survives HTML entity decoding as an escaped quote, not a break-out),
+// then esc() the result to neutralise the outer attribute boundary too.
+function jsAttr(s){ return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' ')); }
 
 function renderNetwork(){
   const pc = document.getElementById('pageContent');
@@ -3420,7 +3455,7 @@ function renderToday(){
   </div>` : '';
   html += `<div class="card" style="border-color:var(--teal); background:linear-gradient(135deg, var(--teal-tint), var(--paper))">
     <div class="card-title">${currentPlan().network?'Today\'s Prestige '+toneLabel()+' 🌐':'Today\'s '+toneLabel()} <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change tone →</span></div>
-    <div style="font-size:13.5px; line-height:1.7; color:var(--navy)">${tip}</div>
+    <div style="font-size:13.5px; line-height:1.7; color:var(--navy)">${esc(tip)}</div>
   </div>
   <div class="card">
     <div class="card-title">Your Own Business Tip <span class="sub">write a reminder to yourself for today</span></div>
@@ -3862,7 +3897,7 @@ function openContactModal(id){
     <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
       ${c.phone?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" rel="noopener noreferrer" href="https://wa.me/${c.phone.replace(/\D/g,'')}">💬 WhatsApp</a>`:''}
       ${CFG.modules.includes('invoicing')?`<button class="btn btn-ghost" style="flex:1" onclick="quickInvoiceFor('${id}')">🧾 Generate Invoice</button>`:''}
-      <button class="btn btn-ghost" style="flex:1" onclick="openJournalFor('${id}','${c.name.replace(/'/g,"\\'")}')">📓 Journal Note</button>
+      <button class="btn btn-ghost" style="flex:1" onclick="openJournalFor('${id}','${jsAttr(c.name)}')">📓 Journal Note</button>
       <button class="btn btn-ghost" style="flex:1" onclick="archiveContact('${id}')">🗄️ Archive</button>
     </div>
   </div></div>`;
@@ -7028,7 +7063,7 @@ function renderGuides(){
   <div class="tab-row" id="guideTabs" style="${guidesMainTab==='store'||guidesMainTab==='prestige'?'display:none':''}"></div>
   <div class="card" id="guideList"></div>`;
   document.getElementById('guideTabs').innerHTML = ['All',...GUIDE_CATEGORIES].map(c=>
-    `<button class="tab-pill ${guideCatFilter===c?'active':''}" onclick="setGuideCat('${c.replace(/'/g,"\\'")}')">${c}</button>`).join('');
+    `<button class="tab-pill ${guideCatFilter===c?'active':''}" onclick="setGuideCat('${jsAttr(c)}')">${esc(c)}</button>`).join('');
   if(guidesMainTab==='store'){ syncGuidePurchases().then(drawGuideStore); drawGuideStore(); }
   else if(guidesMainTab==='prestige'){ drawPrestigeGuideList(); }
   else{ drawGuideList(); }
