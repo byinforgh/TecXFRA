@@ -197,6 +197,7 @@
       <button class="tab" data-tab="payments" onclick="switchTab('payments')">Payments</button>
       <button class="tab" data-tab="guides" onclick="switchTab('guides')">Guide Purchases</button>
       <button class="tab" data-tab="announcements" onclick="switchTab('announcements')">Announcements</button>
+      <button class="tab" data-tab="messages" onclick="switchTab('messages')">Messages</button>
       <button class="tab" data-tab="admins" onclick="switchTab('admins')">Admins</button>
       <button class="tab" data-tab="network" onclick="switchTab('network')">Network</button>
       <button class="tab" data-tab="partners" onclick="switchTab('partners')">TecXPARTNER</button>
@@ -272,6 +273,12 @@
     </div>
 
     <div id="tab-payments" class="tab-panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <div class="sub" style="margin-bottom:0">Renewals, everyone on a fixed renewal date, soonest first. Overdue and due-within-7-days are flagged. Edit sets or clears the date directly, separate from granting a plan.</div>
+        <button class="refresh-link" onclick="loadRenewals()">Refresh</button>
+      </div>
+      <div id="renewalsWrap" style="margin-bottom:26px"></div>
+
       <div class="sub" style="margin-bottom:12px">MoMo, invoice &amp; cash requests waiting on manual approval</div>
       <div id="list"></div>
     </div>
@@ -279,6 +286,25 @@
     <div id="tab-guides" class="tab-panel">
       <div class="sub" style="margin-bottom:12px">Guide Store unlock requests waiting on manual approval</div>
       <div id="guideList"></div>
+    </div>
+
+    <div id="tab-messages" class="tab-panel">
+      <div class="sub" style="margin-bottom:12px">Send a private message to one specific business only, not a broadcast. It never appears for anyone else, and doesn't post as an in-app popup, it shows in that business's own inbox next time they open TecXFRA.</div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="field"><label>Business</label>
+        <select id="msgBizSelect" style="width:100%;margin-bottom:14px" onchange="loadBusinessMessages()"><option value="">Pick a business…</option></select></div>
+        <div class="field"><label>Subject</label>
+        <input id="msgSubject" placeholder="e.g. About your recent invoice"></div>
+        <div class="field"><label>Message</label>
+        <textarea id="msgBody" rows="4" placeholder="Plain and short, this is a private note to this one business."></textarea></div>
+        <button class="btn-primary" onclick="sendBusinessMessage()">Send to this business</button>
+        <div id="msgSendStatus" style="font-size:12.5px;margin-top:8px;color:var(--ok)"></div>
+      </div>
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <div class="sub" style="margin-bottom:0">Messages sent to the selected business</div>
+        <button class="refresh-link" onclick="loadBusinessMessages()">Refresh</button>
+      </div>
+      <div id="msgThreadWrap"><div class="card empty">Pick a business above to see its messages.</div></div>
     </div>
 
     <div id="tab-admins" class="tab-panel">
@@ -499,6 +525,7 @@ async function afterLogin(){
   loadPlanMismatches();
   loadTickets();
   loadPartnersAdmin();
+  loadRenewals();
 }
 
 function switchTab(name){
@@ -595,12 +622,19 @@ async function loadBackupAutoStatus(){
   el.innerHTML = `Last run: <b>${fmtDateTime(data.last_backup_at)}</b>, ${data.businesses_covered_last_run} business(es) covered, ${data.total_snapshots_stored} snapshots stored, ${data.retention_days}-day retention.`;
   // Reuse whatever the Businesses table already loaded rather than a
   // second RPC call, this only needs venue_id + name for the dropdown.
+  // Both the backup-restore select and the Messages-tab select are
+  // filled from this one list, so they never drift apart.
   const { data: bizList } = await sb.rpc('admin_list_businesses');
-  const sel = document.getElementById('backupBizSelect');
-  if(sel && bizList){
-    sel.innerHTML = '<option value="">Pick a business…</option>' +
-      bizList.map(b=>`<option value="${b.venue_id}">${esc(b.business_name)||'Unnamed business'}</option>`).join('');
-  }
+  fillBizSelect('backupBizSelect', bizList);
+  fillBizSelect('msgBizSelect', bizList);
+}
+function fillBizSelect(selectId, bizList){
+  const sel = document.getElementById(selectId);
+  if(!sel || !bizList) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Pick a business…</option>' +
+    bizList.map(b=>`<option value="${b.venue_id}">${esc(b.business_name)||'Unnamed business'}</option>`).join('');
+  if(prev && bizList.some(b=>b.venue_id===prev)) sel.value = prev;
 }
 async function loadBackupPoints(){
   const venueId = document.getElementById('backupBizSelect').value;
@@ -818,6 +852,109 @@ async function confirmDeactivate(venueId, name){
   loadStats();
 }
 
+// Direct renewal-date editor, separate from "Grant paid plan": that flow
+// only ever sets a date at the moment a plan is granted, there was no way
+// to correct or update it afterwards. Same prompt-based UX as
+// openGrantPlan's date prompt above, for consistency, and the same
+// admin_* RPC error-handling convention (alert() on failure, no toast
+// system in this file).
+async function editRenewalDate(venueId, name, currentIso){
+  const currentStr = currentIso ? currentIso.slice(0,10) : '';
+  const input = prompt(`New renewal date for ${name}. Type a date as YYYY-MM-DD, type "1st" for the 1st of next month, or leave blank to clear it (no fixed renewal date).`, currentStr);
+  if(input === null) return; // cancelled, nothing changed
+  let periodEnd = null;
+  const t = input.trim().toLowerCase();
+  if(t){
+    if(t === '1st'){
+      const d = new Date(); d.setUTCMonth(d.getUTCMonth()+1, 1); d.setUTCHours(0,0,0,0);
+      periodEnd = d.toISOString();
+    } else if(/^\d{4}-\d{2}-\d{2}$/.test(t)){
+      periodEnd = new Date(t + 'T00:00:00Z').toISOString();
+    } else {
+      alert('Date not understood, use YYYY-MM-DD, "1st", or leave blank to clear. Nothing was changed, try again.');
+      return;
+    }
+  }
+  const { data, error } = await sb.rpc('admin_set_renewal_date', { p_venue_id: venueId, p_period_end: periodEnd });
+  if(error){ alert(`Could not update renewal date: ${error.message||error}`); return; }
+  if(data && data.success===false){ alert(data.message || 'Nothing to update.'); return; }
+  alert(`${name}'s renewal date is now ${periodEnd ? fmtDate(periodEnd) : 'not set'}.`);
+  loadBusinesses();
+  loadRenewals();
+}
+// Payments tab: everyone with a fixed renewal date, soonest first, so
+// who's due and who's coming up is visible at a glance instead of having
+// to scan the whole Businesses table for it.
+async function loadRenewals(){
+  const wrap = document.getElementById('renewalsWrap');
+  if(!wrap) return;
+  wrap.innerHTML = '<div class="card empty">Loading…</div>';
+  const { data, error } = await sb.rpc('admin_list_renewals');
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load renewals: ${error.message||error}</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No businesses with a fixed renewal date yet.</div>'; return; }
+  const now = Date.now();
+  wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
+      <th>Business</th><th>Plan</th><th>Status</th><th>Renews</th><th></th>
+    </tr></thead><tbody>${data.map(r=>{
+      const nameJs = esc(r.business_name).replace(/'/g,"\\'");
+      const due = r.current_period_end ? new Date(r.current_period_end).getTime() : null;
+      const daysLeft = due===null ? null : Math.ceil((due-now)/86400000);
+      let tag = '';
+      if(daysLeft !== null){
+        if(daysLeft < 0) tag = `<span style="color:var(--danger);font-weight:700">Overdue by ${Math.abs(daysLeft)}d</span>`;
+        else if(daysLeft <= 7) tag = `<span style="color:var(--amber);font-weight:700">Due in ${daysLeft}d</span>`;
+        else tag = `<span style="color:#8a9394">${daysLeft}d left</span>`;
+      }
+      return `
+      <tr>
+        <td><b>${esc(r.business_name)||'Unnamed business'}</b></td>
+        <td>${planPill(r.plan)}</td>
+        <td>${statusPill(r.status)}</td>
+        <td>${r.current_period_end?fmtDate(r.current_period_end):'<span style="color:#b45309">Not set</span>'} ${tag}</td>
+        <td><button class="refresh-link" onclick="editRenewalDate('${r.venue_id}','${nameJs}','${r.current_period_end||''}')">Edit</button></td>
+      </tr>`;}).join('')}</tbody></table></div>`;
+}
+
+// Per-business private messages, deliberately separate from Announcements
+// (which always broadcast to every business). Sends to exactly one
+// venue_id, never anyone else, and never appears as an in-app popup.
+async function sendBusinessMessage(){
+  const sel = document.getElementById('msgBizSelect');
+  const venueId = sel.value;
+  const name = sel.options[sel.selectedIndex]?.text || 'this business';
+  const subject = document.getElementById('msgSubject').value.trim();
+  const body = document.getElementById('msgBody').value.trim();
+  const status = document.getElementById('msgSendStatus');
+  status.style.color = 'var(--danger)';
+  if(!venueId){ status.textContent = 'Pick a business first.'; return; }
+  if(!subject || !body){ status.textContent = 'Subject and message are both required.'; return; }
+  const { error } = await sb.rpc('admin_send_business_message', { p_venue_id: venueId, p_subject: subject, p_body: body });
+  if(error){ status.textContent = 'Could not send: ' + (error.message||error); return; }
+  status.style.color = 'var(--ok)';
+  status.textContent = `Sent to ${name}. Only they can see it.`;
+  document.getElementById('msgSubject').value = '';
+  document.getElementById('msgBody').value = '';
+  loadBusinessMessages();
+}
+async function loadBusinessMessages(){
+  const sel = document.getElementById('msgBizSelect');
+  const wrap = document.getElementById('msgThreadWrap');
+  const venueId = sel.value;
+  if(!venueId){ wrap.innerHTML = '<div class="card empty">Pick a business above to see its messages.</div>'; return; }
+  wrap.innerHTML = '<div class="card empty">Loading…</div>';
+  const { data, error } = await sb.rpc('admin_list_business_messages', { p_venue_id: venueId });
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load messages: ${error.message||error}</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No messages sent to this business yet.</div>'; return; }
+  wrap.innerHTML = data.map(m=>`
+    <div class="card" style="margin-bottom:10px">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <b>${esc(m.subject)}</b>
+        <span class="sub" style="margin-bottom:0">${fmtDateTime(m.created_at)}${m.read_at ? ' · read '+fmtDateTime(m.read_at) : ' · <span style=\"color:var(--amber)\">unread</span>'}</span>
+      </div>
+      <div style="font-size:13px;color:#3a4546;white-space:pre-line;margin-top:8px">${esc(m.body)}</div>
+    </div>`).join('');
+}
+
 async function loadBusinesses(){
   const wrap = document.getElementById('bizTableWrap');
   const badge = document.getElementById('bizQuickFilterBadge');
@@ -877,7 +1014,7 @@ async function loadBusinesses(){
         <td>${planPill(b.plan)}</td>
         <td>${sourcePill(b.plan_source)}</td>
         <td>${statusPill(b.status)}</td>
-        <td>${b.current_period_end ? fmtDate(b.current_period_end) : '<span style="color:#b45309">Not set</span>'}</td>
+        <td>${b.current_period_end ? fmtDate(b.current_period_end) : '<span style="color:#b45309">Not set</span>'} <button class="refresh-link" onclick="editRenewalDate('${b.venue_id}','${nameJs}','${b.current_period_end||''}')">Edit</button></td>
         <td>${fmtDate(b.created_at)}</td>
         <td>${lastActive ? fmtDateTime(lastActive) : '<span style="color:#b45309">Never</span>'}</td>
         <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}','${nameJs}','${b.plan_source}')">Grant paid plan</button></td>
