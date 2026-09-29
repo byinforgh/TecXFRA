@@ -251,6 +251,11 @@
             <option value="paid">Paid only</option>
             <option value="none">No plan only</option>
           </select>
+          <select id="bizStatusFilter" onchange="BIZ_STATUS=this.value;loadBusinesses()" style="width:auto;padding:6px 10px;font-size:12.5px">
+            <option value="all">All statuses</option>
+            <option value="active">Active only</option>
+            <option value="notactive">Inactive / canceled only</option>
+          </select>
           <button class="refresh-link" onclick="loadBusinesses()">Refresh</button>
         </div>
       </div>
@@ -625,9 +630,9 @@ async function loadBackupAutoStatus(){
   // Both the backup-restore select and the Messages-tab select are
   // filled from this one list, so they never drift apart.
   const { data: bizList } = await sb.rpc('admin_list_businesses');
-  fillBizSelect('backupBizSelect', bizList);
-  fillBizSelect('msgBizSelect', bizList);
+  refreshBizSelects(bizList);
 }
+let BIZ_STATUS = 'all';
 function fillBizSelect(selectId, bizList){
   const sel = document.getElementById(selectId);
   if(!sel || !bizList) return;
@@ -635,6 +640,18 @@ function fillBizSelect(selectId, bizList){
   sel.innerHTML = '<option value="">Pick a business…</option>' +
     bizList.map(b=>`<option value="${b.venue_id}">${esc(b.business_name)||'Unnamed business'}</option>`).join('');
   if(prev && bizList.some(b=>b.venue_id===prev)) sel.value = prev;
+}
+// Messages dropdown = ACTIVE businesses only (deleted ones are gone from
+// the list entirely; inactive/canceled ones are hidden so you can't
+// message someone who is no longer on the platform by mistake).
+// Backup restore keeps the full list, you may need to restore anyone.
+// Called from loadBusinesses() every time, so the dropdowns can never
+// go stale after a delete/deactivate the way they did before.
+function refreshBizSelects(all){
+  if(!all) return;
+  fillBizSelect('msgBizSelect', all.filter(b=>b.status==='active'));
+  fillBizSelect('backupBizSelect', all);
+  if(document.getElementById('msgBizSelect')) loadBusinessMessages();
 }
 async function loadBackupPoints(){
   const venueId = document.getElementById('backupBizSelect').value;
@@ -849,6 +866,32 @@ async function confirmDeactivate(venueId, name){
   if(data && data.success===false){ alert(data.message || 'Nothing to deactivate.'); return; }
   alert(`${name} is now deactivated.`);
   loadBusinesses();
+  loadRenewals();
+  loadStats();
+}
+
+// FULL delete of a business: their record, subscription, founding/cohort
+// slot (released back to the pool), backups, and all saved data. Works on
+// any business, not just abandoned ones. Needs the admin_delete_business
+// SQL function (see delete_business.sql). The owner's login itself is left
+// alone, same convention as the abandoned-signup delete.
+async function confirmDeleteBusiness(venueId, name, status, source){
+  if(status==='active' && (source==='manual' || source==='paid')){
+    alert(`${name} is ACTIVE on a paid plan. Deactivate them first (non-payment), then delete. This stops a paying customer being wiped by a mis-click.`);
+    return;
+  }
+  const typed = prompt(`PERMANENTLY DELETE "${name}"?\n\nThis removes their business record, ALL their saved data, subscription, backups and messages, and releases any founding/cohort slot back to the pool. It cannot be undone.\n\nType DELETE to confirm.`);
+  if(typed === null) return;
+  if(typed.trim() !== 'DELETE'){ alert('Not deleted. You have to type DELETE exactly.'); return; }
+  const { data, error } = await sb.rpc('admin_delete_business', { p_venue_id: venueId });
+  if(error){ alert(`Could not delete: ${error.message||error}`); return; }
+  if(data && data.success===false){ alert(data.message || 'Could not delete.'); return; }
+  alert(`${name} deleted.${data && data.slot_released ? ' Their slot has been released.' : ''}`);
+  loadBusinesses();
+  loadFoundingClaims();
+  loadAbandonedSignups();
+  loadRenewals();
+  loadPartnersAdmin();
   loadStats();
 }
 
@@ -889,13 +932,24 @@ async function loadRenewals(){
   const wrap = document.getElementById('renewalsWrap');
   if(!wrap) return;
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
-  const { data, error } = await sb.rpc('admin_list_renewals');
+  // Reads the same admin_list_businesses data the Businesses tab uses.
+  // The old admin_list_renewals RPC errored with: relation "venues" does
+  // not exist. This needs no SQL change and can never drift from the
+  // Businesses tab.
+  const { data, error } = await sb.rpc('admin_list_businesses');
   if(error){ wrap.innerHTML = `<div class="card empty">Could not load renewals: ${error.message||error}</div>`; return; }
-  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No businesses with a fixed renewal date yet.</div>'; return; }
+  const rows = (data||[]).filter(b=>b.status==='active' || b.current_period_end);
+  if(!rows.length){ wrap.innerHTML = '<div class="card empty">No active businesses or renewal dates yet.</div>'; return; }
+  // Dated ones soonest first, "Not set" ones last.
+  rows.sort((a,b)=>{
+    const da = a.current_period_end ? new Date(a.current_period_end).getTime() : Infinity;
+    const db = b.current_period_end ? new Date(b.current_period_end).getTime() : Infinity;
+    return da - db;
+  });
   const now = Date.now();
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
-      <th>Business</th><th>Plan</th><th>Status</th><th>Renews</th><th></th>
-    </tr></thead><tbody>${data.map(r=>{
+      <th>Business</th><th>Owner</th><th>Phone</th><th>Plan</th><th>Status</th><th>Renews</th><th></th>
+    </tr></thead><tbody>${rows.map(r=>{
       const nameJs = esc(r.business_name).replace(/'/g,"\\'");
       const due = r.current_period_end ? new Date(r.current_period_end).getTime() : null;
       const daysLeft = due===null ? null : Math.ceil((due-now)/86400000);
@@ -905,13 +959,19 @@ async function loadRenewals(){
         else if(daysLeft <= 7) tag = `<span style="color:var(--amber);font-weight:700">Due in ${daysLeft}d</span>`;
         else tag = `<span style="color:#8a9394">${daysLeft}d left</span>`;
       }
+      const overdueInactive = daysLeft !== null && daysLeft < 0 && r.status==='active';
       return `
       <tr>
         <td><b>${esc(r.business_name)||'Unnamed business'}</b></td>
+        <td>${esc(r.owner_name)||'Not provided'}</td>
+        <td>${r.owner_phone?`<a href="https://wa.me/${esc(r.owner_phone).replace(/\D/g,'')}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">${esc(r.owner_phone)}</a>`:'<span style="color:#b45309">Not provided</span>'}</td>
         <td>${planPill(r.plan)}</td>
         <td>${statusPill(r.status)}</td>
         <td>${r.current_period_end?fmtDate(r.current_period_end):'<span style="color:#b45309">Not set</span>'} ${tag}</td>
-        <td><button class="refresh-link" onclick="editRenewalDate('${r.venue_id}','${nameJs}','${r.current_period_end||''}')">Edit</button></td>
+        <td>
+          <button class="refresh-link" onclick="editRenewalDate('${r.venue_id}','${nameJs}','${r.current_period_end||''}')">Edit</button>
+          ${overdueInactive ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${r.venue_id}','${nameJs}')">Deactivate (unpaid)</button>` : ''}
+        </td>
       </tr>`;}).join('')}</tbody></table></div>`;
 }
 
@@ -983,8 +1043,11 @@ async function loadBusinesses(){
     rows = data.filter(b=>new Date(b.created_at).getTime() >= cutoff);
     badgeText = `Showing businesses signed up in the last ${f.days} days (${rows.length}). <a href="#" onclick="BIZ_FILTER={kind:'all'};loadBusinesses();return false" style="color:inherit">Clear filter</a>`;
   }
+  if(BIZ_STATUS === 'active') rows = rows.filter(b=>b.status==='active');
+  else if(BIZ_STATUS === 'notactive') rows = rows.filter(b=>b.status!=='active');
   badge.style.display = badgeText ? 'block' : 'none';
   badge.innerHTML = badgeText;
+  refreshBizSelects(data);
 
   if(!rows.length){ wrap.innerHTML = `<div class="card empty">No businesses match this filter.</div>`; return; }
   // "Last active" now prefers last_active_at, a real per-load stamp set
@@ -998,7 +1061,7 @@ async function loadBusinesses(){
   // distinction matters and shouldn't be hidden by falling back to
   // created_at.
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
-      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Source</th><th>Status</th><th>Renews</th><th>Signed up</th><th>Last active</th><th colspan="2"></th>
+      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Source</th><th>Status</th><th>Renews</th><th>Signed up</th><th>Last active</th><th colspan="3"></th>
     </tr></thead><tbody>${rows.map(b=>{
       const lastActive = b.last_active_at && (!b.last_sign_in_at || new Date(b.last_active_at) > new Date(b.last_sign_in_at))
         ? b.last_active_at : b.last_sign_in_at;
@@ -1019,6 +1082,7 @@ async function loadBusinesses(){
         <td>${lastActive ? fmtDateTime(lastActive) : '<span style="color:#b45309">Never</span>'}</td>
         <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}','${nameJs}','${b.plan_source}')">Grant paid plan</button></td>
         <td>${b.status==='active' ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${b.venue_id}','${nameJs}')">Deactivate</button>` : ''}</td>
+        <td><button class="refresh-link" style="color:var(--danger);font-weight:700" onclick="confirmDeleteBusiness('${b.venue_id}','${nameJs}','${b.status}','${b.plan_source||'none'}')">Delete</button></td>
       </tr>`;}).join('')}</tbody></table></div>`;
 }
 
