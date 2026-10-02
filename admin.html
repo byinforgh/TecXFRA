@@ -323,6 +323,7 @@
         <button class="refresh-link" onclick="loadCohortAdmin()">Refresh</button>
       </div>
       <div id="cohortStatWrap" class="stat-grid" style="margin-bottom:14px"></div>
+      <div id="cohortInviteWrap" style="margin-bottom:14px"></div>
       <div id="cohortListWrap" style="margin-bottom:26px"></div>
 
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
@@ -1118,7 +1119,42 @@ async function markPartnerPaid(venueId, period){
   loadPartnersAdmin();
 }
 
+// Invite links for the two launch cohorts. The link is the only thing that
+// puts a signup into a cohort (?cohort=ghana or ?cohort=diaspora); the 10
+// spot cap is enforced server-side by claim_cohort_slot, so sharing a link
+// widely can never hand out more than 10 spots per cohort.
+const COHORT_SITE = 'https://www.tecxfra.com/';
+const COHORT_INVITES = {
+  ghana:    { label:'🇬🇭 Ghana Cohort (10 spots)',     blurb:'Free for keeps on the plan they choose.', msg:'Hi, I am inviting you to be one of 10 founding Ghana businesses on TecXFRA, the system that runs your sales, customers, money and daily follow-ups from your phone. Your spot is free for keeps. Join here: ' },
+  diaspora: { label:'🌐 Diaspora Cohort (10 spots)',   blurb:'Prestige plan, free for keeps.',          msg:'Hi, I am inviting you to be one of 10 founding diaspora businesses on TecXFRA, the system that runs your sales, customers, money and daily follow-ups from your phone. Your Prestige spot is free for keeps. Join here: ' }
+};
+function renderCohortInvites(){
+  const wrap = document.getElementById('cohortInviteWrap'); if(!wrap) return;
+  wrap.innerHTML = `<div class="card"><div style="font-weight:700;margin-bottom:4px">Invite links to share</div>
+    <div class="sub" style="margin-bottom:12px">Send the right link to each business. Spots are claimed first come, first served and can never go past 10 per cohort.</div>
+    ${Object.entries(COHORT_INVITES).map(([key,c])=>{
+      const url = COHORT_SITE + '?cohort=' + key;
+      return `<div style="border:1px solid var(--line,#e4ded2);border-radius:10px;padding:12px;margin-bottom:10px">
+        <div style="font-weight:700">${esc(c.label)}</div>
+        <div class="sub" style="margin:2px 0 8px">${esc(c.blurb)}</div>
+        <input readonly value="${esc(url)}" onclick="this.select()" style="width:100%;margin-bottom:8px">
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <button class="refresh-link" onclick="copyCohortText('${key}','link')">Copy link</button>
+          <button class="refresh-link" onclick="copyCohortText('${key}','message')">Copy invite message</button>
+          <a class="refresh-link" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text=${encodeURIComponent(c.msg + url)}">Share on WhatsApp</a>
+          <a class="refresh-link" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="${esc(url)}">Open link</a>
+        </div></div>`;
+    }).join('')}</div>`;
+}
+async function copyCohortText(key, what){
+  const c = COHORT_INVITES[key]; if(!c) return;
+  const url = COHORT_SITE + '?cohort=' + key;
+  const text = what==='message' ? c.msg + url : url;
+  try{ await navigator.clipboard.writeText(text); alert(what==='message' ? 'Invite message copied.' : 'Link copied.'); }
+  catch(e){ window.prompt('Copy this:', text); }
+}
 async function loadCohortAdmin(){
+  renderCohortInvites();
   const statWrap = document.getElementById('cohortStatWrap');
   const listWrap = document.getElementById('cohortListWrap');
   if(!statWrap || !listWrap) return;
