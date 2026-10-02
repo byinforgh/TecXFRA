@@ -2610,6 +2610,172 @@ const RENDERERS = {
   ai: renderAI, guides: renderGuides, archive: renderArchive, system: renderSystem, settings: renderSettings
 };
 
+/* ---------- PER-TAB INSIGHTS ----------
+   Every working tab opens with a short strip of numbers computed ONLY from
+   that tab's own records, so each module tells its own story. Read-only:
+   nothing here writes data, and any failure is swallowed so a tab can never
+   break because of its insights. Wrapped around the renderers so the strip
+   survives a tab re-rendering itself after an action. */
+function insightStat(l, v, sub, tone, rows){ return {l, v, sub: sub||'', tone: tone||'navy', rows: Array.isArray(rows)?rows.slice(0,15):[]}; }
+const INSIGHT_PAGES = ['calendar','crm','followups','pos','bookings','inventory','invoicing','expenses','staff','messages','referrals','persona','audit','accountability','journal','reminders'];
+function openInsightDetail(page, idx){
+  if(!INSIGHT_PAGES.includes(page)) return;
+  const ins = moduleInsights(page); const st = ins && ins.stats && ins.stats[idx]; if(!st) return;
+  const rows = st.rows.length ? st.rows.map(r=>`<div class="list-row" style="align-items:flex-start"><span>${esc(r[0])}${r[2]?`<br><span style="font-size:11px;color:var(--muted)">${esc(r[2])}</span>`:''}</span><span class="mono">${esc(r[1]||'')}</span></div>`).join('') : '<div class="empty">Nothing behind this number yet.</div>';
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:440px">
+    <div class="modal-head"><h3>${esc(st.l)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="metric ${esc(st.tone)}" style="margin-bottom:14px"><div class="ml">${esc(labelFor(page))}</div><div class="mv">${esc(st.v)}</div><div class="ms">${esc(st.sub)}</div></div>
+    <div style="max-height:320px;overflow-y:auto">${rows}</div>
+    ${st.rows.length>=15?'<div class="sub" style="margin-top:8px">Showing the first 15. Open the tab for the full list.</div>':''}
+    ${ins.note?`<div class="sub" style="margin-top:10px">${esc(ins.note)}</div>`:''}
+  </div></div>`;
+}
+function moduleInsights(page){
+  const t = todayStr(), mk = t.slice(0,7);
+  const in7 = addDays(t,7), ago7 = addDays(t,-7), ago30 = addDays(t,-30);
+  const C = DATA.contacts||[], TX = DATA.transactions||[], EX = DATA.expenses||[];
+  const sum = (arr,f)=>arr.reduce((a,x)=>a+(Number(f(x))||0),0);
+  const top = (arr,f)=>{ const m={}; arr.forEach(x=>{ const k=f(x)||'Other'; m[k]=(m[k]||0)+(Number(x.amount)||0); }); const e=Object.entries(m).sort((a,b)=>b[1]-a[1])[0]; return e||null; };
+  const byCat = arr=>{ const m={}; arr.forEach(x=>{ const k=x.category||'Other'; m[k]=(m[k]||0)+(Number(x.amount)||0); }); return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v])=>[k, money(v)]); };
+  const evRow = e=>[e.title||'Event', fmtDate(e.date), e.time||''];
+  const cRow = (c,extra)=>[c.name||'Unnamed', extra||'', c.phone||''];
+  switch(page){
+    case 'calendar': {
+      const ev = DATA.events||[];
+      const mEv = ev.filter(e=>(e.date||'').slice(0,7)===mk), tEv = ev.filter(e=>e.date===t), nEv = ev.filter(e=>e.date>=t && e.date<=in7);
+      const next = ev.filter(e=>e.date>=t).sort((a,b)=>(a.date+(a.time||'')).localeCompare(b.date+(b.time||'')))[0];
+      return {stats:[insightStat('This Month', mEv.length, 'events','navy',mEv.map(evRow)), insightStat('Today', tEv.length, 'scheduled','green',tEv.map(evRow)), insightStat('Next 7 Days', nEv.length, 'coming up','amber',nEv.map(evRow))],
+        note: next ? `Next up: ${next.title||'Event'} on ${fmtDate(next.date)}${next.time?' at '+next.time:''}.` : 'Nothing booked ahead, add your next appointment or deadline.'};
+    }
+    case 'crm': {
+      const hotL = C.filter(c=>c.temp==='hot'), warmL = C.filter(c=>c.temp==='warm');
+      const quietL = C.filter(c=>c.lastContact && c.lastContact<ago7 && c.temp!=='cold'), quiet = quietL.length;
+      return {stats:[insightStat('Total', C.length, 'in your list','navy',C.map(c=>cRow(c,c.temp||''))), insightStat('Hot', hotL.length, 'ready to close','green',hotL.map(c=>cRow(c,c.value>0?money(c.value):''))), insightStat('Warm', warmL.length, 'being nurtured','amber',warmL.map(c=>cRow(c,''))), insightStat('Gone Quiet', quiet, 'no contact in 7+ days','coral',quietL.map(c=>cRow(c,'last '+fmtDate(c.lastContact))))],
+        note: quiet ? `${quiet} warm or hot ${quiet===1?'contact has':'contacts have'} not heard from you in over a week. Reach out before they cool.` : 'Everyone warm or hot has been contacted in the last 7 days.'};
+    }
+    case 'followups': {
+      const all = DATA.followups||[], open = all.filter(f=>!f.done);
+      const overL = open.filter(f=>f.due<t), todayL = open.filter(f=>f.due===t), doneL = all.filter(f=>f.done);
+      const fr = f=>[f.contactName||'Follow-up', fmtDate(f.due), f.detail||''];
+      return {stats:[insightStat('Open', open.length, 'follow-ups','navy',open.map(fr)), insightStat('Overdue', overL.length, 'past their date','coral',overL.map(fr)), insightStat('Due Today', todayL.length, '', 'amber',todayL.map(fr)), insightStat('Cleared', doneL.length, 'completed so far','green',doneL.map(fr))],
+        note: overL.length ? `${overL.length} overdue. Clear the oldest first, a late follow-up is still better than none.` : 'Nothing overdue.'};
+    }
+    case 'pos': {
+      const sales = TX.filter(x=>x.type==='sale');
+      const todayS = sales.filter(x=>x.date===t), weekS = sales.filter(x=>x.date>=ago7);
+      const best = top(sales.filter(x=>x.date>=ago30), x=>x.item);
+      const sr = x=>[x.item||'Sale', money(x.amount), fmtDate(x.date)+(x.contact?' · '+x.contact:'')];
+      return {stats:[insightStat('Till Today', money(sum(todayS,x=>x.amount)), todayS.length+' sales','navy',todayS.map(sr)), insightStat('Last 7 Days', money(sum(weekS,x=>x.amount)), weekS.length+' sales','green',weekS.map(sr)), insightStat('Average Sale', weekS.length?money(sum(weekS,x=>x.amount)/weekS.length):money(0), 'last 7 days','amber',weekS.map(sr))],
+        note: best ? `Best seller in the last 30 days: ${best[0]} (${money(best[1])}).` : 'No till sales in the last 30 days yet.'};
+    }
+    case 'bookings': {
+      const stages = (typeof PIPE_STAGES!=='undefined'?PIPE_STAGES:['New','Confirmed','In Progress','Completed']);
+      return {stats: stages.map((st,i)=>{ const L=C.filter(c=>(c.stage||'New')===st); return insightStat(st, L.length, 'in this stage', ['navy','amber','coral','green'][i%4], L.map(c=>cRow(c,c.value>0?money(c.value):''))); }),
+        note: `${C.filter(c=>(c.stage||'New')==='New').length} new and waiting to be confirmed.`};
+    }
+    case 'inventory': {
+      const inv = DATA.inventory||[];
+      const low = tracksStock() ? inv.filter(i=>i.stock<=i.par) : [];
+      const out = tracksStock() ? inv.filter(i=>i.stock<=0) : [];
+      const ir = i=>[i.name||'Item', tracksStock()?`${i.stock||0} in stock`:money(i.price), tracksStock()?`par ${i.par||0}`:''];
+      return {stats:[insightStat('Listed', inv.length, 'items / services','navy',inv.map(ir)), tracksStock()?insightStat('Low Stock', low.length, 'at or under par','amber',low.map(ir)):insightStat('Avg Price', inv.length?money(sum(inv,i=>i.price)/inv.length):money(0), 'per item','amber',inv.map(i=>[i.name||'Item',money(i.price)])), tracksStock()?insightStat('Out of Stock', out.length, 'needs restocking','coral',out.map(ir)):insightStat('Priced', inv.filter(i=>i.price>0).length, 'have a price','green',inv.filter(i=>i.price>0).map(i=>[i.name||'Item',money(i.price)])), tracksStock()?insightStat('Stock Value', money(sum(inv,i=>(i.stock||0)*(i.cost||0))), 'at cost','green',inv.map(i=>[i.name||'Item', money((i.stock||0)*(i.cost||0)), `${i.stock||0} x ${money(i.cost||0)}`])):insightStat('Costed', inv.filter(i=>i.cost>0).length, 'have a cost','navy',inv.filter(i=>i.cost>0).map(i=>[i.name||'Item',money(i.cost)]))],
+        note: low.length ? `Restock soon: ${low.slice(0,3).map(i=>i.name).join(', ')}.` : 'Nothing is running low.'};
+    }
+    case 'invoicing': {
+      const owed = C.filter(c=>c.value>0), over = owed.filter(c=>c.dueDate && c.dueDate<t);
+      const paid = TX.filter(x=>x.type==='invoice' && (x.date||'').slice(0,7)===mk);
+      const big = owed.slice().sort((a,b)=>b.value-a.value)[0];
+      const dr = c=>[c.name||'Unnamed', money(c.value), c.dueDate?'due '+fmtDate(c.dueDate):'no due date'];
+      return {stats:[insightStat('Outstanding', money(sum(owed,c=>c.value)), owed.length+' open balances','coral',owed.slice().sort((a,b)=>b.value-a.value).map(dr)), insightStat('Overdue', money(sum(over,c=>c.value)), over.length+' past due date','coral',over.map(dr)), insightStat('Paid This Month', money(sum(paid,x=>x.amount)), 'invoice payments','green',paid.map(x=>[x.contact||x.item||'Payment', money(x.amount), fmtDate(x.date)]))],
+        note: big ? `Largest balance: ${big.name} owes ${money(big.value)}.` : 'No open balances.'};
+    }
+    case 'expenses': {
+      const m = EX.filter(x=>(x.date||'').slice(0,7)===mk), td = EX.filter(x=>x.date===t);
+      const cat = top(m, x=>x.category);
+      const er = x=>[x.item||'Expense', money(x.amount), fmtDate(x.date)+' · '+(x.category||'Other')];
+      return {stats:[insightStat('This Month', money(sum(m,x=>x.amount)), m.length+' logged','coral',m.map(er)), insightStat('Today', money(sum(td,x=>x.amount)), '', 'amber',td.map(er)), insightStat('Biggest Category', cat?cat[0]:'None yet', cat?money(cat[1]):'', 'navy',byCat(m))],
+        note: cat ? `${cat[0]} is where most of this month's money went.` : 'No expenses logged this month.'};
+    }
+    case 'staff': {
+      const st = DATA.staff||[];
+      const sr = x=>[x.name||'Staff', x.onDuty?'On duty':'Off duty', x.role||''];
+      return {stats:[insightStat('Team', st.length, 'people','navy',st.map(sr)), insightStat('On Duty', st.filter(x=>x.onDuty).length, 'right now','green',st.filter(x=>x.onDuty).map(sr))],
+        note: st.length ? `${st.length-st.filter(x=>x.onDuty).length} not checked in.` : 'No team members added yet.'};
+    }
+    case 'messages': {
+      const log = DATA.messageLog||[];
+      const mr = m=>[m.contactName||'Unnamed', fmtDate(m.date), (MSG_KINDS[m.kind]||'Message')];
+      return {stats:[insightStat('Logged', log.length, 'messages','navy',log.map(mr)), insightStat('Last 7 Days', log.filter(m=>(m.date||'')>=ago7).length, 'sent','green',log.filter(m=>(m.date||'')>=ago7).map(mr)), insightStat('Payment Reminders', log.filter(m=>m.kind==='payment_reminder').length, 'sent','coral',log.filter(m=>m.kind==='payment_reminder').map(mr))],
+        note: log.length ? `Last message: ${log[0].contactName} on ${fmtDate(log[0].date)}.` : 'Open the Inbox & Sent tab to log your first message.'};
+    }
+    case 'referrals': {
+      const tierL = k=>C.filter(c=>(c.loyaltyTier||'one-time')===k);
+      const buys = {}; TX.forEach(x=>{ if(x.contact) buys[x.contact]=(buys[x.contact]||0)+1; });
+      const rep = Object.entries(buys).filter(([,n])=>n>=2).sort((a,b)=>b[1]-a[1]);
+      const best = tierL('loyal').concat(tierL('spotlight'));
+      return {stats:[insightStat('Loyal + Spotlight', best.length, 'best relationships','green',best.map(c=>cRow(c,c.loyaltyTier))), insightStat('Repeat Buyers', rep.length, 'bought 2+ times','amber',rep.map(([n,k])=>[n,k+' purchases'])), insightStat('One-Time Buyers', tierL('one-time').length, 'to re-activate','coral',tierL('one-time').map(c=>cRow(c,'')))],
+        note: `${tierL('one-time').length} ${tierL('one-time').length===1?'contact is':'contacts are'} still on the one-time tier. Each is a re-activation chance.`};
+    }
+    case 'persona': {
+      const p = DATA.persona;
+      return {stats:[insightStat('Persona', p && p.name ? 'Defined' : 'Not set', p && p.name ? p.name : 'build it below', p && p.name ? 'green':'amber', p && p.name ? Object.entries(p).filter(([k,v])=>typeof v==='string' && v).slice(0,8).map(([k,v])=>[k, v.slice(0,80)]) : []), insightStat('Contacts', C.length, 'to match against','navy',C.map(c=>cRow(c,'')))],
+        note: p && p.pain ? `Main pain point you solve: ${p.pain}` : 'Define who you serve best so your messages speak to one person.'};
+    }
+    case 'audit': {
+      const qs = getAuditQuestions(), total = qs.length, ans = DATA.auditAnswers||{};
+      const answered = Object.values(ans).filter(v=>v===true||v===false).length;
+      const sc = DATA.auditScore;
+      return {stats:[insightStat('Score', (sc===null||sc===undefined)?'Not scored':sc+' / '+total, '', 'green',[['Yes answers', String(Object.values(ans).filter(v=>v===true).length)],['No answers', String(Object.values(ans).filter(v=>v===false).length)]]), insightStat('Answered', answered+' / '+total, 'questions','amber',[['Still to answer', String(total-answered)]])],
+        note: answered<total ? `${total-answered} question${total-answered===1?'':'s'} left before your score is complete.` : 'All questions answered.'};
+    }
+    case 'accountability': {
+      const daily = (DATA.accountability&&DATA.accountability.daily)||{};
+      const todayDone = Object.keys(daily[t]||{}).length;
+      const days = Object.keys(daily).sort().reverse();
+      return {stats:[insightStat('Done Today', todayDone, 'tasks logged','green',Object.keys(daily[t]||{}).map(k=>[k,'done'])), insightStat('Days Logged', days.length, 'in total','navy',days.map(d=>[fmtDate(d), Object.keys(daily[d]||{}).length+' done'])), insightStat('Streak', calcStreak(), 'days in a row','amber',[])],
+        note: todayDone ? 'Good, keep going until the day is closed out.' : 'Nothing logged today yet.'};
+    }
+    case 'journal': {
+      const j = DATA.journal||[], wk = j.filter(e=>(e.date||'')>=ago7), lk = j.filter(e=>e.linkedId);
+      const jr = e=>[(e.text||'').slice(0,90), fmtDate(e.date), e.linkedName||''];
+      return {stats:[insightStat('Entries', j.length, 'in total','navy',j.slice().reverse().map(jr)), insightStat('Last 7 Days', wk.length, 'written','green',wk.slice().reverse().map(jr)), insightStat('About Contacts', lk.length, 'linked notes','amber',lk.slice().reverse().map(jr))],
+        note: j.length ? `Last entry: ${fmtDate(j[j.length-1].date)}.` : 'Nothing written yet.'};
+    }
+    case 'reminders': {
+      const r = (DATA.reminders||[]).filter(x=>!x.done);
+      const rr = x=>[x.title||'Reminder', fmtDate(x.dueDate), x.type||''];
+      const over = r.filter(x=>x.dueDate<t), nxt = r.filter(x=>x.dueDate>=t && x.dueDate<=in7);
+      return {stats:[insightStat('Open', r.length, 'reminders','navy',r.map(rr)), insightStat('Overdue', over.length, 'past due','coral',over.map(rr)), insightStat('Next 7 Days', nxt.length, 'coming up','amber',nxt.map(rr))],
+        note: over.length ? 'Overdue items are at the top of your list, deal with those first.' : 'Nothing overdue.'};
+    }
+    default: return null;
+  }
+}
+function injectModuleInsights(page){
+  try{
+    if(CUR_PAGE!==page) return;
+    if(page==='messages' && msgCat==='inbox') return;
+    const pc = document.getElementById('pageContent');
+    if(!pc || pc.querySelector('[data-insights="'+page+'"]')) return;
+    const ins = moduleInsights(page);
+    if(!ins || !ins.stats || !ins.stats.length) return;
+    pc.insertAdjacentHTML('afterbegin', `<div data-insights="${page}" style="margin-bottom:6px">
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin:0 0 8px">📊 ${esc(labelFor(page))} insights <span style="text-transform:none;letter-spacing:0;font-weight:500">· tap any card for the records behind it</span></div>
+      <div class="grid-metrics" style="margin-bottom:8px">${ins.stats.map((x,i)=>`<div class="metric ${esc(x.tone)}" style="cursor:pointer" role="button" tabindex="0" onclick="openInsightDetail('${page}',${i})" onkeydown="if(event.key==='Enter')openInsightDetail('${page}',${i})"><div class="ml">${esc(x.l)}</div><div class="mv" style="font-size:22px">${esc(x.v)}</div><div class="ms">${esc(x.sub)||'tap for detail'}</div></div>`).join('')}</div>
+      ${ins.note?`<div style="font-size:12.5px;color:var(--ink-dim);line-height:1.6;margin-bottom:16px">${esc(ins.note)}</div>`:''}
+    </div>`);
+  }catch(e){ console.error('insights failed for', page, e); }
+}
+(function wrapRenderersWithInsights(){
+  const map = {calendar:'renderCalendar', crm:'renderCRM', followups:'renderFollowups', pos:'renderPOS', bookings:'renderBookings', inventory:'renderInventory', invoicing:'renderInvoicing', expenses:'renderExpenses', staff:'renderStaff', messages:'renderMessages', referrals:'renderReferrals', persona:'renderPersona', audit:'renderAudit', accountability:'renderAccountability', journal:'renderJournal', reminders:'renderReminders'};
+  Object.keys(map).forEach(page=>{
+    const name = map[page], orig = window[name];
+    if(typeof orig!=='function') return;
+    const wrapped = function(){ const r = orig.apply(this, arguments); injectModuleInsights(page); return r; };
+    window[name] = wrapped; RENDERERS[page] = wrapped;
+  });
+})();
+
 /* ============================================================
    TECXFRA NETWORK  (Prestige-only: verified directory, Connect
    1:1 B2B chat, and industry channels)
@@ -3435,11 +3601,14 @@ async function saveNetworkProfile(){
   }
 }
 /* ---------- TODAY ---------- */
+function txTypeLabel(type){ return ({sale:'Sale at till', invoice:'Invoice payment'})[type] || 'Income'; }
 function renderToday(){
   const t = todayStr();
   const todaySales = (DATA.transactions||[]).filter(x=>x.date===t).reduce((s,x)=>s+x.amount,0);
   const todayExpenses = (DATA.expenses||[]).filter(x=>x.date===t).reduce((s,x)=>s+(x.amount||0),0);
   const todayNet = todaySales - todayExpenses;
+  const todayTx = (DATA.transactions||[]).filter(x=>x.date===t);
+  const todayExp = (DATA.expenses||[]).filter(x=>x.date===t);
   const dueFollowups = (DATA.followups||[]).filter(f=>!f.done && f.due<=t);
   const lowStock = tracksStock() ? (DATA.inventory||[]).filter(i=>i.stock<=i.par) : (DATA.inventory||[]);
   const todayEvents = (DATA.events||[]).filter(e=>e.date===t);
@@ -3459,8 +3628,9 @@ function renderToday(){
   </div>
   <div class="card">
     <div class="card-title">Your Own Business Tip <span class="sub">write a reminder to yourself for today</span></div>
-    <textarea class="inp" id="ownTipBox" rows="2" placeholder="e.g. Call the two customers who asked about the new stock last week">${esc(DATA.ownTip||'')}</textarea>
-    <button class="btn btn-primary" style="margin-top:8px;padding:7px 16px" onclick="saveOwnTip(document.getElementById('ownTipBox').value)">Save</button>
+    <textarea class="inp" id="ownTipBox" rows="2" maxlength="300" placeholder="e.g. Call the two customers who asked about the new stock last week">${esc(todayOwnTip())}</textarea>
+    <div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary" style="padding:7px 16px" onclick="saveOwnTip(document.getElementById('ownTipBox').value)">Save</button>
+    <button class="btn btn-ghost" style="padding:7px 16px" onclick="clearOwnTip()">Clear</button></div>
     <div style="margin-top:14px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Your day-by-day tracker</div>
     <div style="margin-top:4px;max-height:280px;overflow-y:auto">${(DATA.ownTipLog||[]).length ? (DATA.ownTipLog||[]).map(t=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:11.5px;color:var(--ink-dim);line-height:1.5">${esc(t.text)}</span><span style="color:var(--muted);font-size:10px;white-space:nowrap">${fmtDate(t.date)}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted);padding:8px 4px">Nothing saved yet, write today's tip above and hit Save, it'll show up here and feed straight into your Business Brain.</div>`}</div></div>`;
   html += renderInsightsCard();
@@ -3488,7 +3658,8 @@ function renderToday(){
         <div class="list-row"><span>Revenue</span><span class="mono" style="color:var(--navy);font-weight:700">${money(todaySales)}</span></div>
         <div class="list-row"><span>Expenses</span><span class="mono" style="color:var(--coral);font-weight:700">${money(todayExpenses)}</span></div>
         <div class="list-row" style="border-bottom:none"><span><b>Net</b></span><span class="mono" style="color:${todayNet>=0?'var(--green,#3a7a5d)':'var(--coral)'};font-weight:700"><b>${money(todayNet)}</b></span></div>
-        ${(DATA.expenses||[]).filter(x=>x.date===t).length ? `<div style="margin-top:8px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Logged today</div>${(DATA.expenses||[]).filter(x=>x.date===t).map(x=>`<div class="list-row" style="cursor:pointer" onclick="openExpenseModal('${x.id}')"><span>${esc(x.item)}</span><span class="mono">${money(x.amount)}</span></div>`).join('')}` : ''}
+        ${todayTx.length ? `<div style="margin-top:8px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Income came from</div>${todayTx.map(x=>`<div class="list-row" style="cursor:pointer;align-items:flex-start" onclick="navTo('revenue')"><span>${esc(x.item||'Sale')}<br><span style="font-size:11px;color:var(--muted)">${esc(txTypeLabel(x.type))}${x.contact?' · '+esc(x.contact):''}${x.staff?' · by '+esc(x.staff):''}</span></span><span class="mono">${money(x.amount)}</span></div>`).join('')}` : ''}
+        ${todayExp.length ? `<div style="margin-top:8px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Spent on</div>${todayExp.map(x=>`<div class="list-row" style="cursor:pointer;align-items:flex-start" onclick="openExpenseModal('${esc(x.id)}')"><span>${esc(x.item)}${x.category?`<br><span style="font-size:11px;color:var(--muted)">${esc(x.category)}</span>`:''}</span><span class="mono">${money(x.amount)}</span></div>`).join('')}` : ''}
       </div>
     </div>
     <div>
@@ -3895,7 +4066,7 @@ function openContactModal(id){
     <label class="lbl">Next follow-up</label><input class="inp" type="date" value="${esc(c.nextFollowUp||'')}" onchange="updateContact('${id}','nextFollowUp',this.value)">
     <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateContact('${id}','notes',this.value)">${esc(c.notes||'')}</textarea>
     <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
-      ${c.phone?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" rel="noopener noreferrer" href="https://wa.me/${c.phone.replace(/\D/g,'')}">💬 WhatsApp</a>`:''}
+      ${waLink(c.phone)?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" rel="noopener noreferrer" href="${esc(waLink(c.phone))}" onclick="logOpenedChat('${esc(id)}','${jsAttr(c.name)}','${jsAttr(c.phone)}','follow_up','')">💬 WhatsApp</a>`:''}
       ${CFG.modules.includes('invoicing')?`<button class="btn btn-ghost" style="flex:1" onclick="quickInvoiceFor('${id}')">🧾 Generate Invoice</button>`:''}
       <button class="btn btn-ghost" style="flex:1" onclick="openJournalFor('${id}','${jsAttr(c.name)}')">📓 Journal Note</button>
       <button class="btn btn-ghost" style="flex:1" onclick="archiveContact('${id}')">🗄️ Archive</button>
@@ -4489,7 +4660,7 @@ function renderInvoicing(){
   const total = owed.reduce((s,c)=>s+c.value,0);
   const ci = getCountryInfo();
   document.getElementById('pageContent').innerHTML = `
-  <div class="grid-metrics"><div class="metric coral"><div class="ml">Total Outstanding</div><div class="mv">${money(total)}</div><div class="ms">${owed.length} open balances</div></div></div>
+  <div class="grid-metrics"><div class="metric coral" style="cursor:pointer" onclick="openDebtorSummaryModal()"><div class="ml">Total Outstanding</div><div class="mv">${money(total)}</div><div class="ms">${owed.length} open balances</div></div></div>
   <div class="card" style="border-color:var(--teal-tint)"><div class="card-title">Your Tax Setting <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change country →</span></div>
     <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7"><b style="color:var(--navy)">${esc(ci.tax)}.</b> ${esc(ci.taxNote)}</div>
   </div>
@@ -4583,14 +4754,14 @@ async function generateInvoice(){
   const row = Array.isArray(data) ? data[0] : data;
   const link = `${window.location.origin}/invoice.html?id=${row.id}`;
   const waText = encodeURIComponent(`Hi ${name}, here's your invoice ${row.invoice_number} from ${CFG.bizName} for ${money(amt)}. View it here: ${link}`);
-  const waPhone = phone ? phone.replace(/\D/g,'') : '';
+  const waHref = (phone && waLink(phone)) ? waLink(phone, `Hi ${name}, here's your invoice ${row.invoice_number} from ${CFG.bizName} for ${money(amt)}. View it here: ${link}`) : `https://wa.me/?text=${waText}`;
   document.getElementById('sendInvResult').innerHTML = `
     <div style="background:var(--cream);border:1px solid var(--line);border-radius:9px;padding:12px">
       <div style="font-size:12.5px;color:var(--ink-dim);margin-bottom:8px">Invoice <b style="color:var(--navy)">${esc(row.invoice_number)}</b> created.</div>
       <input class="inp" readonly value="${esc(link)}" onclick="this.select()">
       <div style="display:flex;gap:8px;margin-top:6px">
         <button class="btn btn-ghost" style="flex:1" onclick="copyInvoiceLink('${esc(link)}')">Copy Link</button>
-        <a class="btn btn-primary" style="flex:1;text-align:center;text-decoration:none" href="https://wa.me/${waPhone}?text=${waText}" target="_blank" rel="noopener noreferrer">Share on WhatsApp</a>
+        <a class="btn btn-primary" style="flex:1;text-align:center;text-decoration:none" href="${esc(waHref)}" target="_blank" rel="noopener noreferrer" onclick="logOpenedChat('','${jsAttr(name)}','${jsAttr(phone)}','invoice','${jsAttr(decodeURIComponent(waText))}')">Share on WhatsApp</a>
       </div>
     </div>`;
   document.getElementById('sendInvName').value = '';
@@ -4642,8 +4813,19 @@ function openDebtorModal(id){
     <div class="modal-head"><h3>${esc(c.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <label class="lbl">Amount owed</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(c.value||0)}" onchange="updateDebtor('${id}','value',parseFloat(this.value)||0)">
     <label class="lbl">Due date</label><input class="inp" type="date" value="${esc(c.dueDate||'')}" onchange="updateDebtor('${id}','dueDate',this.value)">
+    <button class="btn btn-ghost btn-full" style="margin-top:10px" onclick="sendPaymentReminder('${esc(id)}')">💬 Send Payment Reminder (WhatsApp)</button>
     <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="confirmMarkDebtPaid('${id}')">Mark Fully Paid</button>
   </div></div>`;
+}
+async function sendPaymentReminder(id){
+  const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
+  if(!c.phone){ showToast('Add a phone number to this contact first'); return; }
+  const text = `Hi ${c.name}, a friendly reminder from ${CFG.bizName}: ${money(c.value||0)} is outstanding${c.dueDate?`, due ${fmtDate(c.dueDate)}`:''}. Thank you.`;
+  const link = waLink(c.phone, text);
+  if(!link){ showToast('That phone number does not look valid'); return; }
+  window.open(link, '_blank', 'noopener,noreferrer');
+  await logMessage({contactId:c.id, contactName:c.name, phone:c.phone, channel:'whatsapp', kind:'payment_reminder', text});
+  showToast('Reminder opened and logged in Messages');
 }
 async function updateDebtor(id, field, val){
   const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
@@ -4832,10 +5014,18 @@ async function archiveOldExpenses(){
   moved.forEach(e=>DATA.archive.push({...e, name:e.item, archivedFrom:'expenses', archivedDate:todayStr()}));
   await saveData(); showToast(`Archived ${moved.length} old expenses`); renderExpenses();
 }
+// The tip box is a reminder for TODAY only. Anything saved on an earlier day
+// stays in the day-by-day tracker (ownTipLog) but never re-appears in the box.
+function todayOwnTip(){ return (DATA.ownTipDate===todayStr() && DATA.ownTip) ? DATA.ownTip : ''; }
+async function clearOwnTip(){
+  DATA.ownTip = ''; DATA.ownTipDate = todayStr();
+  await saveData(); showToast('Cleared');
+  if(CUR_PAGE==='today') renderToday();
+}
 async function saveOwnTip(val){
   const text = (val||'').trim().slice(0,300);
   const today = todayStr();
-  DATA.ownTip = text;
+  DATA.ownTip = text; DATA.ownTipDate = today;
   if(!Array.isArray(DATA.ownTipLog)) DATA.ownTipLog = [];
   let brainWorthy = false;
   if(text){
@@ -5136,6 +5326,94 @@ function openNetPeriodModal(period){
     </div>
   </div></div>`;
 }
+
+/* ---------- REVENUE CARD BREAKDOWNS ---------- */
+function metricModal(title, tone, big, sub, bodyHtml, note){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px">
+    <div class="modal-head"><h3>${esc(title)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="metric ${esc(tone)}" style="margin-bottom:14px"><div class="ml">${esc(title)}</div><div class="mv">${esc(big)}</div>${sub?`<div class="ms">${esc(sub)}</div>`:''}</div>
+    <div style="max-height:320px;overflow-y:auto">${bodyHtml}</div>
+    ${note?`<div class="sub" style="margin-top:10px">${esc(note)}</div>`:''}
+  </div></div>`;
+}
+function openConversionModal(){
+  const C = DATA.contacts||[], n = C.length;
+  const cnt = k=>C.filter(c=>c.temp===k).length;
+  const act = C.filter(c=>c.temp==='active');
+  const pct = n ? Math.round(act.length/n*100) : 0;
+  const rows = ['cold','warm','hot','active'].map(k=>`<div class="list-row"><span style="text-transform:capitalize">${k}</span><span class="mono">${cnt(k)} <span style="color:var(--muted);font-size:11px">(${n?Math.round(cnt(k)/n*100):0}%)</span></span></div>`).join('');
+  const names = act.length ? `<div class="card-title" style="padding:0;margin:12px 0 6px;font-size:12px">Active ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase()}</div>`+act.slice(0,20).map(c=>`<div class="list-row"><span>${esc(c.name)}</span><span class="mono">${c.value>0?money(c.value):''}</span></div>`).join('') : '';
+  metricModal('Conversion','amber', pct+'%', `${act.length} of ${n} contacts are active`, `<div class="card-title" style="padding:0;margin-bottom:6px;font-size:12px">Where your contacts are</div>${rows}${names}`, 'Conversion = contacts marked Active divided by all contacts. Move a contact to Active in the CRM when they buy or sign up.');
+}
+function openMomModal(){
+  const t = todayStr(), now = new Date(t+'T00:00:00');
+  const thisKey = t.slice(0,7), lastKey = new Date(now.getFullYear(), now.getMonth()-1, 1).toISOString().slice(0,7);
+  const TX = DATA.transactions||[], day = Number(t.slice(8,10));
+  const mtd = TX.filter(x=>(x.date||'').slice(0,7)===thisKey);
+  const last = TX.filter(x=>(x.date||'').slice(0,7)===lastKey);
+  const lastSame = last.filter(x=>Number((x.date||'').slice(8,10))<=day);
+  const sum = a=>a.reduce((s,x)=>s+(x.amount||0),0);
+  const cur = sum(mtd), prev = sum(last), prevSame = sum(lastSame);
+  const pct = prev>0 ? Math.round((cur-prev)/prev*100) : null;
+  const pctSame = prevSame>0 ? Math.round((cur-prevSame)/prevSame*100) : null;
+  const fmtP = v=>v===null?'n/a':(v>=0?'+':'')+v+'%';
+  const body = `<div class="list-row"><span>This month so far (${day} day${day===1?'':'s'})</span><span class="mono">${money(cur)}</span></div>
+    <div class="list-row"><span>Last month, full month</span><span class="mono">${money(prev)}</span></div>
+    <div class="list-row"><span>Last month, first ${day} day${day===1?'':'s'}</span><span class="mono">${money(prevSame)}</span></div>
+    <div class="list-row"><span><b>Versus full last month</b> (the headline number)</span><span class="mono">${fmtP(pct)}</span></div>
+    <div class="list-row"><span><b>Like for like</b> (same days)</span><span class="mono">${fmtP(pctSame)}</span></div>
+    ${mtd.length?`<div class="card-title" style="padding:0;margin:12px 0 6px;font-size:12px">Income this month</div>`+mtd.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,15).map(x=>`<div class="list-row"><span>${esc(x.item||'Sale')}<br><span style="font-size:11px;color:var(--muted)">${esc(fmtDate(x.date))}${x.contact?' · '+esc(x.contact):''}</span></span><span class="mono">${money(x.amount)}</span></div>`).join(''):''}`;
+  metricModal('Month-on-Month','navy', fmtP(pct), 'vs last month', body, day<28 ? 'The headline compares a part month with a full month, so early in the month it looks low. Use the like for like line to judge how you are really doing.' : '');
+}
+function openMarginModal(){
+  const inv = DATA.inventory||[], sales = (DATA.transactions||[]).filter(x=>x.type==='sale');
+  const by = {}; sales.forEach(x=>{ const k=x.item||'Sale'; by[k]=by[k]||{rev:0,n:0}; by[k].rev+=x.amount||0; by[k].n++; });
+  let matchedRev=0, estCost=0, unmatched=0; const rows=[];
+  Object.entries(by).forEach(([name,v])=>{
+    const it = inv.find(i=>(i.name||'').toLowerCase()===name.toLowerCase());
+    if(it && it.price>0){ const cost=(it.cost/it.price)*v.rev; matchedRev+=v.rev; estCost+=cost; rows.push([name, v.rev, v.rev-cost, true]); }
+    else { unmatched+=v.rev; rows.push([name, v.rev, null, false]); }
+  });
+  const pct = matchedRev>0 ? Math.round((matchedRev-estCost)/matchedRev*100) : null;
+  rows.sort((a,b)=>b[1]-a[1]);
+  const body = rows.length ? rows.slice(0,20).map(r=>`<div class="list-row" style="align-items:flex-start"><span>${esc(r[0])}<br><span style="font-size:11px;color:var(--muted)">${r[3]?'margin '+money(r[2]):'not in your price list, so no margin worked out'}</span></span><span class="mono">${money(r[1])}</span></div>`).join('') : '<div class="empty">No till sales yet</div>';
+  metricModal('Est. Gross Margin','green', pct===null?'n/a':pct+'%', `${money(matchedRev)} of sales have a cost on file`, `<div class="card-title" style="padding:0;margin-bottom:6px;font-size:12px">By item sold</div>${body}`, (unmatched>0?`${money(unmatched)} of sales are left out because the item is not in Service Packages with a price. `:'')+'Margin only counts items that have both a price and a cost saved, so add costs to get a truer number.');
+}
+function openAvgTicketModal(){
+  const TX = DATA.transactions||[], n = TX.length, total = TX.reduce((s,x)=>s+(x.amount||0),0);
+  const sorted = TX.slice().sort((a,b)=>(b.amount||0)-(a.amount||0));
+  const rowsH = a=>a.map(x=>`<div class="list-row"><span>${esc(x.item||'Sale')}<br><span style="font-size:11px;color:var(--muted)">${esc(fmtDate(x.date))}${x.contact?' · '+esc(x.contact):''}</span></span><span class="mono">${money(x.amount)}</span></div>`).join('');
+  const body = n ? `<div class="list-row"><span>Total income</span><span class="mono">${money(total)}</span></div><div class="list-row"><span>Payments logged</span><span class="mono">${n}</span></div><div class="list-row"><span>Largest</span><span class="mono">${money(sorted[0].amount)}</span></div><div class="list-row"><span>Smallest</span><span class="mono">${money(sorted[n-1].amount)}</span></div><div class="card-title" style="padding:0;margin:12px 0 6px;font-size:12px">Five biggest</div>${rowsH(sorted.slice(0,5))}` : '<div class="empty">No income logged yet</div>';
+  metricModal('Avg Ticket','navy', money(n?total/n:0), `${n} payment${n===1?'':'s'} logged`, body, 'Average ticket = total income divided by the number of payments logged, till sales and invoice payments together.');
+}
+function openDebtorSummaryModal(){
+  const t = todayStr(), owed = (DATA.contacts||[]).filter(c=>c.value>0).sort((a,b)=>b.value-a.value);
+  const total = owed.reduce((s,c)=>s+c.value,0), over = owed.filter(c=>c.dueDate && c.dueDate<t);
+  const body = owed.length ? owed.slice(0,25).map(c=>`<div class="list-row" style="cursor:pointer;align-items:flex-start" onclick="openDebtorModal('${esc(c.id)}')"><span>${esc(c.name)}<br><span style="font-size:11px;color:var(--muted)">${c.dueDate?(c.dueDate<t?'overdue since ':'due ')+esc(fmtDate(c.dueDate)):'no due date'}</span></span><span class="mono">${money(c.value)}</span></div>`).join('') : '<div class="empty">Nobody owes you anything</div>';
+  metricModal('Debtor Exposure','coral', money(total), `${owed.length} open balance${owed.length===1?'':'s'}, ${over.length} overdue`, body+`<button class="btn btn-ghost btn-full" style="margin-top:10px" onclick="closeModal();navTo('invoicing')">Open Invoicing & Debtors</button>`, 'Tap a name to see their balance and send a payment reminder.');
+}
+
+
+function openReminderGroup(kind){
+  const t = todayStr(), open = (DATA.reminders||[]).filter(r=>!r.done);
+  const g = {overdue:['Overdue','coral',open.filter(r=>r.dueDate<t),'needs action now'], soon:['Due in 14 Days','amber',open.filter(r=>r.dueDate>=t && r.dueDate<=addDays(t,14)),'coming up'], later:['Scheduled','navy',open.filter(r=>r.dueDate>addDays(t,14)),'further out']}[kind];
+  if(!g) return;
+  const body = g[2].length ? g[2].slice().sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||'')).map(r=>`<div class="list-row" style="align-items:flex-start"><span>${esc(r.title||'Reminder')}<br><span style="font-size:11px;color:var(--muted)">${esc(r.type||'')}${r.recurring&&r.recurring!=='none'?' · repeats '+esc(r.recurring):''}</span></span><span class="mono">${esc(fmtDate(r.dueDate))}</span></div>`).join('') : '<div class="empty">Nothing here</div>';
+  metricModal(g[0], g[1], String(g[2].length), g[3], body, 'Mark items done or snooze them from the list on this page.');
+}
+function openAccountabilityDetail(kind){
+  const daily = (DATA.accountability&&DATA.accountability.daily)||{}, tasks = getAccountabilityTasks(), t = todayStr();
+  if(kind==='today'){
+    const day = daily[t]||{};
+    const body = tasks.map(k=>`<div class="list-row"><span>${esc(k.label||k.key)}</span><span class="mono">${day[k.key]?'Done':'Not yet'}</span></div>`).join('') || '<div class="empty">No daily tasks set</div>';
+    metricModal("Today's Score",'navy', `${tasks.filter(k=>day[k.key]).length}/${tasks.length}`, 'tasks done today', body, '');
+  } else {
+    const days = Object.keys(daily).sort().reverse().slice(0,14);
+    const body = days.length ? days.map(d=>{ const n = tasks.filter(k=>(daily[d]||{})[k.key]).length; return `<div class="list-row"><span>${esc(fmtDate(d))}</span><span class="mono">${n}/${tasks.length} done</span></div>`; }).join('') : '<div class="empty">No days logged yet</div>';
+    metricModal('Current Streak','green', calcStreak()+'d', 'days with at least 1 task done', body, 'Showing your last 14 logged days.');
+  }
+}
+
 function openRevenueTotalModal(){
   const byType = {};
   (DATA.transactions||[]).forEach(x=>{ const k=x.type||'sale'; byType[k]=(byType[k]||0)+(x.amount||0); });
@@ -5246,7 +5524,7 @@ function renderRevenue(){
   const topCustomers = Object.entries(custSpend).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
   // Average transaction value + debtor exposure
-  const saleCount = (DATA.transactions||[]).filter(x=>x.type==='sale').length;
+  const saleCount = (DATA.transactions||[]).length;
   const avgTicket = saleCount ? totalRev/saleCount : 0;
   const debtorExposure = (DATA.contacts||[]).filter(c=>c.value>0).reduce((s,c)=>s+c.value,0);
 
@@ -5284,11 +5562,11 @@ function renderRevenue(){
     <div class="metric navy" style="cursor:pointer" onclick="openRevenueTotalModal()"><div class="ml">Total Revenue</div><div class="mv">${money(totalRev)}</div></div>
     <div class="metric coral" style="cursor:pointer" onclick="openTotalExpensesModal()"><div class="ml">Total Expenses</div><div class="mv">${money(totalExp)}</div></div>
     <div class="metric green" style="cursor:pointer" onclick="openNetModal()"><div class="ml">Net</div><div class="mv">${money(totalRev-totalExp)}</div></div>
-    <div class="metric amber"><div class="ml">Conversion</div><div class="mv">${DATA.contacts.length?Math.round((DATA.contacts.filter(c=>c.temp==='active').length/DATA.contacts.length)*100):0}%</div><div class="ms">contacts → active</div></div>
-    <div class="metric navy"><div class="ml">Month-on-Month</div><div class="mv">${momGrowth===null?', ':(momGrowth>=0?'+':'')+momGrowth+'%'}</div><div class="ms">vs last month</div></div>
-    <div class="metric ${grossMarginPct===null?'navy':grossMarginPct<20?'coral':'green'}"><div class="ml">Est. Gross Margin</div><div class="mv">${grossMarginPct===null?', ':grossMarginPct+'%'}</div><div class="ms">from priced items sold</div></div>
-    <div class="metric navy"><div class="ml">Avg Ticket</div><div class="mv">${money(avgTicket)}</div><div class="ms">${saleCount} sale${saleCount===1?'':'s'} logged</div></div>
-    <div class="metric coral"><div class="ml">Debtor Exposure</div><div class="mv">${money(debtorExposure)}</div><div class="ms" style="cursor:pointer" onclick="navTo('invoicing')">view debtors →</div></div>
+    <div class="metric amber" style="cursor:pointer" onclick="openConversionModal()"><div class="ml">Conversion</div><div class="mv">${DATA.contacts.length?Math.round((DATA.contacts.filter(c=>c.temp==='active').length/DATA.contacts.length)*100):0}%</div><div class="ms">contacts → active</div></div>
+    <div class="metric navy" style="cursor:pointer" onclick="openMomModal()"><div class="ml">Month-on-Month</div><div class="mv">${momGrowth===null?', ':(momGrowth>=0?'+':'')+momGrowth+'%'}</div><div class="ms">vs last month</div></div>
+    <div class="metric ${grossMarginPct===null?'navy':grossMarginPct<20?'coral':'green'}" style="cursor:pointer" onclick="openMarginModal()"><div class="ml">Est. Gross Margin</div><div class="mv">${grossMarginPct===null?', ':grossMarginPct+'%'}</div><div class="ms">from priced items sold</div></div>
+    <div class="metric navy" style="cursor:pointer" onclick="openAvgTicketModal()"><div class="ml">Avg Ticket</div><div class="mv">${money(avgTicket)}</div><div class="ms">${saleCount} payment${saleCount===1?'':'s'} logged</div></div>
+    <div class="metric coral" style="cursor:pointer" onclick="openDebtorSummaryModal()"><div class="ml">Debtor Exposure</div><div class="mv">${money(debtorExposure)}</div><div class="ms">tap for who owes what →</div></div>
   </div>
   <div class="tab-row" id="revTabs">
     <button class="tab-pill" id="revTab_overview" onclick="setRevView('overview')">Overview</button>
@@ -5508,12 +5786,15 @@ let msgCat = 'cold';
 function renderMessages(){
   document.getElementById('pageContent').innerHTML = `
   <div class="tab-row" id="msgTabs"></div>
-  <div class="card" id="msgLib"></div>`;
+  <div id="msgBody"></div>`;
   const cats = ['cold','warm','close','objection','reconnect'];
   if(currentPlan().network) cats.push('partner','investor','delegation');
-  if(!cats.includes(msgCat)) msgCat = 'cold';
-  document.getElementById('msgTabs').innerHTML = cats.map(k=>
+  if(msgCat!=='inbox' && !cats.includes(msgCat)) msgCat = 'cold';
+  const logN = (DATA.messageLog||[]).length;
+  document.getElementById('msgTabs').innerHTML = `<button class="tab-pill ${msgCat==='inbox'?'active':''}" onclick="setMsgCat('inbox')">📥 Inbox & Sent${logN?` (${logN})`:''}</button>` + cats.map(k=>
     `<button class="tab-pill ${msgCat===k?'active':''}" onclick="setMsgCat('${k}')">${TEMPLATE_CATEGORY_LABELS[k]}</button>`).join('');
+  if(msgCat==='inbox'){ renderMessageInbox(); return; }
+  document.getElementById('msgBody').innerHTML = `<div class="card" id="msgLib"></div>`;
   const t = getTemplates()[msgCat] || [];
   document.getElementById('msgLib').innerHTML = t.map((m,i)=>`
     <div class="list-row" style="align-items:flex-start;flex-direction:column;gap:6px">
@@ -5523,6 +5804,131 @@ function renderMessages(){
     </div>`).join('');
 }
 function setMsgCat(k){ msgCat=k; renderMessages(); }
+
+/* ---------- MESSAGE INBOX / SENT LOG ----------
+   Every individual message sent to a client (payment reminder, follow-up,
+   invoice, a text sent from the phone) is recorded here so nothing sent
+   outside the app is invisible. Stored in DATA.messageLog, which is already
+   part of the saved business data, archived after 12 months by the existing
+   auto-archive, and wiped with the business like every other record. */
+const MSG_CHANNELS = {whatsapp:'WhatsApp', sms:'Text / SMS', call:'Phone call', email:'Email', other:'Other'};
+const MSG_KINDS = {payment_reminder:'Payment reminder', follow_up:'Follow-up', invoice:'Invoice', general:'General message'};
+let msgInboxFilter = 'all';
+async function logMessage(entry){
+  try{
+    if(!Array.isArray(DATA.messageLog)) DATA.messageLog = [];
+    const e = {
+      id: uid('M'), ts: new Date().toISOString(), date: todayStr(),
+      contactId: String(entry.contactId||'').slice(0,40),
+      contactName: String(entry.contactName||'Unnamed').trim().slice(0,120) || 'Unnamed',
+      phone: String(entry.phone||'').slice(0,40),
+      channel: MSG_CHANNELS[entry.channel] ? entry.channel : 'other',
+      kind: MSG_KINDS[entry.kind] ? entry.kind : 'general',
+      text: String(entry.text||'').trim().slice(0,1000),
+      status: entry.status==='opened' ? 'opened' : 'sent'
+    };
+    DATA.messageLog.unshift(e);
+    if(DATA.messageLog.length>1000) DATA.messageLog = DATA.messageLog.slice(0,1000);
+    await saveData();
+    if(CUR_PAGE==='messages' && msgCat==='inbox') renderMessages();
+    return e;
+  }catch(err){ console.error('logMessage failed', err); return null; }
+}
+// wa.me needs the country code and no leading 0. A local number typed the
+// usual way (0241234567) gets the business country's dial code added; a number
+// already starting with + or 00 is treated as international and left alone.
+function waLink(phone, text){
+  const raw = String(phone||'').trim();
+  let d = raw.replace(/\D/g,'');
+  if(!d) return '';
+  const intl = raw.startsWith('+') || raw.startsWith('00');
+  if(raw.startsWith('00')) d = d.slice(2);
+  if(!intl && d.startsWith('0')){
+    const dial = (typeof COUNTRY_DIAL_CODES!=='undefined' && COUNTRY_DIAL_CODES[CFG && CFG.country]) || '';
+    if(dial) d = dial.replace(/\D/g,'') + d.slice(1);
+  }
+  if(d.length<8 || d.length>15) return '';
+  return `https://wa.me/${d}${text?`?text=${encodeURIComponent(text)}`:''}`;
+}
+function renderMessageInbox(){
+  const log = (DATA.messageLog||[]);
+  const f = msgInboxFilter;
+  const shown = f==='all' ? log : log.filter(m=>m.kind===f);
+  const weekAgo = new Date(Date.now()-7*86400000).toISOString();
+  const thisWeek = log.filter(m=>(m.ts||m.date||'')>=weekAgo.slice(0,10)).length;
+  const reminders = log.filter(m=>m.kind==='payment_reminder').length;
+  document.getElementById('msgBody').innerHTML = `
+  <div class="grid-metrics">
+    <div class="metric navy"><div class="ml">Messages Logged</div><div class="mv">${log.length}</div><div class="ms">all time</div></div>
+    <div class="metric green"><div class="ml">Last 7 Days</div><div class="mv">${thisWeek}</div><div class="ms">sent to clients</div></div>
+    <div class="metric coral"><div class="ml">Payment Reminders</div><div class="mv">${reminders}</div><div class="ms">sent so far</div></div>
+  </div>
+  <div class="two-col">
+    <div class="card"><div class="card-title">Sent Messages <span class="sub">newest first</span></div>
+      <div class="tab-row" style="margin-bottom:8px">${[['all','All']].concat(Object.entries(MSG_KINDS)).map(([k,l])=>`<button class="tab-pill ${f===k?'active':''}" onclick="msgInboxFilter='${k}';renderMessageInbox()">${l}</button>`).join('')}</div>
+      <div style="max-height:560px;overflow-y:auto">${shown.length ? shown.map(m=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
+        <div style="display:flex;justify-content:space-between;width:100%;gap:8px"><b>${esc(m.contactName)}</b><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${fmtDate(m.date)}</span></div>
+        <div style="font-size:11px;color:var(--muted)">${esc(MSG_CHANNELS[m.channel]||'Other')} · ${esc(MSG_KINDS[m.kind]||'General message')}${m.status==='opened'?' · chat opened':''}</div>
+        ${m.text?`<div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-wrap">${esc(m.text)}</div>`:''}
+        <div style="display:flex;gap:6px">${m.phone&&waLink(m.phone)?`<a class="btn btn-ghost" style="padding:4px 10px;text-decoration:none" target="_blank" rel="noopener noreferrer" href="${esc(waLink(m.phone))}">Reply on WhatsApp</a>`:''}<button class="btn btn-ghost" style="padding:4px 10px" onclick="deleteLoggedMessage('${esc(m.id)}')">Delete</button></div>
+      </div>`).join('') : `<div class="empty">${log.length?'Nothing in this filter yet.':'No messages logged yet. Send or log one on the right and it will show here.'}</div>`}</div>
+    </div>
+    <div class="card"><div class="card-title">＋ Send or Log a Message <span class="sub">texts sent from your phone can be logged too</span></div>
+      <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
+      <select class="inp" id="mlContact" onchange="applyMsgContact()"><option value="">, Type a name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select>
+      <label class="lbl">Name</label><input class="inp" id="mlName" maxlength="120" placeholder="e.g. Kwame Enterprises">
+      <label class="lbl">Phone (needed for WhatsApp)</label><input class="inp" id="mlPhone" maxlength="40" placeholder="e.g. 0241234567">
+      <label class="lbl">Type</label><select class="inp" id="mlKind">${Object.entries(MSG_KINDS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select>
+      <label class="lbl">Sent through</label><select class="inp" id="mlChannel">${Object.entries(MSG_CHANNELS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select>
+      <label class="lbl">Message</label><textarea class="inp" id="mlText" rows="4" maxlength="1000" placeholder="Write the message, or paste what you already sent"></textarea>
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+        <button class="btn btn-primary" style="flex:1" onclick="sendLoggedWhatsApp()">Open WhatsApp & Log</button>
+        <button class="btn btn-ghost" style="flex:1" onclick="logMessageFromForm()">Just Log It</button>
+      </div>
+    </div>
+  </div>`;
+}
+function applyMsgContact(){
+  const id = document.getElementById('mlContact').value;
+  const c = (DATA.contacts||[]).find(x=>x.id===id); if(!c) return;
+  document.getElementById('mlName').value = c.name||'';
+  document.getElementById('mlPhone').value = c.phone||'';
+}
+function readMsgForm(){
+  return {
+    contactId: document.getElementById('mlContact').value,
+    contactName: document.getElementById('mlName').value,
+    phone: document.getElementById('mlPhone').value,
+    kind: document.getElementById('mlKind').value,
+    channel: document.getElementById('mlChannel').value,
+    text: document.getElementById('mlText').value
+  };
+}
+async function logMessageFromForm(){
+  const e = readMsgForm();
+  if(!e.contactName.trim()){ showToast('Add a name first'); return; }
+  if(!e.text.trim()){ showToast('Add the message text'); return; }
+  await logMessage(e); showToast('Logged');
+}
+async function sendLoggedWhatsApp(){
+  const e = readMsgForm();
+  if(!e.contactName.trim()){ showToast('Add a name first'); return; }
+  if(!e.text.trim()){ showToast('Write the message first'); return; }
+  const link = waLink(e.phone, e.text.trim().slice(0,1000));
+  if(!link){ showToast('Add a phone number to open WhatsApp'); return; }
+  e.channel = 'whatsapp';
+  window.open(link, '_blank', 'noopener,noreferrer');
+  await logMessage(e); showToast('WhatsApp opened and message logged');
+}
+async function deleteLoggedMessage(id){
+  if(!confirm('Delete this logged message? This only removes it from your log.')) return;
+  DATA.messageLog = (DATA.messageLog||[]).filter(m=>m.id!==id);
+  await saveData(); renderMessageInbox(); showToast('Deleted');
+}
+// Called from other modules so every message sent from inside the app lands in the Inbox
+function logOpenedChat(contactId, contactName, phone, kind, text){
+  logMessage({contactId, contactName, phone, channel:'whatsapp', kind: kind||'general', text: text||'', status: text ? 'sent' : 'opened'});
+}
 function copyMsg(i){ const t=getTemplates()[msgCat][i]; navigator.clipboard?.writeText(t.body); showToast('Copied'); }
 
 /* ============================================================
@@ -5910,8 +6316,8 @@ function renderAccountability(){
   const streak = calcStreak();
   document.getElementById('pageContent').innerHTML = `
   <div class="grid-metrics">
-    <div class="metric teal navy"><div class="ml">Today's Score</div><div class="mv">${tasks.filter(t=>day[t.key]).length}/${tasks.length}</div></div>
-    <div class="metric green"><div class="ml">Current Streak</div><div class="mv">${streak}d</div><div class="ms">days with at least 1 task done</div></div>
+    <div class="metric teal navy" style="cursor:pointer" onclick="openAccountabilityDetail('today')"><div class="ml">Today's Score</div><div class="mv">${tasks.filter(t=>day[t.key]).length}/${tasks.length}</div></div>
+    <div class="metric green" style="cursor:pointer" onclick="openAccountabilityDetail('streak')"><div class="ml">Current Streak</div><div class="mv">${streak}d</div><div class="ms">days with at least 1 task done</div></div>
   </div>
   ${tier>1?`<div class="card" style="border-color:var(--teal);margin-bottom:0"><div style="font-size:12px;color:var(--ink-dim)">${tier===3?'🔥 Growth-stage checklist unlocked, extra strategic tasks added below because the basics are already solid.':'📈 Visibility-stage checklist unlocked, referral and re-engagement tasks added below.'}</div></div>`:''}
   <div class="card"><div class="card-title">Today's Checklist</div>
@@ -6028,9 +6434,9 @@ function renderReminders(){
   }
   document.getElementById('pageContent').innerHTML = `
   <div class="grid-metrics">
-    <div class="metric coral"><div class="ml">Overdue</div><div class="mv">${overdue.length}</div><div class="ms">needs action now</div></div>
-    <div class="metric amber"><div class="ml">Due in 14 Days</div><div class="mv">${soon.length}</div><div class="ms">coming up</div></div>
-    <div class="metric navy"><div class="ml">Scheduled</div><div class="mv">${later.length}</div><div class="ms">further out</div></div>
+    <div class="metric coral" style="cursor:pointer" onclick="openReminderGroup('overdue')"><div class="ml">Overdue</div><div class="mv">${overdue.length}</div><div class="ms">needs action now</div></div>
+    <div class="metric amber" style="cursor:pointer" onclick="openReminderGroup('soon')"><div class="ml">Due in 14 Days</div><div class="mv">${soon.length}</div><div class="ms">coming up</div></div>
+    <div class="metric navy" style="cursor:pointer" onclick="openReminderGroup('later')"><div class="ml">Scheduled</div><div class="mv">${later.length}</div><div class="ms">further out</div></div>
   </div>
   <div class="two-col">
     <div class="card">
