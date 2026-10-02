@@ -310,6 +310,18 @@ input.inp,select.inp,textarea.inp{width:100%; background:var(--cream); border:1.
    its container, without touching -webkit-appearance (which would risk
    breaking the native calendar/clock picker UI on some browsers). */
 input.inp[type="date"],input.inp[type="time"]{min-width:0;}
+/* FIX (Oct 2026, date/time boxes hanging off the right edge on iPhone):
+   iOS Safari gives native date/time inputs their own intrinsic width that
+   ignores width:100%, so the box pokes past the card. Switching it to a
+   normal block box with no native appearance makes it obey the container.
+   The picker still opens on tap (iOS shows its own wheel regardless of
+   appearance). Left-aligned so the value is not pushed off to the right. */
+input.inp[type="date"],input.inp[type="time"]{
+  -webkit-appearance:none; appearance:none; display:block; width:100%; max-width:100%; min-width:0; min-height:44px;
+  box-sizing:border-box; text-align:left; line-height:1.3; overflow:hidden;}
+input.inp[type="date"]::-webkit-date-and-time-value,input.inp[type="time"]::-webkit-date-and-time-value{text-align:left; margin:0; min-height:1.3em;}
+input.inp[type="date"]::-webkit-datetime-edit,input.inp[type="time"]::-webkit-datetime-edit{padding:0; max-width:100%;}
+.modal input.inp, .card input.inp, .card select.inp, .card textarea.inp{max-width:100%;}
 /* font-size:16px kept explicit here too (matches the global
    input,select,textarea rule further down) so .inp never drops below
    the iOS Safari auto-zoom threshold no matter which selector wins. */
@@ -4025,15 +4037,24 @@ function drawCrmList(){
   let list = DATA.contacts||[];
   if(crmFilter!=='all') list = list.filter(c=>c.temp===crmFilter);
   document.getElementById('crmCount').textContent = `(${list.length})`;
+  const phoneCounts = {}; (DATA.contacts||[]).forEach(c=>{ const k=phoneKey(c.phone); if(k) phoneCounts[k]=(phoneCounts[k]||0)+1; });
   document.getElementById('crmList').innerHTML = list.length ? list.map(c=>{
     const temp = TEMPS.find(t=>t.key===c.temp);
     return `<div class="list-row" style="cursor:pointer" onclick="openContactModal('${c.id}')">
-      <span><span class="temp-dot" style="background:${temp.color}"></span><b>${esc(c.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(c.phone)}</span></span>
+      <span><span class="temp-dot" style="background:${temp.color}"></span><b>${esc(c.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(c.phone)}</span>${(phoneKey(c.phone) && (phoneCounts[phoneKey(c.phone)]||0)>1)?' <span title="Another contact has this number" style="color:#8a6414;font-size:11px;font-weight:700">⚠ shared number</span>':''}</span>
       <span class="pill ${temp.pillClass}">${c.stage||temp.label}</span>
     </div>`;
   }).join('') : '<div class="empty">No matches, add one on the right.</div>';
 }
 function normalizePhone(p){ return (p||'').replace(/\D/g,''); }
+// Same number written two ways (0241234567, +233 24 123 4567, 233241234567)
+// is still the same number, so compare on the last 9 digits.
+function phoneKey(p){ const d = normalizePhone(p); return d.length>=7 ? d.slice(-9) : ''; }
+function findPhoneDupes(phone, excludeId){
+  const k = phoneKey(phone); if(!k) return [];
+  return (DATA.contacts||[]).filter(c=>c.id!==excludeId && phoneKey(c.phone)===k);
+}
+function dupNames(list){ return list.slice(0,3).map(c=>c.name).join(', ') + (list.length>3?` and ${list.length-3} more`:''); }
 async function addContact(){
   if(capHit('contacts')){ showUpgradeNudge('contacts', 'contacts'); return; }
   const name = document.getElementById('cName').value.trim();
@@ -4041,11 +4062,12 @@ async function addContact(){
   const phoneRaw = document.getElementById('cPhone').value.trim();
   const phoneNorm = normalizePhone(phoneRaw);
   if(phoneNorm.length >= 7){
-    const existing = (DATA.contacts||[]).find(c=>c.phone && normalizePhone(c.phone)===phoneNorm);
-    if(existing){
-      showToast(`${existing.name} already has this number, opening their record instead of duplicating`);
-      openContactModal(existing.id);
-      return;
+    const dupes = findPhoneDupes(phoneRaw, null);
+    if(dupes.length){
+      // Flag, don't silently block: a shared line (family, one office phone) is legitimate,
+      // but it must never be added by accident.
+      const addAnyway = confirm(`⚠ This number is already saved for ${dupNames(dupes)}.\n\nOK = add this contact anyway\nCancel = open the existing contact instead`);
+      if(!addAnyway){ openContactModal(dupes[0].id); return; }
     }
   }
   DATA.contacts.push({id:uid('C'), name, phone:phoneRaw, company:'',
@@ -4062,7 +4084,8 @@ function openContactModal(id){
     <select class="inp" onchange="updateContact('${id}','temp',this.value)">${TEMPS.map(t=>`<option value="${t.key}" ${t.key===c.temp?'selected':''}>${t.label}</option>`).join('')}</select>
     <label class="lbl">Stage <span class="sub">tap to move this deal, this is the same stage shown on the ${CUR_INDUSTRY_OBJ.pipelineNoun.toLowerCase()} board</span></label>
     <div class="tab-row" style="margin-bottom:14px">${PIPE_STAGES.map(s=>`<button class="tab-pill ${s===curStage?'active':''}" onclick="updateContact('${id}','stage','${s}')">${s}</button>`).join('')}</div>
-    <label class="lbl">Phone</label><input class="inp" value="${esc(c.phone||'')}" onchange="updateContact('${id}','phone',this.value)">
+    <label class="lbl">Phone</label><input class="inp" type="tel" inputmode="tel" value="${esc(c.phone||'')}" onchange="updateContact('${id}','phone',this.value)">
+    ${findPhoneDupes(c.phone, c.id).length ? `<div style="background:#fff6e0;border:1px solid #e0b24a;color:#8a6414;border-radius:8px;padding:7px 10px;margin:-3px 0 10px;font-size:11.5px;font-weight:600">⚠ Same number as ${esc(dupNames(findPhoneDupes(c.phone, c.id)))}</div>` : ''}
     <label class="lbl">Next follow-up</label><input class="inp" type="date" value="${esc(c.nextFollowUp||'')}" onchange="updateContact('${id}','nextFollowUp',this.value)">
     <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateContact('${id}','notes',this.value)">${esc(c.notes||'')}</textarea>
     <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
@@ -4091,6 +4114,13 @@ function quickInvoiceFor(id){
 }
 async function updateContact(id, field, val){
   const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
+  if(field==='phone'){
+    const dupes = findPhoneDupes(val, id);
+    if(dupes.length && !confirm(`⚠ This number is already saved for ${dupNames(dupes)}.\n\nOK = keep it anyway\nCancel = go back to the old number`)){
+      if(document.querySelector('#modalRoot .modal-overlay.show')) openContactModal(id);
+      return;
+    }
+  }
   c[field]=val; if(field!=='notes') c.lastContact=todayStr();
   await saveData();
   // BUG FIX: this used to only re-render the CRM list in the background
@@ -4423,18 +4453,22 @@ function showCookies(){
 /* ---------- FOLLOW-UPS ---------- */
 function renderFollowups(){
   const t = todayStr();
-  const due = (DATA.followups||[]).filter(f=>!f.done).sort((a,b)=>a.due.localeCompare(b.due));
+  const due = (DATA.followups||[]).filter(f=>!f.done).sort((a,b)=>(a.due||'').localeCompare(b.due||''));
+  const overdueN = due.filter(f=>(f.due||'')<t).length, todayN = due.filter(f=>f.due===t).length;
+  const daysLate = d=>{ const n = Math.round((new Date(t+'T00:00:00')-new Date(d+'T00:00:00'))/86400000); return n<=0?'':(n===1?'1 day late':n+' days late'); };
   document.getElementById('pageContent').innerHTML = `
   <div class="two-col">
     <div class="card"><div class="card-title">Follow-Up Queue <span class="sub">everything due, across every module, in one list</span></div>
-    ${due.length ? due.map(f=>`
-      <div class="list-row" style="align-items:flex-start">
-        <div><b>${esc(f.contactName)}</b><br><span style="font-size:11.5px;color:var(--ink-dim)">${esc(f.detail)} · due ${fmtDate(f.due)}${f.due<t?', overdue':''}</span></div>
+    ${overdueN ? `<div style="background:#fbe9e6;border:1.5px solid var(--coral);color:var(--coral);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:13px;font-weight:700">⚠ ${overdueN} overdue ${overdueN===1?'follow-up':'follow-ups'}${todayN?` · ${todayN} due today`:''}<div style="font-weight:500;font-size:11.5px;margin-top:2px">Oldest first. Clear these before anything new.</div></div>`
+       : (due.length ? `<div style="background:#e4f3ea;color:#3f8f5f;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:12.5px;font-weight:600">✓ Nothing overdue${todayN?` · ${todayN} due today`:''}</div>` : '')}
+    ${due.length ? due.map(f=>{ const late = (f.due||'')<t; return `
+      <div class="list-row" style="align-items:flex-start;${late?'background:#fdf3f1;border-left:4px solid var(--coral);padding-left:10px;border-radius:6px;':''}">
+        <div><b style="${f.contactId&&(DATA.contacts||[]).some(c=>c.id===f.contactId)?'cursor:pointer;text-decoration:underline;text-decoration-color:var(--teal)':''}" ${f.contactId&&(DATA.contacts||[]).some(c=>c.id===f.contactId)?`onclick="openContactModal('${esc(f.contactId)}')" role="button" tabindex="0"`:''}>${esc(f.contactName)}</b>${late?` <span class="pill" style="background:var(--coral);color:#fff;font-size:10px;padding:2px 8px">OVERDUE${daysLate(f.due)?' · '+daysLate(f.due):''}</span>`:''}<br><span style="font-size:11.5px;color:${late?'var(--coral)':'var(--ink-dim)'}">${esc(f.detail)} · due ${fmtDate(f.due)}</span></div>
         <div style="display:flex;gap:6px">
           <button class="btn btn-ghost" style="padding:6px 10px" onclick="snoozeFollowup('${f.id}')">Snooze 3d</button>
           <button class="btn btn-primary" style="padding:6px 10px" onclick="doneFollowup('${f.id}')">✓ Done</button>
         </div>
-      </div>`).join('') : '<div class="empty">Nothing outstanding, nice work.</div>'}
+      </div>`; }).join('') : '<div class="empty">Nothing outstanding, nice work.</div>'}
     </div>
     <div class="card"><div class="card-title">＋ Add a Follow-Up</div>
       <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
@@ -7634,8 +7668,8 @@ function drawSettingsBody(){
       <div class="card-title">The Business Brain <span class="sub">this is what your AI Assistant actually knows about ${esc(CFG.bizName)}</span></div>
       <div style="font-size:12px;color:var(--ink-dim);line-height:1.7;margin-bottom:14px">Tell TecXFRA anything about your business, your goals, your products, your customers, what's working, what isn't. The AI Assistant searches everything here, plus your Persona, Audit, Journal, and the whole Growth Library, before it answers. The more you add, the sharper and more specific its answers get.</div>
       <label class="lbl">What are you trying to achieve right now? <span style="font-weight:400;color:var(--muted)">add as many as you're actually working on</span></label>
-      <input class="inp" id="brainGoal" placeholder="e.g. Hit 10,000 in revenue a month by December">
-      <button class="btn btn-ghost" style="margin-top:8px" onclick="addBusinessGoal(document.getElementById('brainGoal').value); document.getElementById('brainGoal').value='';">＋ Add Goal</button>
+      <textarea class="inp" id="brainGoal" rows="3" maxlength="300" enterkeyhint="done" style="min-height:84px;resize:vertical;line-height:1.5" placeholder="e.g. Hit 10,000 in revenue a month by December"></textarea>
+      <button class="btn btn-primary btn-full" style="margin-top:2px" onclick="addBusinessGoal(document.getElementById('brainGoal').value); document.getElementById('brainGoal').value='';">＋ Add Goal</button>
       <div style="margin-top:14px">
         ${goals.length ? goals.map(g=>`<div class="list-row" style="align-items:flex-start;${g.done?'opacity:.55':''}">
           <span style="font-size:12.5px;line-height:1.6"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${g.done?'checked':''} onchange="toggleGoalDone('${g.id}')"></label> ${g.done?'<s>':''}${esc(g.text)}${g.done?'</s>':''}<br><span style="color:var(--muted);font-size:10.5px">${g.done?'achieved':'added'} ${fmtDate(g.doneAt||g.createdAt)}</span></span>
@@ -8217,10 +8251,36 @@ async function toggleLiveModule(el, key){
    short setTimeout re-checks after load are a defensive re-measure for the
    brief window while iOS is still animating the chrome on first paint. */
 function setAppVh(){
+  // While a field is focused the keyboard is open and visualViewport.height is the
+  // keyboard-shrunk height; do not resize the whole shell to that.
+  if(typeof isEditable==='function' && isEditable(document.activeElement)) return;
   const h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
   document.documentElement.style.setProperty('--app-vh', (h * 0.01) + 'px');
 }
 setAppVh();
+/* FIX (Oct 2026, header sliding up / "pull down to see it" and blank gap above the keyboard):
+   when the iOS keyboard opens, Safari scrolls the LAYOUT viewport to reveal the
+   field even though the page body is locked, and it does not always scroll back
+   when the keyboard closes, so the topbar stays pushed up under the status bar.
+   Also the shell was being resized to the keyboard-shrunk height mid-animation,
+   which left an empty strip. Rules now: (1) while a field is focused, keep the
+   shell at the real height and just scroll that field into view inside .content;
+   (2) the moment focus leaves, snap the window back to 0,0 and re-measure. */
+function isEditable(el){ return !!el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName); }
+function resetViewportScroll(){
+  try{ window.scrollTo(0,0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }catch(e){}
+}
+document.addEventListener('focusin', e=>{
+  if(!isEditable(e.target)) return;
+  setTimeout(()=>{ try{ e.target.scrollIntoView({block:'center', behavior:'smooth'}); }catch(err){} }, 320);
+});
+document.addEventListener('focusout', ()=>{
+  setTimeout(()=>{ if(!isEditable(document.activeElement)){ resetViewportScroll(); setAppVh(); } }, 120);
+  setTimeout(()=>{ if(!isEditable(document.activeElement)){ resetViewportScroll(); setAppVh(); } }, 450);
+});
+window.addEventListener('scroll', ()=>{ if(!isEditable(document.activeElement) && (window.scrollY||document.documentElement.scrollTop)>0) resetViewportScroll(); }, {passive:true});
+window.addEventListener('pageshow', ()=>{ resetViewportScroll(); setAppVh(); });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden){ resetViewportScroll(); setTimeout(setAppVh, 150); } });
 window.addEventListener('resize', setAppVh);
 window.addEventListener('orientationchange', ()=>setTimeout(setAppVh, 120));
 if(window.visualViewport){ window.visualViewport.addEventListener('resize', setAppVh); }
