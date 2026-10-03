@@ -1246,7 +1246,8 @@ async function postAnnouncement(){
   });
   if(error){ msg.style.color='var(--danger)'; msg.textContent = 'Could not post: ' + (error.message||error); return; }
   msg.style.color = 'var(--ok)';
-  msg.textContent = notifyEmail ? 'Posted. In-app popup is live now, emails are sending in the background.' : 'Posted. In-app popup is live now.';
+  msg.textContent = notifyEmail ? 'Posted. In-app popup is live now, checking the emails…' : 'Posted. In-app popup is live now.';
+  if(notifyEmail) setTimeout(followUpEmailStatus, 5000);
   document.getElementById('annTitle').value = '';
   document.getElementById('annBody').value = '';
   document.getElementById('annEmail').checked = false;
@@ -1276,7 +1277,36 @@ async function loadAnnouncements(){
         ${a.notify_email ? `<span>✉ ${a.email_sent_count} sent${a.email_failed_count>0?`, ${a.email_failed_count} failed`:''}</span>` : ''}
         <span style="color:var(--teal-dim);font-weight:700;margin-left:auto">View who →</span>
       </div>
+      ${(a.notify_email && a.email_failed_count>0 && !(a.email_sent_count>0)) ? `<div style="margin-top:10px;background:#fbe9e6;border:1px solid var(--danger,#c0584a);border-radius:8px;padding:10px 12px;font-size:12px;color:#8a2f25" onclick="event.stopPropagation()">
+        <b>No email went out.</b> The email service rejected the request. The most common cause is an invalid or expired Resend API key: in Resend create a new API key, then in Supabase open Edge Functions, Secrets, and replace <b>RESEND_API_KEY</b>. The in-app popup is not affected.
+        <div style="margin-top:8px"><button class="refresh-link" onclick="event.stopPropagation();retryAnnouncementEmail('${esc(a.id)}')">Retry emails</button> <span style="color:#657577">Use this after the key is fixed. Only works while no email for this announcement has gone out.</span></div>
+      </div>` : ''}
     </div>`).join('');
+}
+async function retryAnnouncementEmail(id){
+  if(!confirm('Send the emails for this announcement again? Only do this after the Resend API key has been fixed.')) return;
+  const { error } = await sb.rpc('admin_retry_announcement_email', { p_announcement_id: id });
+  if(error){ alert('Could not retry: ' + (error.message||error)); return; }
+  alert('Retry started. The result shows on this announcement in a few seconds.');
+  setTimeout(loadAnnouncements, 6000);
+}
+// After posting with email on, check what actually happened instead of just
+// saying "emails are sending in the background" (which hid the failure).
+async function followUpEmailStatus(){
+  const msg = document.getElementById('annPostMsg');
+  const { data } = await sb.rpc('admin_list_announcements_with_stats', { p_limit: 1 });
+  const a = data && data[0]; if(!a || !a.notify_email || !msg) return;
+  if(a.email_failed_count>0 && !(a.email_sent_count>0)){
+    msg.style.color = 'var(--danger)';
+    msg.textContent = `Posted. The in-app popup is live, but all ${a.email_failed_count} emails failed. See the red note on the announcement below.`;
+  } else if(a.email_failed_count>0){
+    msg.style.color = 'var(--danger)';
+    msg.textContent = `Posted. ${a.email_sent_count} emails sent, ${a.email_failed_count} failed. Tap the announcement below to see who.`;
+  } else if(a.email_sent_count>0){
+    msg.style.color = 'var(--ok)';
+    msg.textContent = `Posted. ${a.email_sent_count} emails sent and the in-app popup is live.`;
+  }
+  loadAnnouncements();
 }
 // Per-business drill-down: who has read this announcement and when, and
 // whether the email to them sent or failed. "Sent" means Resend accepted
