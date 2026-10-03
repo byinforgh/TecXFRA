@@ -3293,7 +3293,7 @@ function networkConnectionsHtml(){
       </div>`:''}
       <div class="card">
         <div class="card-title">Your connections <span class="sub">${accepted.length}</span></div>
-        ${accepted.length ? accepted.map(c=>`<div class="sb-item" style="cursor:pointer;border-radius:8px" onclick="openNetworkChat('${c.id}')"><span class="ic">💬</span><span>${esc(nameFor(otherIdOf(c)))}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted)">No connections yet, accept a request above or connect from the Directory.</div>`}
+        ${accepted.length ? accepted.map(c=>`<div class="sb-item" style="cursor:pointer;border-radius:8px" onclick="openNetworkChat('${c.id}')"><span class="ic">💬</span><span>${esc(nameFor(otherIdOf(c)))}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted)">${networkAccessLevel()==='full' ? 'No connections yet, accept a request above or connect from the Directory.' : 'No connections yet. When a Prestige member finds your profile and sends a request, it shows here and you can accept and reply for free.'}</div>`}
         ${sent.length?`<div style="font-size:10.5px;color:var(--muted);margin-top:10px;padding-top:10px;border-top:1px solid var(--line-soft)">${sent.length} request${sent.length===1?'':'s'} sent, waiting on a reply</div>`:''}
       </div>
     </div>
@@ -3647,6 +3647,54 @@ async function saveNetworkProfile(){
     showToast(reason ? `Could not save profile: ${reason}` : 'Could not save profile, check your connection and try again');
   }
 }
+/* ---------- INFINITE-SCROLL LISTS ----------
+   A long list (goals, brain notes, the daily tip tracker) used to push the rest
+   of the page far down once it passed a handful of rows. Now each one is a
+   fixed-height box that shows the first 5 and quietly adds 8 more every time
+   you scroll near the bottom, so the page stays the same neat size however
+   many entries pile up. Rows are built by the caller's own render function
+   (which already escapes everything), this helper never touches user text.
+   How many were showing is remembered per list, so deleting or ticking one
+   does not throw you back to the top. */
+const INF_LISTS = {};
+const INF_SHOWN = {};
+const INF_FIRST = 5, INF_STEP = 8;
+function infiniteList(id, items, renderRow, emptyHtml, maxH){
+  INF_LISTS[id] = {items, renderRow};
+  if(!items.length) return emptyHtml || '';
+  const shown = Math.min(items.length, Math.max(INF_FIRST, INF_SHOWN[id]||0));
+  INF_SHOWN[id] = shown;
+  return `<div class="inf-list" id="inf_${id}" data-inf="${id}" style="max-height:${maxH||300}px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;padding:0 10px">${items.slice(0,shown).map(renderRow).join('')}</div>
+    <div class="sub" id="infcount_${id}" style="margin-top:4px;font-size:10.5px;color:var(--muted);cursor:pointer" onclick="infLoadMore('${id}')">${infCountText(id)}</div>`;
+}
+function infCountText(id){
+  const L = INF_LISTS[id]; if(!L) return '';
+  const n = INF_SHOWN[id]||0;
+  return n>=L.items.length ? `${L.items.length} in total` : `Showing ${n} of ${L.items.length}, scroll or tap here for more`;
+}
+function infLoadMore(id){
+  const L = INF_LISTS[id], box = document.getElementById('inf_'+id); if(!L || !box) return false;
+  const have = INF_SHOWN[id]||0; if(have>=L.items.length) return false;
+  const next = Math.min(L.items.length, have+INF_STEP);
+  box.insertAdjacentHTML('beforeend', L.items.slice(have,next).map(L.renderRow).join(''));
+  INF_SHOWN[id] = next;
+  const c = document.getElementById('infcount_'+id); if(c) c.textContent = infCountText(id);
+  return true;
+}
+// On a tall screen the first 5 rows may not even fill the box; keep adding until
+// there is something to scroll, so "scroll for more" is never a dead end.
+function initInfiniteLists(){
+  document.querySelectorAll('.inf-list').forEach(box=>{
+    if(!box.clientHeight) return; // hidden or not laid out yet: do nothing rather than load everything
+    const id = box.getAttribute('data-inf'); let guard = 0;
+    while(box.scrollHeight < box.clientHeight + 90 && guard++ < 20 && infLoadMore(id)){}
+  });
+}
+document.addEventListener('scroll', e=>{
+  const t = e.target;
+  if(t && t.classList && t.classList.contains('inf-list') && t.scrollTop + t.clientHeight >= t.scrollHeight - 40) infLoadMore(t.getAttribute('data-inf'));
+}, true);
+
 /* ---------- TODAY ---------- */
 function txTypeLabel(type){ return ({sale:'Sale at till', invoice:'Invoice payment'})[type] || 'Income'; }
 function renderToday(){
@@ -3679,8 +3727,9 @@ function renderToday(){
     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary" style="padding:7px 16px" onclick="saveOwnTip(document.getElementById('ownTipBox').value)">Save</button>
     <button class="btn btn-ghost" style="padding:7px 16px" onclick="clearOwnTip()">Clear</button></div>
     <div style="margin-top:14px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Your day-by-day tracker</div>
-    <div style="margin-top:4px;max-height:280px;overflow-y:auto">${(DATA.ownTipLog||[]).length ? (DATA.ownTipLog||[]).map(t=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:11.5px;color:var(--ink-dim);line-height:1.5">${esc(t.text)}</span><span style="color:var(--muted);font-size:10px;white-space:nowrap">${fmtDate(t.date)}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted);padding:8px 4px">Nothing saved yet, write today's tip above and hit Save, it'll show up here and feed straight into your Business Brain.</div>`}</div></div>`;
+    <div style="margin-top:6px">${infiniteList('tiplog', (DATA.ownTipLog||[]), t=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:11.5px;color:var(--ink-dim);line-height:1.5">${esc(t.text)}</span><span style="color:var(--muted);font-size:10px;white-space:nowrap">${fmtDate(t.date)}</span></div>`, `<div style="font-size:11.5px;color:var(--muted);padding:8px 4px">Nothing saved yet, write today's tip above and hit Save, it'll show up here and feed straight into your Business Brain.</div>`, 260)}</div></div>`;
   html += renderInsightsCard();
+  setTimeout(initInfiniteLists, 0);
   html += `<div class="grid-metrics">
     <div class="metric navy" style="cursor:pointer" onclick="navTo('revenue')"><div class="ml">Revenue Today</div><div class="mv">${money(todaySales)}</div><div class="ms">${(DATA.transactions||[]).filter(x=>x.date===t).length} sales logged</div></div>
     <div class="metric coral" style="cursor:pointer" onclick="navTo('expenses')"><div class="ml">Expenses Today</div><div class="mv">${money(todayExpenses)}</div><div class="ms">${(DATA.expenses||[]).filter(x=>x.date===t).length} logged, tap to manage</div></div>
@@ -5883,6 +5932,32 @@ function setMsgCat(k){ msgCat=k; renderMessages(); }
 const MSG_CHANNELS = {whatsapp:'WhatsApp', sms:'Text / SMS', call:'Phone call', email:'Email', other:'Other'};
 const MSG_KINDS = {payment_reminder:'Payment reminder', follow_up:'Follow-up', invoice:'Invoice', general:'General message'};
 let msgInboxFilter = 'all';
+let TEAM_MSGS_OPEN = false, TEAM_MSGS_ARCHIVED = false;
+function toggleTeamMessages(){
+  TEAM_MSGS_OPEN = !TEAM_MSGS_OPEN;
+  const b = document.getElementById('teamMsgBody'), t = document.getElementById('teamMsgToggle');
+  if(b) b.style.display = TEAM_MSGS_OPEN ? 'block' : 'none';
+  if(t) t.textContent = TEAM_MSGS_OPEN ? 'hide ▴' : 'show ▾';
+  if(TEAM_MSGS_OPEN) setTimeout(initInfiniteLists, 0);
+}
+async function archiveTeamMessage(id, archive){
+  try{
+    const { error } = await sb.rpc('archive_business_message', { p_id: id, p_archived: !!archive });
+    if(error) throw error;
+    const m = MY_BIZ_MSGS.find(x=>x.id===id);
+    if(m){ m.archived_at = archive ? new Date().toISOString() : null; if(!m.read_at) m.read_at = new Date().toISOString(); }
+    renderMessageInbox(); showToast(archive ? 'Archived' : 'Restored');
+  }catch(e){ console.error('archiveTeamMessage failed', e); showToast('Could not update that message, try again'); }
+}
+async function deleteTeamMessage(id){
+  if(!confirm('Delete this message from your inbox? This cannot be undone.')) return;
+  try{
+    const { error } = await sb.rpc('delete_business_message', { p_id: id });
+    if(error) throw error;
+    MY_BIZ_MSGS = MY_BIZ_MSGS.filter(x=>x.id!==id);
+    renderMessageInbox(); showToast('Deleted');
+  }catch(e){ console.error('deleteTeamMessage failed', e); showToast('Could not delete that message, try again'); }
+}
 async function logMessage(entry){
   try{
     if(!Array.isArray(DATA.messageLog)) DATA.messageLog = [];
@@ -5927,10 +6002,16 @@ function renderMessageInbox(){
   const thisWeek = log.filter(m=>(m.ts||m.date||'')>=weekAgo.slice(0,10)).length;
   const reminders = log.filter(m=>m.kind==='payment_reminder').length;
   const teamMsgs = (typeof MY_BIZ_MSGS!=='undefined' && Array.isArray(MY_BIZ_MSGS)) ? MY_BIZ_MSGS : [];
-  const teamCard = teamMsgs.length ? `<div class="card" style="margin-bottom:14px"><div class="card-title">✉ From the BYINFORGH team <span class="sub">${teamMsgs.length} message${teamMsgs.length===1?'':'s'}</span></div>
-    ${teamMsgs.slice(0,10).map(m=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:3px">
+  const teamLive = teamMsgs.filter(m=>!m.archived_at), teamArch = teamMsgs.filter(m=>m.archived_at);
+  const teamRow = m=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
       <div style="display:flex;justify-content:space-between;width:100%;gap:8px"><b>${esc(m.subject)}</b><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${esc(fmtDate((m.created_at||'').slice(0,10)))}</span></div>
-      <div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-line">${esc(m.body)}</div></div>`).join('')}</div>` : '';
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-line">${esc(m.body)}</div>
+      <div style="display:flex;gap:6px"><button class="btn btn-ghost" style="padding:4px 10px" onclick="archiveTeamMessage('${esc(m.id)}',${m.archived_at?'false':'true'})">${m.archived_at?'Restore':'Archive'}</button><button class="btn btn-ghost" style="padding:4px 10px;color:var(--coral)" onclick="deleteTeamMessage('${esc(m.id)}')">Delete</button></div></div>`;
+  const teamCard = teamMsgs.length ? `<div class="card" style="margin-bottom:14px"><div class="card-title" style="cursor:pointer" onclick="toggleTeamMessages()">✉ From the BYINFORGH team <span class="sub">${teamLive.length} message${teamLive.length===1?'':'s'}${teamArch.length?`, ${teamArch.length} archived`:''} · <span id="teamMsgToggle">${TEAM_MSGS_OPEN?'hide ▴':'show ▾'}</span></span></div>
+    <div id="teamMsgBody" style="display:${TEAM_MSGS_OPEN?'block':'none'}">
+    ${infiniteList('teammsgs', (TEAM_MSGS_ARCHIVED?teamArch:teamLive), teamRow, `<div class="empty">${TEAM_MSGS_ARCHIVED?'Nothing archived.':'No messages. Archived ones are under the toggle below.'}</div>`, 320)}
+    ${teamArch.length || TEAM_MSGS_ARCHIVED ? `<button class="btn btn-ghost" style="margin-top:8px;padding:5px 12px" onclick="TEAM_MSGS_ARCHIVED=!TEAM_MSGS_ARCHIVED;INF_SHOWN['teammsgs']=0;renderMessageInbox()">${TEAM_MSGS_ARCHIVED?'← Back to messages':'View archived ('+teamArch.length+')'}</button>` : ''}
+    </div></div>` : '';
   document.getElementById('msgBody').innerHTML = teamCard + `
   <div class="grid-metrics">
     <div class="metric navy"><div class="ml">Messages Logged</div><div class="mv">${log.length}</div><div class="ms">all time</div></div>
@@ -5961,6 +6042,7 @@ function renderMessageInbox(){
       </div>
     </div>
   </div>`;
+  setTimeout(initInfiniteLists, 0);
 }
 function applyMsgContact(){
   const id = document.getElementById('mlContact').value;
@@ -7711,13 +7793,13 @@ function drawSettingsBody(){
       <textarea class="inp" id="brainGoal" rows="3" maxlength="300" enterkeyhint="done" style="min-height:84px;resize:vertical;line-height:1.5" placeholder="e.g. Hit 10,000 in revenue a month by December"></textarea>
       <button class="btn btn-primary btn-full" style="margin-top:2px" onclick="addBusinessGoal(document.getElementById('brainGoal').value); document.getElementById('brainGoal').value='';">＋ Add Goal</button>
       <div style="margin-top:14px">
-        ${goals.length ? goals.map(g=>`<div class="list-row" style="align-items:flex-start;${g.done?'opacity:.55':''}">
-          <span style="font-size:12.5px;line-height:1.6"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${g.done?'checked':''} onchange="toggleGoalDone('${g.id}')"></label> ${g.done?'<s>':''}${esc(g.text)}${g.done?'</s>':''}<br><span style="color:var(--muted);font-size:10.5px">${g.done?'achieved':'added'} ${fmtDate(g.doneAt||g.createdAt)}</span></span>
+        ${infiniteList('goals', goals, g=>`<div class="list-row" style="align-items:flex-start;${g.done?'opacity:.55':''}">
+          <span style="font-size:12.5px;line-height:1.6"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${g.done?'checked':''} onchange="toggleGoalDone('${esc(g.id)}')"></label> ${g.done?'<s>':''}${esc(g.text)}${g.done?'</s>':''}<br><span style="color:var(--muted);font-size:10.5px">${g.done?'achieved':'added'} ${fmtDate(g.doneAt||g.createdAt)}</span></span>
           <span style="display:flex;gap:10px;white-space:nowrap">
-            <span style="cursor:pointer;color:var(--teal-dim);font-size:11px" onclick="editBusinessGoal('${g.id}')">edit</span>
-            <span style="cursor:pointer;color:var(--muted);font-size:11px" onclick="removeBusinessGoal('${g.id}')">remove</span>
+            <span style="cursor:pointer;color:var(--teal-dim);font-size:11px" onclick="editBusinessGoal('${esc(g.id)}')">edit</span>
+            <span style="cursor:pointer;color:var(--muted);font-size:11px" onclick="removeBusinessGoal('${esc(g.id)}')">remove</span>
           </span>
-        </div>`).join('') : '<div class="empty">No goals set yet, add your first one above, the Brain uses this to shape your daily check-ins.</div>'}
+        </div>`, '<div class="empty">No goals set yet, add your first one above, the Brain uses this to shape your daily check-ins.</div>', 300)}
       </div>
     </div>
     <div class="card">
@@ -7727,12 +7809,13 @@ function drawSettingsBody(){
     </div>
     <div class="card">
       <div class="card-title">What You've Told It <span class="sub">${ownerNotes.length} note${ownerNotes.length===1?'':'s'}</span></div>
-      ${ownerNotes.length ? ownerNotes.map(f=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:12.5px;line-height:1.6">${esc(f.text)}<br><span style="color:var(--muted);font-size:10.5px">${fmtDate(f.date)}</span></span><span style="cursor:pointer;color:var(--muted);font-size:11px;white-space:nowrap" onclick="removeBrainNote('${f.id}')">remove</span></div>`).join('') : '<div class="empty">Nothing added yet, use the box above.</div>'}
+      ${infiniteList('notes', ownerNotes, f=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:12.5px;line-height:1.6">${esc(f.text)}<br><span style="color:var(--muted);font-size:10.5px">${fmtDate(f.date)}</span></span><span style="cursor:pointer;color:var(--muted);font-size:11px;white-space:nowrap" onclick="removeBrainNote('${esc(f.id)}')">remove</span></div>`, '<div class="empty">Nothing added yet, use the box above.</div>', 320)}
     </div>
     <div class="card">
       <div class="card-title">What It's Learned On Its Own <span class="sub">${systemNotes.length} observation${systemNotes.length===1?'':'s'}, from your audit, activity and patterns</span></div>
-      ${systemNotes.length ? systemNotes.slice(0,15).map(f=>`<div class="list-row"><span style="font-size:12px;color:var(--ink-dim)">${esc(f.text)}</span><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${fmtDate(f.date)}</span></div>`).join('') : '<div class="empty">Nothing yet, this fills in as you use TecXFRA day to day.</div>'}
+      ${infiniteList('learned', systemNotes, f=>`<div class="list-row"><span style="font-size:12px;color:var(--ink-dim)">${esc(f.text)}</span><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${fmtDate(f.date)}</span></div>`, '<div class="empty">Nothing yet, this fills in as you use TecXFRA day to day.</div>', 300)}
     </div>`;
+    setTimeout(initInfiniteLists, 0);
   } else if(settingsTab==='industry'){
     b.innerHTML = `<div class="card">
       <div class="card-title">Your industry <span class="sub">this shapes labels and defaults across the whole app</span></div>
