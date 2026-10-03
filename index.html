@@ -2300,12 +2300,47 @@ async function checkAnnouncements(){
     if(error) throw error;
     ANNOUNCEMENT_QUEUE = data || [];
     if(ANNOUNCEMENT_QUEUE.length) showNextAnnouncement();
+    else checkBusinessMessages();
+  }catch(e){ console.error('checkAnnouncements failed', e); checkBusinessMessages(); }
+}
+/* ---------- Private messages from the BYINFORGH team ----------
+   Sent one-to-one from the admin panel (admin_send_business_message). Until
+   Oct 2026 nothing on the owner's side ever read them. Unread ones now pop up
+   once after login, oldest first, after any announcements; "Got it" marks the
+   message read on the server so it never pops up again on any device. The full
+   history stays under Messages > Inbox & Sent. */
+let MY_BIZ_MSGS = [];
+let BIZ_MSG_QUEUE = [];
+async function checkBusinessMessages(){
+  try{
+    const { data, error } = await sb.rpc('get_my_business_messages');
+    if(error) throw error;
+    MY_BIZ_MSGS = Array.isArray(data) ? data : [];
+    BIZ_MSG_QUEUE = MY_BIZ_MSGS.filter(m=>!m.read_at).reverse();
+    if(BIZ_MSG_QUEUE.length) showNextBizMessage();
     else checkInactivityAccountability();
-  }catch(e){ console.error('checkAnnouncements failed', e); checkInactivityAccountability(); }
+  }catch(e){ console.error('checkBusinessMessages failed', e); checkInactivityAccountability(); }
+}
+function showNextBizMessage(){
+  const m = BIZ_MSG_QUEUE.shift();
+  if(!m){ closeModal(); checkInactivityAccountability(); return; }
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show"><div class="modal" style="max-width:420px">
+    <div style="font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--teal-dim);margin-bottom:6px">✉ Message from the BYINFORGH team</div>
+    <h3 style="margin-bottom:4px">${esc(m.subject)}</h3>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${esc(fmtDate((m.created_at||'').slice(0,10)))}</div>
+    <div style="font-size:13.5px;line-height:1.7;color:var(--ink-dim);white-space:pre-line;max-height:50vh;overflow-y:auto">${esc(m.body)}</div>
+    <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="ackBizMessage('${esc(m.id)}')">Got it</button>
+  </div></div>`;
+}
+async function ackBizMessage(id){
+  try{ await sb.rpc('mark_business_message_read', { p_id: id }); }
+  catch(e){ console.error('mark_business_message_read failed', e); }
+  const m = MY_BIZ_MSGS.find(x=>x.id===id); if(m && !m.read_at) m.read_at = new Date().toISOString();
+  showNextBizMessage();
 }
 function showNextAnnouncement(){
   const a = ANNOUNCEMENT_QUEUE.shift();
-  if(!a){ closeModal(); checkInactivityAccountability(); return; }
+  if(!a){ closeModal(); checkBusinessMessages(); return; }
   const kindLabel = {feature:'✨ New Feature', bugfix:'🔧 Fixed For You', maintenance:'📌 Quick Heads Up'}[a.kind] || 'Update';
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show"><div class="modal" style="max-width:420px">
     <div style="font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--teal-dim);margin-bottom:6px">${kindLabel}</div>
@@ -5891,7 +5926,12 @@ function renderMessageInbox(){
   const weekAgo = new Date(Date.now()-7*86400000).toISOString();
   const thisWeek = log.filter(m=>(m.ts||m.date||'')>=weekAgo.slice(0,10)).length;
   const reminders = log.filter(m=>m.kind==='payment_reminder').length;
-  document.getElementById('msgBody').innerHTML = `
+  const teamMsgs = (typeof MY_BIZ_MSGS!=='undefined' && Array.isArray(MY_BIZ_MSGS)) ? MY_BIZ_MSGS : [];
+  const teamCard = teamMsgs.length ? `<div class="card" style="margin-bottom:14px"><div class="card-title">✉ From the BYINFORGH team <span class="sub">${teamMsgs.length} message${teamMsgs.length===1?'':'s'}</span></div>
+    ${teamMsgs.slice(0,10).map(m=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:3px">
+      <div style="display:flex;justify-content:space-between;width:100%;gap:8px"><b>${esc(m.subject)}</b><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${esc(fmtDate((m.created_at||'').slice(0,10)))}</span></div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-line">${esc(m.body)}</div></div>`).join('')}</div>` : '';
+  document.getElementById('msgBody').innerHTML = teamCard + `
   <div class="grid-metrics">
     <div class="metric navy"><div class="ml">Messages Logged</div><div class="mv">${log.length}</div><div class="ms">all time</div></div>
     <div class="metric green"><div class="ml">Last 7 Days</div><div class="mv">${thisWeek}</div><div class="ms">sent to clients</div></div>
@@ -7992,7 +8032,63 @@ function renderPartnerStatus(status, fallbackCode){
       <input class="inp" id="partnerRefLink" value="${esc(link)}" readonly style="font-size:11.5px">
       <button class="btn btn-ghost" onclick="copyPartnerLink()" style="flex-shrink:0">Copy</button>
     </div>
+    <div style="background:var(--cream);border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-top:6px">
+      <div style="font-size:12.5px;line-height:1.65;color:var(--ink-dim)"><b style="color:var(--navy)">What you earn:</b> once 3 or more shops you refer stay active for 2 months, you are paid every month. Starter shops pay you from GHS 15 a month, Growth shops from GHS 45 a month, plus a GHS 300 bonus for your first Enterprise shop and GHS 350 for each one after.</div>
+      <button class="btn btn-ghost btn-full" id="partnerDetailsBtn" style="margin-top:8px" onclick="togglePartnerDetails()" aria-expanded="false">View full earnings breakdown ▾</button>
+      <div id="partnerDetails" style="display:none;margin-top:10px">${partnerDetailsHtml(active)}</div>
+    </div>
   `;
+}
+// Same formula as calc_recurring_tier_payout in the database (migration 0053),
+// so the table on screen can never drift from what is actually paid.
+function partnerTierAmount(n, fee, m3, m5, m10){
+  if(n<3) return 0;
+  if(n<=5) return Math.round((m3 + (n-3)*(m5-m3)/2)*100)/100;
+  if(n<=10) return Math.round((m5 + (n-5)*(m10-m5)/5)*100)/100;
+  return Math.round((m10 + (n-10)*(fee*0.15))*100)/100;
+}
+function partnerDetailsHtml(active){
+  const g = n=>'GHS '+Number(n).toLocaleString(undefined,{minimumFractionDigits:(n%1?2:0),maximumFractionDigits:2});
+  const tiers = [
+    {name:'Starter', fee:50, m3:15, m5:30, m10:75, have:(active&&active.starter)||0},
+    {name:'Growth', fee:150, m3:45, m5:90, m10:225, have:(active&&active.growth)||0}
+  ];
+  const table = t=>`<div style="font-size:12px;font-weight:700;color:var(--navy);margin:12px 0 4px">${t.name} shops (${g(t.fee)} a month plan)${t.have?` <span style="font-weight:500;color:var(--muted)">· you have ${t.have} qualified</span>`:''}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="text-align:left;color:var(--muted)"><th style="padding:4px 0;font-weight:600">Qualified shops</th><th style="padding:4px 0;font-weight:600;text-align:right">You earn each month</th></tr></thead>
+      <tbody>${[3,4,5,6,7,8,9,10].map(n=>`<tr style="border-top:1px solid var(--line)${t.have===n?';background:#e4f3ea;font-weight:700':''}"><td style="padding:5px 0">${n}</td><td style="padding:5px 0;text-align:right" class="mono">${g(partnerTierAmount(n,t.fee,t.m3,t.m5,t.m10))}</td></tr>`).join('')}
+      <tr style="border-top:1px solid var(--line)"><td style="padding:5px 0">Each shop after 10</td><td style="padding:5px 0;text-align:right" class="mono">+ ${g(Math.round(t.fee*0.15*100)/100)}</td></tr></tbody>
+    </table>
+    <div style="font-size:11px;color:var(--muted);margin-top:3px">Below 3 qualified ${t.name} shops there is no monthly payout yet.</div>`;
+  return `
+    <div style="font-size:12.5px;font-weight:700;color:var(--navy)">How it works</div>
+    <ol style="font-size:12px;line-height:1.7;color:var(--ink-dim);padding-left:18px;margin:4px 0 0">
+      <li>Share your referral link above. A business that signs up through it is attached to you.</li>
+      <li>A shop <b>qualifies</b> once it has stayed active for 2 months in a row. Until then it shows as pending.</li>
+      <li>Starter and Growth shops are counted separately. Each plan pays out once you reach 3 qualified shops in it.</li>
+      <li>Payouts are settled on the 5th of every month.</li>
+    </ol>
+    ${tiers.map(table).join('')}
+    <div style="font-size:12px;font-weight:700;color:var(--navy);margin:14px 0 4px">Enterprise bonus</div>
+    <div style="font-size:12px;line-height:1.7;color:var(--ink-dim)">GHS 300 for your first qualified Enterprise shop, and GHS 350 for every Enterprise shop after that. An Enterprise shop qualifies the same way, after 2 active months.</div>
+    <div style="font-size:12px;font-weight:700;color:var(--navy);margin:14px 0 4px">Example</div>
+    <div style="font-size:12px;line-height:1.7;color:var(--ink-dim)">5 qualified Starter shops (${g(partnerTierAmount(5,50,15,30,75))}) plus 3 qualified Growth shops (${g(partnerTierAmount(3,150,45,90,225))}) pays ${g(partnerTierAmount(5,50,15,30,75)+partnerTierAmount(3,150,45,90,225))} a month.</div>
+    <div style="font-size:12px;font-weight:700;color:var(--navy);margin:14px 0 4px">Rules</div>
+    <ul style="font-size:12px;line-height:1.7;color:var(--ink-dim);padding-left:18px;margin:0">
+      <li>Your own TecXFRA account must be active to be paid.</li>
+      <li>If a referred shop cancels or lapses, its 2 month count starts again from zero.</li>
+      <li>3 or more qualified shops earns you the Badged Partner mark.</li>
+      <li>The "estimated payout" above covers the monthly Starter and Growth amounts. Enterprise bonuses are added when the month is settled.</li>
+      <li>Amounts are in Ghana cedis (GHS).</li>
+    </ul>`;
+}
+function togglePartnerDetails(){
+  const box = document.getElementById('partnerDetails'), btn = document.getElementById('partnerDetailsBtn');
+  if(!box || !btn) return;
+  const open = box.style.display==='none';
+  box.style.display = open ? 'block' : 'none';
+  btn.textContent = open ? 'Hide full earnings breakdown ▴' : 'View full earnings breakdown ▾';
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 function copyPartnerLink(){
   const inp = document.getElementById('partnerRefLink'); if(!inp) return;
