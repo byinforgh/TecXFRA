@@ -310,6 +310,19 @@ input.inp,select.inp,textarea.inp{width:100%; background:var(--cream); border:1.
    its container, without touching -webkit-appearance (which would risk
    breaking the native calendar/clock picker UI on some browsers). */
 input.inp[type="date"],input.inp[type="time"]{min-width:0;}
+/* Settings > Account: two independent columns so a tall TecXPARTNER card (or its
+   expanded earnings breakdown) never leaves a gap under Subscription. On a phone
+   the columns dissolve into one stack in the order Subscription, TecXPARTNER,
+   Account, Report. */
+.acct-grid{display:grid;grid-template-columns:repeat(2,minmax(280px,480px));gap:16px;align-items:start}
+.acct-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.acct-col .card{max-width:none;width:100%;margin:0}
+@media (max-width:900px){
+  .acct-grid{display:flex;flex-direction:column;gap:16px}
+  .acct-col{display:contents}
+  .acct-sub{order:1}.acct-partner{order:2}.acct-account{order:3}.acct-report{order:4}
+  .acct-grid .card{max-width:520px;width:100%;margin:0}
+}
 /* FIX (Oct 2026, date/time boxes hanging off the right edge on iPhone):
    iOS Safari gives native date/time inputs their own intrinsic width that
    ignores width:100%, so the box pokes past the card. Switching it to a
@@ -3727,7 +3740,15 @@ function renderToday(){
     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary" style="padding:7px 16px" onclick="saveOwnTip(document.getElementById('ownTipBox').value)">Save</button>
     <button class="btn btn-ghost" style="padding:7px 16px" onclick="clearOwnTip()">Clear</button></div>
     <div style="margin-top:14px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Your day-by-day tracker</div>
-    <div style="margin-top:6px">${infiniteList('tiplog', (DATA.ownTipLog||[]), t=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:11.5px;color:var(--ink-dim);line-height:1.5">${esc(t.text)}</span><span style="color:var(--muted);font-size:10px;white-space:nowrap">${fmtDate(t.date)}</span></div>`, `<div style="font-size:11.5px;color:var(--muted);padding:8px 4px">Nothing saved yet, write today's tip above and hit Save, it'll show up here and feed straight into your Business Brain.</div>`, 260)}</div></div>`;
+    <div style="margin-top:6px">${(ensureTipIds(), '')}${(()=>{
+      const live=(DATA.ownTipLog||[]).filter(t=>!t.archived), arch=(DATA.ownTipLog||[]).filter(t=>t.archived);
+      const row=t=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
+        <div style="display:flex;justify-content:space-between;width:100%;gap:8px"><span style="font-size:11.5px;color:var(--ink-dim);line-height:1.5">${esc(t.text)}</span><span style="color:var(--muted);font-size:10px;white-space:nowrap">${fmtDate(t.date)}</span></div>
+        <div style="display:flex;gap:12px;font-size:11px"><span style="cursor:pointer;color:var(--teal-dim)" onclick="archiveTip('${esc(t.id)}',${t.archived?'false':'true'})">${t.archived?'restore':'archive'}</span><span style="cursor:pointer;color:var(--coral)" onclick="deleteTip('${esc(t.id)}')">delete</span></div></div>`;
+      const list = TIPS_ARCHIVED_VIEW ? arch : live;
+      return infiniteList('tiplog', list, row, `<div style="font-size:11.5px;color:var(--muted);padding:8px 4px">${TIPS_ARCHIVED_VIEW?'Nothing archived.':"Nothing saved yet, write today's tip above and hit Save, it'll show up here and feed straight into your Business Brain."}</div>`, 260)
+        + ((arch.length||TIPS_ARCHIVED_VIEW) ? `<div style="margin-top:6px"><span style="cursor:pointer;color:var(--teal-dim);font-size:11.5px;font-weight:600" onclick="TIPS_ARCHIVED_VIEW=!TIPS_ARCHIVED_VIEW;INF_SHOWN['tiplog']=0;renderToday()">${TIPS_ARCHIVED_VIEW?'← Back to tips':'View archived ('+arch.length+')'}</span></div>` : '');
+    })()}</div></div>`;
   html += renderInsightsCard();
   setTimeout(initInfiniteLists, 0);
   html += `<div class="grid-metrics">
@@ -5135,6 +5156,34 @@ async function archiveOldExpenses(){
 // The tip box is a reminder for TODAY only. Anything saved on an earlier day
 // stays in the day-by-day tracker (ownTipLog) but never re-appears in the box.
 function todayOwnTip(){ return (DATA.ownTipDate===todayStr() && DATA.ownTip) ? DATA.ownTip : ''; }
+/* Tracker entries saved before ids existed get one the first time they are shown;
+   it is only persisted when an action (archive / delete) saves the data. */
+function ensureTipIds(){
+  if(!Array.isArray(DATA.ownTipLog)) DATA.ownTipLog = [];
+  DATA.ownTipLog.forEach(t=>{ if(!t.id) t.id = uid('T'); });
+}
+let TIPS_ARCHIVED_VIEW = false;
+async function archiveTip(id, archive){
+  const t = (DATA.ownTipLog||[]).find(x=>x.id===id); if(!t) return;
+  t.archived = !!archive;
+  if(archive && t.date===todayStr() && DATA.ownTip===t.text) DATA.ownTip = '';
+  await saveData(); INF_SHOWN['tiplog'] = 0;
+  showToast(archive ? 'Archived' : 'Restored');
+  if(CUR_PAGE==='today') renderToday();
+}
+async function deleteTip(id){
+  const t = (DATA.ownTipLog||[]).find(x=>x.id===id); if(!t) return;
+  if(!confirm('Delete this tip? It is also removed from your Business Brain. This cannot be undone.')) return;
+  DATA.ownTipLog = DATA.ownTipLog.filter(x=>x.id!==id);
+  if(t.date===todayStr() && DATA.ownTip===t.text) DATA.ownTip = '';
+  // saving a tip also added it to the Brain as an owner note; take that exact note out too
+  if(DATA.knowledge && Array.isArray(DATA.knowledge.facts)){
+    const i = DATA.knowledge.facts.findIndex(f=>f.source==='owner' && f.text===t.text);
+    if(i>-1) DATA.knowledge.facts.splice(i,1);
+  }
+  await saveData(); showToast('Deleted');
+  if(CUR_PAGE==='today') renderToday();
+}
 async function clearOwnTip(){
   DATA.ownTip = ''; DATA.ownTipDate = todayStr();
   await saveData(); showToast('Cleared');
@@ -5152,11 +5201,11 @@ async function saveOwnTip(val){
       brainWorthy = existing.text !== text;
       existing.text = text;
     } else {
-      DATA.ownTipLog.unshift({text, date: today});
+      DATA.ownTipLog.unshift({id: uid('T'), text, date: today});
       brainWorthy = true;
     }
     // Keep enough history for a real day-by-day tracker, not just a "last 3" glance.
-    DATA.ownTipLog = DATA.ownTipLog.slice(0, 90);
+    DATA.ownTipLog = DATA.ownTipLog.slice(0, 200);
   }
   await saveData();
   if(brainWorthy) await addKnowledgeFact(text, 'owner');
@@ -7949,8 +7998,8 @@ function drawSettingsBody(){
     </div>`;
   } else if(settingsTab==='account'){
     const sub = CUR_SUBSCRIPTION;
-    b.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
-    <div class="card" style="max-width:480px;flex:1;min-width:280px">
+    b.innerHTML = `<div class="acct-grid"><div class="acct-col">
+    <div class="card acct-sub">
       <div class="card-title">Subscription status</div>
       <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;margin-bottom:14px">
         Plan: <b style="color:var(--navy)">${currentPlan().label}</b><br>
@@ -7961,12 +8010,7 @@ function drawSettingsBody(){
       <button class="btn btn-ghost" onclick="syncSubscription().then(()=>{renderSettings();showToast('Refreshed')})">Refresh status</button>
       ${sub && sub.status==='active' ? `<button class="btn btn-ghost" style="margin-left:8px;color:var(--danger,#c0584a)" onclick="cancelSubscriptionFlow()">Cancel plan</button>` : ''}
     </div>
-    <div class="card" style="max-width:480px;flex:1;min-width:280px" id="partnerStatusCard">
-      <div class="card-title">TecXPARTNER Status</div>
-      <div style="font-size:12px;color:var(--muted)">Loading…</div>
-    </div>
-    </div>
-    <div class="card" style="max-width:480px">
+    <div class="card acct-account">
       <div class="card-title">Account</div>
       <div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px">Signed in as this business's owner account. Signing out just locks the app on this device, nothing is deleted.</div>
       <div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">Change password</div>
@@ -7976,7 +8020,7 @@ function drawSettingsBody(){
       <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
       <button class="btn btn-ghost" onclick="signOut()">Sign out</button>
     </div>
-    <div class="card" style="max-width:480px">
+    <div class="card acct-report">
       <div class="card-title">Report a Problem</div>
       <div style="font-size:12px;color:var(--ink-dim);margin-bottom:12px">Found a bug or something that doesn't feel right? Tell us exactly what happened, it goes straight to the TecXFRA team and you'll see the status update right here once it's picked up.</div>
       <label class="lbl">Which page or feature</label>
@@ -7985,7 +8029,14 @@ function drawSettingsBody(){
       <textarea class="inp" id="spMessage" rows="3" placeholder="e.g. Tried to add a haircut service on Inventory but the form wouldn't let me save without a quantity"></textarea>
       <button class="btn btn-primary" style="margin-top:8px" onclick="submitProblemReport()">Send Report</button>
       <div id="myTicketsList" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)"></div>
-    </div>`;
+    </div>
+    </div>
+    <div class="acct-col">
+      <div class="card acct-partner" id="partnerStatusCard">
+        <div class="card-title">TecXPARTNER Status</div>
+        <div style="font-size:12px;color:var(--muted)">Loading…</div>
+      </div>
+    </div></div>`;
     loadMyTickets();
     loadPartnerStatus();
   } else if(settingsTab==='data'){
