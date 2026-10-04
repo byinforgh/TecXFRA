@@ -597,7 +597,7 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
     <div class="wiz-step" data-step="4">
       <div class="wiz-eyebrow">Step 4 of 4</div>
       <div class="wiz-h">Choose your plan.</div>
-      <div class="wiz-sub" id="wizPlanSub">TecXFRA rewards its first businesses: the very first 10 signups get their chosen plan free, permanently, 2 Enterprise, 3 Growth, 5 Starter spots. After that, every plan is a paid subscription, and Starter is priced to stay within reach of any business, anywhere.</div>
+      <div class="wiz-sub" id="wizPlanSub">Every plan is a paid subscription, and Starter is priced to stay within reach of any business, anywhere.</div>
       <div id="wizPlanGrid" class="plan-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:6px"></div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">You can change plans anytime after signup in Settings.</div>
       <div class="wiz-nav"><button class="btn btn-ghost" onclick="wizGo(3)">← Back</button><button class="btn btn-primary" onclick="goToAccountCreation()">Continue, create your login →</button></div>
@@ -849,7 +849,8 @@ async function goToAccountCreation(){
     tone: document.getElementById('setupTone').value || 'motivation',
     industry: wizIndustry,
     modules,
-    plan: wizPlan || 'growth'
+    plan: wizPlan || 'growth',
+    trial: !!WIZ_TRIAL
   };
   try{ localStorage.setItem('tecxfra_pending_setup', JSON.stringify(PENDING_SETUP)); }catch(e){}
   // CRITICAL SAFETY CHECK, added after a real incident: finishing the
@@ -1320,7 +1321,7 @@ async function loadAll(){
     if(row){
       CFG = (row.cfg && Object.keys(row.cfg).length) ? row.cfg : null;
       DATA = (row.data && Object.keys(row.data).length) ? hydrateData(row.data) : null;
-      CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, current_period_end: row.current_period_end };
+      CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, provider: row.provider, current_period_end: row.current_period_end };
       if(CFG){
         const correctedPlan = (row.status === 'active') ? row.plan : 'starter';
         const storedPlan = row.cfg && row.cfg.plan;
@@ -1366,7 +1367,7 @@ async function syncSubscription(){
     if(error) throw error;
     const row = Array.isArray(rows) ? rows[0] : rows;
     if(row){
-      CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, current_period_end: row.current_period_end };
+      CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, provider: row.provider, current_period_end: row.current_period_end };
       if(CFG){
         const active = row.status === 'active';
         const correctedPlan = active ? row.plan : 'starter';
@@ -1655,9 +1656,9 @@ async function viewArchivePeriod(kind, period){
     if(error) throw error;
     const rows = data || [];
     document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px;max-height:70vh;overflow:auto">
-      <div class="disp" style="font-size:16px;font-weight:700;margin-bottom:10px">${kind}, ${period} <span style="color:var(--muted);font-weight:400;font-size:12px">(${rows.length} records)</span></div>
+      <div class="disp" style="font-size:16px;font-weight:700;margin-bottom:10px">${esc(kind)}, ${esc(period)} <span style="color:var(--muted);font-weight:400;font-size:12px">(${rows.length} records)</span></div>
       <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.8">
-        ${rows.map(r=>`<div class="list-row"><span>${r.item||r.desc||r.category||r.text||r.id||'Archived entry'}</span><span>${r.amount!=null?money(r.amount):(r.date||'')}</span></div>`).join('') || '<div style="color:var(--muted)">No records.</div>'}
+        ${rows.map(r=>`<div class="list-row"><span>${esc(r.item||r.desc||r.category||r.text||r.id||'Archived entry')}</span><span>${r.amount!=null?money(r.amount):esc(r.date||'')}</span></div>`).join('') || '<div style="color:var(--muted)">No records.</div>'}
       </div>
       <button class="btn btn-ghost btn-full" style="margin-top:14px" onclick="closeModal()">Close</button>
     </div></div>`;
@@ -1854,6 +1855,18 @@ const WIZ_COHORT = (function(){
     return (v==='diaspora' || v==='ghana') ? v : null;
   }catch(e){ return null; }
 })();
+// ---- 14 day free trial link (?trial=1) ------------------------------------
+// A separate door from a normal signup and from the two founding cohorts. A
+// trial signup never uses a founding slot: it starts a 14 day subscription
+// (start_trial RPC, migration 0056) on whichever plan they pick, and when the
+// 14 days end the server sends them an in-app message plus email asking them
+// to start paying. A cohort link always wins if both are present.
+const WIZ_TRIAL = (function(){
+  try{
+    if(WIZ_COHORT) return false;
+    return new URLSearchParams(window.location.search).get('trial')==='1';
+  }catch(e){ return false; }
+})();
 // ---- TecXPARTNER referral code, captured the same way as WIZ_COHORT above.
 // A signup link like https://www.tecxfra.com/?ref=KOFISHOP1A2B carries the
 // referring business's code through the wizard; applyReferralCodeIfPresent()
@@ -1889,7 +1902,9 @@ function cohortBanner(){
     ? 'Prestige, free for keeps, one of 10 spots reserved for this launch group.'
     : 'Your chosen plan, free for keeps, one of 10 spots reserved for this launch group.';
   if(!s) return `<div style="font-size:11.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">🎉 ${label}: ${desc}</div>`;
-  if(s.remaining<=0) return `<div style="font-size:11.5px;font-weight:700;color:var(--muted);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">${label} is fully claimed, you'll continue on a normal paid signup below, still very welcome.</div>`;
+  // Once every spot is claimed the message is removed completely, there is
+  // nothing left to announce, they simply continue as a normal signup.
+  if(s.remaining<=0) return '';
   return `<div style="font-size:11.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">🎉 ${label}, ${s.remaining} of ${s.cap} spot${s.remaining===1?'':'s'} left: ${desc}</div>`;
 }
 // Claims one spot from whichever cohort this signup arrived through. Kept
@@ -1921,6 +1936,15 @@ async function loadFoundingSlots(){
     FOUNDING_SLOTS = {};
     (data||[]).forEach(r=>{ FOUNDING_SLOTS[r.tier] = r; });
   }catch(e){ console.error('loadFoundingSlots failed', e); FOUNDING_SLOTS = null; }
+}
+function trialBanner(){
+  return `<div style="font-size:11.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">🎁 14 day free trial: pick the plan you want to try. No payment today.</div>`;
+}
+// Total founding spots still free across Enterprise, Growth and Starter, or
+// null when the numbers have not loaded (never promise spots we cannot see).
+function foundingSlotsLeft(){
+  if(!FOUNDING_SLOTS) return null;
+  return Object.values(FOUNDING_SLOTS).reduce((a,s)=>a+Math.max(0, Number(s.remaining)||0), 0);
 }
 function foundingBadge(tierKey){
   const s = FOUNDING_SLOTS && FOUNDING_SLOTS[tierKey];
@@ -1974,10 +1998,22 @@ function renderWizPlanStep(){
   const wizCurrency = (document.getElementById('setupCurrency')||{}).value || 'USD';
   const isAfrican = wizCountryIsAfrican();
   const sub = document.getElementById('wizPlanSub');
-  if(sub) sub.textContent = isAfrican
-    ? "TecXFRA rewards its first businesses: the very first 10 signups get their chosen plan free, permanently, 2 Enterprise, 3 Growth, 5 Starter spots. After that, every plan is a paid subscription, and Starter is priced to stay within reach of any business, anywhere."
-    : "Businesses outside Ghana, Nigeria, Kenya and South Africa go straight to Prestige, our global/diaspora tier: the TecXFRA Network, verified directory, direct B2B chat and industry channels, priced for the market you're operating in.";
-  const cohortHtml = cohortBanner();
+  if(sub){
+    if(!isAfrican){
+      sub.textContent = "Businesses outside Ghana, Nigeria, Kenya and South Africa go straight to Prestige, our global/diaspora tier: the TecXFRA Network, verified directory, direct B2B chat and industry channels, priced for the market you're operating in.";
+    } else if(WIZ_TRIAL){
+      sub.textContent = "Try TecXFRA free for 14 days. Pick the plan you want to try, no payment today. When the 14 days are up we'll ask you to start paying to keep it, and your data stays safe either way.";
+    } else {
+      const paidLine = "Every plan is a paid subscription, and Starter is priced to stay within reach of any business, anywhere.";
+      const left = foundingSlotsLeft();
+      // The founding-spot message only exists while spots exist. Unknown
+      // (not loaded yet) or zero left: no promise, just the plain line.
+      sub.textContent = (left!==null && left>0)
+        ? `TecXFRA rewards its first businesses: ${left} founding spot${left===1?'':'s'} left, each giving the chosen plan free, permanently. Spots left on each plan are shown below. After they are gone, ${paidLine.charAt(0).toLowerCase()+paidLine.slice(1)}`
+        : paidLine;
+    }
+  }
+  const cohortHtml = WIZ_TRIAL ? trialBanner() : cohortBanner();
   if(!isAfrican || WIZ_COHORT==='diaspora'){
     wizPlan = 'prestige';
     const p = PLANS.find(x=>x.key==='prestige');
@@ -1998,7 +2034,7 @@ function renderWizPlanStep(){
       <div style="font-weight:800;font-size:14.5px;color:var(--navy)">${p.label}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${planPriceDisplay(p.key, wizCurrency)}</div>
       <div style="font-size:11.5px;color:var(--ink-dim);margin:4px 0 6px;line-height:1.5">${p.tagline}</div>
-      ${WIZ_COHORT==='ghana' ? '' : foundingBadge(p.key)}
+      ${(WIZ_COHORT==='ghana' || WIZ_TRIAL) ? '' : foundingBadge(p.key)}
     </div>`).join('');
 }
 function renderIndustryGrid(){
@@ -2151,6 +2187,7 @@ async function finishSetup(setup){
   // single signup can never double-claim across both programs.
   if(!isTestAccount){
     if(WIZ_COHORT) await claimCohortSlotIfChosen(setup.plan);
+    else if(setup.trial) await startTrialIfChosen(setup.plan);
     else await claimFoundingSlotIfChosen(setup.plan);
   }
   // TecXPARTNER: attribute this brand-new signup to whoever's ?ref= link it
@@ -2172,6 +2209,22 @@ async function finishSetup(setup){
 // normal inactive-subscription fallback regardless, and can pay to
 // unlock or upgrade anytime from Settings → Plan. Nobody is ever
 // left blocked either way.
+// Starts the 14 day free trial for a signup that arrived through ?trial=1.
+// Never touches a founding slot. If it cannot start for any reason the
+// business simply stays on Starter, exactly like any other signup.
+async function startTrialIfChosen(planKey){
+  if(!planKey || !['starter','growth','enterprise','prestige'].includes(planKey)) return false;
+  try{
+    const { data, error } = await sb.rpc('start_trial', { p_plan: planKey });
+    if(error) throw error;
+    if(data && data.success){
+      const label = (PLANS.find(p=>p.key===planKey)||{}).label || planKey;
+      showToast(`🎁 Your 14 day ${label} trial has started. No payment needed today.`);
+      return true;
+    }
+    return false;
+  }catch(e){ console.error('startTrialIfChosen failed', e); return false; }
+}
 async function claimFoundingSlotIfChosen(planKey){
   if(!planKey || !['starter','growth','enterprise'].includes(planKey)) return;
   try{
@@ -7924,7 +7977,26 @@ function drawSettingsBody(){
           <div style="font-size:12.5px;color:var(--ink-dim)">You picked <b style="color:var(--navy)">${(PLANS.find(p=>p.key===CFG.intendedPlan)||{}).label || CFG.intendedPlan}</b> during setup. Complete payment below to activate it, until then you're on Starter.</div>
         </div>`
       : '';
-    b.innerHTML = demoRow + foundingRow + intendedNudge + `<div class="card" style="margin-bottom:14px">
+    const subNow = CUR_SUBSCRIPTION;
+    const trialLeft = trialDaysLeft(subNow);
+    const subPlanLabel = subNow ? ((PLANS.find(p=>p.key===subNow.plan)||{}).label || subNow.plan) : '';
+    const trialRow = isTestAccount ? '' : (trialLeft!==null
+      ? `<div class="card" style="margin-bottom:14px;border-color:var(--teal)">
+          <div class="card-title">⏳ Free trial <span class="sub">${trialLeft} day${trialLeft===1?'':'s'} left</span></div>
+          <div style="font-size:12px;color:var(--ink-dim);line-height:1.6">You're trying <b style="color:var(--navy)">${cur.label}</b> free until <b style="color:var(--navy)">${new Date(subNow.current_period_end).toLocaleDateString()}</b>. To keep it without a break, complete payment below before then. Your data stays safe either way.</div>
+        </div>`
+      : (subNow && subNow.provider==='trial' && subNow.status==='expired')
+        ? `<div class="card" style="margin-bottom:14px;border-color:var(--amber)">
+          <div class="card-title">Your free trial has ended</div>
+          <div style="font-size:12px;color:var(--ink-dim);line-height:1.6">Your business and all your data are safe, and you keep Starter access. To get <b style="color:var(--navy)">${esc(subPlanLabel)}</b> back, complete payment below.</div>
+        </div>`
+        : (subNow && subNow.status==='paused')
+          ? `<div class="card" style="margin-bottom:14px;border-color:var(--amber)">
+          <div class="card-title">Your plan is paused</div>
+          <div style="font-size:12px;color:var(--ink-dim);line-height:1.6">Your business and all your data are safe, and you keep Starter access. To reactivate <b style="color:var(--navy)">${esc(subPlanLabel)}</b>, complete payment below or message the BYINFORGH team.</div>
+        </div>`
+          : '');
+    b.innerHTML = demoRow + foundingRow + trialRow + intendedNudge + `<div class="card" style="margin-bottom:14px">
       <div class="card-title">Your usage on ${cur.label}</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:8px">
         ${['contacts','staff','monthlyTransactions'].map(r=>{
@@ -8003,9 +8075,9 @@ function drawSettingsBody(){
       <div class="card-title">Subscription status</div>
       <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;margin-bottom:14px">
         Plan: <b style="color:var(--navy)">${currentPlan().label}</b><br>
-        Status: <b style="color:var(--navy)">${sub && sub.status==='active' ? (sub.provider==='founding_free' ? 'Active, Founding member (free, for keeps)' : 'Active') : (currentPlan().key==='starter' ? 'Active (Starter access, no payment on file)' : 'Inactive, payment needed')}</b><br>
-        ${sub && sub.current_period_end ? `Renews: <b style="color:var(--navy)">${new Date(sub.current_period_end).toLocaleDateString()}</b><br>` : ''}
-        ${sub && sub.provider && sub.provider!=='founding_free' ? `Last paid via: <b style="color:var(--navy)">${sub.provider}</b>` : ''}
+        Status: <b style="color:var(--navy)">${subStatusLabel(sub)}</b><br>
+        ${sub && sub.current_period_end ? `${sub.provider==='trial' ? 'Trial ends' : 'Renews'}: <b style="color:var(--navy)">${new Date(sub.current_period_end).toLocaleDateString()}</b><br>` : ''}
+        ${sub && sub.provider && sub.provider!=='founding_free' && sub.provider!=='trial' ? `Last paid via: <b style="color:var(--navy)">${sub.provider}</b>` : ''}
       </div>
       <button class="btn btn-ghost" onclick="syncSubscription().then(()=>{renderSettings();showToast('Refreshed')})">Refresh status</button>
       ${sub && sub.status==='active' ? `<button class="btn btn-ghost" style="margin-left:8px;color:var(--danger,#c0584a)" onclick="cancelSubscriptionFlow()">Cancel plan</button>` : ''}
@@ -8259,6 +8331,20 @@ function switchPlan(key){
     return;
   }
   openUpgradeModal(key);
+}
+// One place that turns the subscription row into plain words for the owner,
+// including the 14 day trial and the paused state set by the daily billing job.
+function trialDaysLeft(sub){
+  if(!(sub && sub.provider==='trial' && sub.status==='active' && sub.current_period_end)) return null;
+  return Math.max(0, Math.ceil((new Date(sub.current_period_end).getTime() - Date.now())/86400000));
+}
+function subStatusLabel(sub){
+  const d = trialDaysLeft(sub);
+  if(d!==null) return `Free trial, ${d} day${d===1?'':'s'} left`;
+  if(sub && sub.provider==='trial' && sub.status==='expired') return 'Trial ended, payment needed to keep your plan';
+  if(sub && sub.status==='paused') return 'Paused, payment needed to reactivate';
+  if(sub && sub.status==='active') return sub.provider==='founding_free' ? 'Active, Founding member (free, for keeps)' : 'Active';
+  return currentPlan().key==='starter' ? 'Active (Starter access, no payment on file)' : 'Inactive, payment needed';
 }
 async function cancelSubscriptionFlow(){
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
