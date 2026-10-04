@@ -147,6 +147,9 @@
   .src-manual{color:var(--teal-dim)}
   .src-paid::before{background:var(--ok)}
   .src-paid{color:var(--ok)}
+  .src-trial::before{background:#7a5cc7}
+  .src-trial{color:#7a5cc7}
+  .pill-paused{background:#fdf3e1;color:var(--amber)}
   .src-none::before{background:#b9c2c3}
   .src-none{color:#7a8a8c}
   .refresh-link{font-size:12px;color:var(--teal-dim);font-weight:700;background:none;border:none;cursor:pointer;padding:0}
@@ -206,6 +209,12 @@
 
     <div id="tab-overview" class="tab-panel on">
       <div id="statGrid" class="stat-grid"></div>
+      <div class="row" style="justify-content:space-between;margin:20px 0 10px">
+        <div class="sub" style="margin-bottom:0">Founding spots left and free trials. Spots are claimed first come, first served and can never go past the cap.</div>
+        <button class="refresh-link" onclick="loadBillingSummary()">Refresh</button>
+      </div>
+      <div id="billingSummaryWrap" class="stat-grid"></div>
+      <div id="trialInviteWrap" style="margin-top:14px"></div>
       <div class="row" style="justify-content:space-between;margin:24px 0 12px">
         <div class="sub" style="margin-bottom:0">Plan mismatches, active subscription plan disagrees with the cached plan on the account. Read-only, subscriptions is always the source of truth.</div>
         <button class="refresh-link" onclick="loadPlanMismatches()">Refresh</button>
@@ -247,6 +256,7 @@
           <select id="bizSourceFilter" onchange="setSourceFilter()" style="width:auto;padding:6px 10px;font-size:12.5px">
             <option value="all">All sources</option>
             <option value="founder">Founder slot only</option>
+            <option value="trial">Free trial only</option>
             <option value="manual">Manual grant only</option>
             <option value="paid">Paid only</option>
             <option value="none">No plan only</option>
@@ -408,6 +418,13 @@ function esc(s){
   if(s===null || s===undefined) return '';
   return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
+// SECURITY: safe way to pass a text value into an inline onclick handler.
+// esc() alone is NOT enough there: the browser decodes &#39; back to a quote
+// before the handler runs, so a business name like  x',alert(1),'  would
+// execute in the admin session. This emits a proper quoted JS string literal
+// (JSON), then HTML-escapes it for the attribute, so the value can only ever
+// be data, never code.
+function jsArg(v){ return esc(JSON.stringify(String(v===null||v===undefined?'':v))); }
 
 // ⚠️ TODO(business): only needed while "Enable Captcha protection" is on in
 // Supabase Auth settings. Must match the same sitekey used in index.html,
@@ -519,6 +536,8 @@ async function afterLogin(){
   renderList(data || []);
   refreshGuides();
   loadStats();
+  loadBillingSummary();
+  renderTrialInvite();
   loadBusinesses();
   loadFoundingClaims();
   loadAbandonedSignups();
@@ -665,7 +684,7 @@ async function loadBackupPoints(){
   wrap.innerHTML = data.map(b=>`
     <div class="ann-recip-row">
       <span>${fmtDateTime(b.backed_up_at)}</span>
-      <button class="refresh-link" style="color:var(--danger)" onclick="confirmRestoreBackup('${b.id}','${esc(b.business_name).replace(/'/g,"\\'")}','${b.backed_up_at}')">Restore this</button>
+      <button class="refresh-link" style="color:var(--danger)" onclick="confirmRestoreBackup('${b.id}',${jsArg(b.business_name)},'${b.backed_up_at}')">Restore this</button>
     </div>`).join('');
 }
 async function confirmRestoreBackup(backupId, name, backedUpAt){
@@ -725,11 +744,11 @@ function planPill(plan){
 // their free slot's provider, which is sometimes exactly what you want
 // (see Shugbites) but should never happen by accident again.
 function sourcePill(source){
-  const label = {founder:'Founder slot', manual:'Manual grant', paid:'Paid', none:'No plan'}[source] || 'No plan';
+  const label = {founder:'Founder slot', manual:'Manual grant', paid:'Paid', trial:'Free trial', none:'No plan'}[source] || 'No plan';
   return `<span class="src-tag src-${source||'none'}">${label}</span>`;
 }
 function statusPill(status){
-  const cls = status==='active'?'pill-active':'pill-inactive';
+  const cls = status==='active'?'pill-active':(status==='paused'||status==='expired')?'pill-paused':'pill-inactive';
   return `<span class="pill ${cls}">${status||'inactive'}</span>`;
 }
 
@@ -763,7 +782,7 @@ async function loadFoundingClaims(){
         <td>${lastActive ? fmtDateTime(lastActive) : '<span style="color:#b45309">Never</span>'}</td>
         <td>${r.has_real_data ? '<span class="src-tag src-paid">Has data</span>' : '<span class="src-tag src-none">No data added</span>'}</td>
         <td>${statusPill(r.subscription_status)}</td>
-        <td><button class="refresh-link" style="color:var(--danger)" onclick="confirmReleaseSlot('${r.venue_id}','${esc(r.business_name).replace(/'/g,"\\'")}')">Release slot</button></td>
+        <td><button class="refresh-link" style="color:var(--danger)" onclick="confirmReleaseSlot('${r.venue_id}',${jsArg(r.business_name)})">Release slot</button></td>
       </tr>`;}).join('')}</tbody></table></div>`;
 }
 async function confirmReleaseSlot(venueId, name){
@@ -775,6 +794,7 @@ async function confirmReleaseSlot(venueId, name){
   loadFoundingClaims();
   loadBusinesses();
   loadStats();
+  loadBillingSummary();
 }
 // Lists accounts that meet the strict abandoned-signup bar (see the
 // server-side function for the exact criteria: no business name, no
@@ -796,7 +816,7 @@ async function loadAbandonedSignups(){
         <td>${esc(r.owner_email)||'Not provided'}</td>
         <td>${fmtDate(r.created_at)}</td>
         <td>${r.last_sign_in_at ? fmtDateTime(r.last_sign_in_at) : '<span style="color:#b45309">Never</span>'}</td>
-        <td><button class="refresh-link" style="color:var(--danger)" onclick="confirmDeleteAbandoned('${r.venue_id}','${esc(r.owner_email||'this account').replace(/'/g,"\\'")}')">Delete</button></td>
+        <td><button class="refresh-link" style="color:var(--danger)" onclick="confirmDeleteAbandoned('${r.venue_id}',${jsArg(r.owner_email||'this account')})">Delete</button></td>
       </tr>`).join('')}</tbody></table></div>`;
 }
 async function confirmDeleteAbandoned(venueId, email){
@@ -866,6 +886,7 @@ async function confirmDeactivate(venueId, name){
   if(error){ alert(`Could not deactivate: ${error.message||error}`); return; }
   if(data && data.success===false){ alert(data.message || 'Nothing to deactivate.'); return; }
   alert(`${name} is now deactivated.`);
+  loadBillingSummary();
   loadBusinesses();
   loadRenewals();
   loadStats();
@@ -894,8 +915,79 @@ async function confirmDeleteBusiness(venueId, name, status, source){
   loadRenewals();
   loadPartnersAdmin();
   loadStats();
+  loadBillingSummary();
 }
 
+// Founder slots left, cohort spots left and trial counts, one server call.
+// Founder numbers come from the same get_founding_slots_status the signup
+// wizard uses, so what you see here is exactly what a new signup sees.
+async function loadBillingSummary(){
+  const wrap = document.getElementById('billingSummaryWrap');
+  if(!wrap) return;
+  wrap.innerHTML = '<div class="card empty">Loading…</div>';
+  const { data, error } = await sb.rpc('admin_billing_summary');
+  if(error || !data){ wrap.innerHTML = `<div class="card empty">Could not load slot summary: ${esc((error&&error.message)||'no data')}</div>`; return; }
+  const f = {}; (data.founder||[]).forEach(r=>{ f[r.tier]=r; });
+  const totalLeft = (data.founder||[]).reduce((a,r)=>a+Math.max(0,Number(r.remaining)||0),0);
+  const totalCap = (data.founder||[]).reduce((a,r)=>a+(Number(r.cap)||0),0);
+  const c = {}; (data.cohorts||[]).forEach(r=>{ c[r.cohort]=r; });
+  const card = (label, n, sub, danger)=>`<div class="stat-card" style="cursor:default"><div class="n"${danger?' style="color:var(--danger)"':''}>${n}</div><div class="l">${label}${sub?`<br><span style="font-weight:400">${sub}</span>`:''}</div></div>`;
+  const tier = (k,l)=>{ const r=f[k]||{remaining:0,cap:0}; return card(`${l} founder spots left`, `${r.remaining} / ${r.cap}`, '', Number(r.remaining)<=0); };
+  wrap.innerHTML =
+    card('Founder spots left (all plans)', `${totalLeft} / ${totalCap}`, totalLeft<=0 ? 'All gone, signup message is hidden' : 'Signup message is showing', totalLeft<=0) +
+    tier('enterprise','Enterprise') + tier('growth','Growth') + tier('starter','Starter') +
+    card('Ghana cohort spots left', c.ghana ? `${c.ghana.remaining} / ${c.ghana.cap}` : 'n/a') +
+    card('Diaspora cohort spots left', c.diaspora ? `${c.diaspora.remaining} / ${c.diaspora.cap}` : 'n/a') +
+    card('Trials running', data.trials_active ?? 0) +
+    card('Trials ended, not paid yet', data.trials_ended_unpaid ?? 0, '', (data.trials_ended_unpaid||0)>0);
+}
+// The 14 day trial link. Separate from a normal signup and from both
+// founding cohorts: it never uses a founding slot.
+const TRIAL_LINK = 'https://www.tecxfra.com/?trial=1';
+const TRIAL_MSG = 'Hi, I am inviting you to try TecXFRA free for 14 days, the system that runs your sales, customers, money and daily follow-ups from your phone. No payment today. When the 14 days are up you will be asked to start paying to keep it. Start here: ';
+function renderTrialInvite(){
+  const wrap = document.getElementById('trialInviteWrap'); if(!wrap) return;
+  wrap.innerHTML = `<div class="card"><div style="font-weight:700;margin-bottom:4px">🎁 14 day free trial link</div>
+    <div class="sub" style="margin-bottom:10px">For anyone who wants to try before paying. They pick their plan, get 14 days, then an automatic message and email asks them to start paying. Does not use a founding spot. Anyone who joins without this link signs up normally.</div>
+    <input readonly value="${esc(TRIAL_LINK)}" onclick="this.select()" style="width:100%;margin-bottom:8px">
+    <div class="row" style="gap:8px;flex-wrap:wrap">
+      <button class="refresh-link" onclick="copyTrialText('link')">Copy link</button>
+      <button class="refresh-link" onclick="copyTrialText('message')">Copy invite message</button>
+      <a class="refresh-link" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text=${encodeURIComponent(TRIAL_MSG + TRIAL_LINK)}">Share on WhatsApp</a>
+    </div></div>`;
+}
+async function copyTrialText(what){
+  const text = what==='message' ? TRIAL_MSG + TRIAL_LINK : TRIAL_LINK;
+  try{ await navigator.clipboard.writeText(text); alert(what==='message' ? 'Invite message copied.' : 'Link copied.'); }
+  catch(e){ window.prompt('Copy this:', text); }
+}
+// What happens automatically once the renewal date has passed. Set once,
+// no date editing needed: renew rolls the date forward a month, pause
+// switches the plan off (data kept), delete warns the owner and removes the
+// account 7 days later. Reminders go out 3 days before and on the day for
+// every choice, and nothing happens at all until one is chosen.
+function renewalActionSelect(venueId, name, current){
+  const opts = [['','Choose…'],['renew','Renew automatically'],['pause','Pause account'],['delete','Delete account']];
+  return `<select style="width:auto;padding:4px 8px;font-size:12px" data-name="${esc(name)}" onchange="setRenewalAction('${esc(venueId)}',this.value,'${esc(current||'')}',this)">${opts.map(([v,l])=>`<option value="${v}" ${(current||'')===v?'selected':''}>${l}</option>`).join('')}</select>`;
+}
+async function setRenewalAction(venueId, value, previous, selEl){
+  const name = (selEl && selEl.dataset && selEl.dataset.name) || 'this business';
+  if(value==='delete'){
+    if(!confirm(`Set "${name}" to be DELETED after their renewal date passes unpaid?\n\nThey get a warning message and email, then 7 days later the account and all its data are removed. Nightly backups are kept. You can change this back any time before then.`)){ if(selEl) selEl.value = previous||''; return; }
+  }
+  const { data, error } = await sb.rpc('admin_set_renewal_action', { p_venue_id: venueId, p_action: value || null });
+  if(error){ alert(`Could not save: ${error.message||error}`); if(selEl) selEl.value = previous||''; return; }
+  if(data && data.success===false){ alert(data.message || 'Nothing to update.'); if(selEl) selEl.value = previous||''; return; }
+  loadBusinesses();
+  loadRenewals();
+}
+function autoActionNote(b){
+  if(b.delete_after) return `<div class="sub" style="margin:2px 0 0;color:var(--danger)">Deletes ${fmtDate(b.delete_after)} unless paid</div>`;
+  if(b.last_auto_action==='auto_renewed') return `<div class="sub" style="margin:2px 0 0">Auto renewed ${fmtDate(b.last_auto_action_at)}</div>`;
+  if(b.last_auto_action==='paused') return `<div class="sub" style="margin:2px 0 0">Paused ${fmtDate(b.last_auto_action_at)}</div>`;
+  if(b.last_auto_action==='trial_ended') return `<div class="sub" style="margin:2px 0 0">Trial ended ${fmtDate(b.last_auto_action_at)}</div>`;
+  return '';
+}
 // Direct renewal-date editor, separate from "Grant paid plan": that flow
 // only ever sets a date at the moment a plan is granted, there was no way
 // to correct or update it afterwards. Same prompt-based UX as
@@ -949,9 +1041,9 @@ async function loadRenewals(){
   });
   const now = Date.now();
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
-      <th>Business</th><th>Owner</th><th>Phone</th><th>Plan</th><th>Status</th><th>Renews</th><th></th>
+      <th>Business</th><th>Owner</th><th>Phone</th><th>Plan</th><th>Status</th><th>Renews</th><th>After the date</th><th></th>
     </tr></thead><tbody>${rows.map(r=>{
-      const nameJs = esc(r.business_name).replace(/'/g,"\\'");
+      const nameJs = jsArg(r.business_name);
       const due = r.current_period_end ? new Date(r.current_period_end).getTime() : null;
       const daysLeft = due===null ? null : Math.ceil((due-now)/86400000);
       let tag = '';
@@ -968,10 +1060,11 @@ async function loadRenewals(){
         <td>${r.owner_phone?`<a href="https://wa.me/${esc(r.owner_phone).replace(/\D/g,'')}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">${esc(r.owner_phone)}</a>`:'<span style="color:#b45309">Not provided</span>'}</td>
         <td>${planPill(r.plan)}</td>
         <td>${statusPill(r.status)}</td>
-        <td>${r.current_period_end?fmtDate(r.current_period_end):'<span style="color:#b45309">Not set</span>'} ${tag}</td>
+        <td>${r.current_period_end?fmtDate(r.current_period_end):'<span style="color:#b45309">Not set</span>'} ${tag}${r.provider==='trial'?' <span class="src-tag src-trial">Trial ends</span>':''}</td>
+        <td>${(r.provider==='founding_free'||r.provider==='trial')?'<span class="sub" style="margin:0">'+(r.provider==='trial'?'Reminder then asks to pay':'Free, no renewal')+'</span>':renewalActionSelect(r.venue_id,r.business_name,r.renewal_action)}${autoActionNote(r)}</td>
         <td>
-          <button class="refresh-link" onclick="editRenewalDate('${r.venue_id}','${nameJs}','${r.current_period_end||''}')">Edit</button>
-          ${overdueInactive ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${r.venue_id}','${nameJs}')">Deactivate (unpaid)</button>` : ''}
+          <button class="refresh-link" onclick="editRenewalDate('${r.venue_id}',${nameJs},'${r.current_period_end||''}')">Edit</button>
+          ${overdueInactive ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${r.venue_id}',${nameJs})">Deactivate (unpaid)</button>` : ''}
         </td>
       </tr>`;}).join('')}</tbody></table></div>`;
 }
@@ -1062,11 +1155,11 @@ async function loadBusinesses(){
   // distinction matters and shouldn't be hidden by falling back to
   // created_at.
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
-      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Source</th><th>Status</th><th>Renews</th><th>Signed up</th><th>Last active</th><th colspan="3"></th>
+      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Source</th><th>Status</th><th>Renews</th><th>After the date</th><th>Signed up</th><th>Last active</th><th colspan="3"></th>
     </tr></thead><tbody>${rows.map(b=>{
       const lastActive = b.last_active_at && (!b.last_sign_in_at || new Date(b.last_active_at) > new Date(b.last_sign_in_at))
         ? b.last_active_at : b.last_sign_in_at;
-      const nameJs = esc(b.business_name).replace(/'/g,"\\'");
+      const nameJs = jsArg(b.business_name);
       return `
       <tr>
         <td><b>${esc(b.business_name)||'Unnamed business'}</b></td>
@@ -1078,12 +1171,13 @@ async function loadBusinesses(){
         <td>${planPill(b.plan)}</td>
         <td>${sourcePill(b.plan_source)}</td>
         <td>${statusPill(b.status)}</td>
-        <td>${b.current_period_end ? fmtDate(b.current_period_end) : '<span style="color:#b45309">Not set</span>'} <button class="refresh-link" onclick="editRenewalDate('${b.venue_id}','${nameJs}','${b.current_period_end||''}')">Edit</button></td>
+        <td>${b.current_period_end ? fmtDate(b.current_period_end) : '<span style="color:#b45309">Not set</span>'} <button class="refresh-link" onclick="editRenewalDate('${b.venue_id}',${nameJs},'${b.current_period_end||''}')">Edit</button></td>
+        <td>${(b.provider==='founding_free'||b.provider==='trial'||!b.provider)?'<span class="sub" style="margin:0">'+(b.provider==='trial'?'Reminder then asks to pay':'n/a')+'</span>':renewalActionSelect(b.venue_id,b.business_name,b.renewal_action)}${autoActionNote(b)}</td>
         <td>${fmtDate(b.created_at)}</td>
         <td>${lastActive ? fmtDateTime(lastActive) : '<span style="color:#b45309">Never</span>'}</td>
-        <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}','${nameJs}','${b.plan_source}')">Grant paid plan</button></td>
-        <td>${b.status==='active' ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${b.venue_id}','${nameJs}')">Deactivate</button>` : ''}</td>
-        <td><button class="refresh-link" style="color:var(--danger);font-weight:700" onclick="confirmDeleteBusiness('${b.venue_id}','${nameJs}','${b.status}','${b.plan_source||'none'}')">Delete</button></td>
+        <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}',${nameJs},'${b.plan_source}')">Grant paid plan</button></td>
+        <td>${b.status==='active' ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${b.venue_id}',${nameJs})">Deactivate</button>` : ''}</td>
+        <td><button class="refresh-link" style="color:var(--danger);font-weight:700" onclick="confirmDeleteBusiness('${b.venue_id}',${nameJs},'${b.status}','${b.plan_source||'none'}')">Delete</button></td>
       </tr>`;}).join('')}</tbody></table></div>`;
 }
 
@@ -1265,7 +1359,7 @@ async function loadAnnouncements(){
   // an announcement never emailed shouldn't imply 0 sent/0 failed as if
   // sending was attempted and came up empty.
   wrap.innerHTML = data.map(a=>`
-    <div class="card" style="padding:14px 16px;margin-bottom:8px;cursor:pointer" onclick="openAnnRecipients('${a.id}','${esc(a.title).replace(/'/g,"\\'")}')">
+    <div class="card" style="padding:14px 16px;margin-bottom:8px;cursor:pointer" onclick="openAnnRecipients('${a.id}',${jsArg(a.title)})">
       <div class="row" style="justify-content:space-between">
         <div style="font-weight:700;font-size:13.5px">${esc(a.title)}</div>
         <div style="font-size:11px;color:#8a9394">${fmtDate(a.created_at)}</div>
