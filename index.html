@@ -1296,6 +1296,7 @@ let CUR_USER_EMAIL = ''; // cached lowercase email of whoever's logged in, so
 // without an extra async round trip, kept in sync by afterAuth() and by
 // syncSubscription() on every boot/login.
 let CUR_SUBSCRIPTION = null;
+let CUR_BILLING_NOTICE = null;   // paused-account details (deactivation date), loaded only when status is paused
 
 async function saveCfg(){
   if(!CUR_VENUE_ID) return;
@@ -1322,6 +1323,7 @@ async function loadAll(){
       CFG = (row.cfg && Object.keys(row.cfg).length) ? row.cfg : null;
       DATA = (row.data && Object.keys(row.data).length) ? hydrateData(row.data) : null;
       CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, provider: row.provider, current_period_end: row.current_period_end };
+      if(row.status==='paused'){ loadBillingNotice(); } else { CUR_BILLING_NOTICE = null; }
       if(CFG){
         const correctedPlan = (row.status === 'active') ? row.plan : 'starter';
         const storedPlan = row.cfg && row.cfg.plan;
@@ -1368,6 +1370,7 @@ async function syncSubscription(){
     const row = Array.isArray(rows) ? rows[0] : rows;
     if(row){
       CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, provider: row.provider, current_period_end: row.current_period_end };
+      if(row.status==='paused'){ loadBillingNotice(); } else { CUR_BILLING_NOTICE = null; }
       if(CFG){
         const active = row.status === 'active';
         const correctedPlan = active ? row.plan : 'starter';
@@ -7992,8 +7995,8 @@ function drawSettingsBody(){
         </div>`
         : (subNow && subNow.status==='paused')
           ? `<div class="card" style="margin-bottom:14px;border-color:var(--amber)">
-          <div class="card-title">Your plan is paused</div>
-          <div style="font-size:12px;color:var(--ink-dim);line-height:1.6">Your business and all your data are safe, and you keep Starter access. To reactivate <b style="color:var(--navy)">${esc(subPlanLabel)}</b>, complete payment below or message the BYINFORGH team.</div>
+          <div class="card-title">Your account is paused</div>
+          <div style="font-size:12px;color:var(--ink-dim);line-height:1.6">${CUR_BILLING_NOTICE && CUR_BILLING_NOTICE.deactivate_after ? `It will be deactivated on <b style="color:var(--navy)">${esc(new Date(CUR_BILLING_NOTICE.deactivate_after).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}))}</b> if payment is not received. ` : ''}Your business and all your data are safe, and you keep Starter access. To reactivate <b style="color:var(--navy)">${esc(subPlanLabel)}</b>, complete payment below or message the BYINFORGH team.</div>
         </div>`
           : '');
     b.innerHTML = demoRow + foundingRow + trialRow + intendedNudge + `<div class="card" style="margin-bottom:14px">
@@ -8198,12 +8201,16 @@ async function loadMyTickets(){
 async function loadPartnerStatus(){
   const el = document.getElementById('partnerStatusCard'); if(!el) return;
   try{
-    const [{ data: status, error: e1 }, { data: code, error: e2 }] = await Promise.all([
-      sb.rpc('get_my_partner_status'),
-      sb.rpc('get_or_create_partner_code')
-    ]);
+    const { data: status, error: e1 } = await sb.rpc('get_my_partner_status');
     if(e1) throw e1;
-    if(e2) console.error('get_or_create_partner_code failed', e2);
+    // TecXPARTNER is by approval. Only an approved business ever asks for
+    // a code, the server refuses to hand one to anyone else.
+    let code = '';
+    if(status && status.approved !== false){
+      const { data: c, error: e2 } = await sb.rpc('get_or_create_partner_code');
+      if(e2) console.error('get_or_create_partner_code failed', e2);
+      code = c || '';
+    }
     renderPartnerStatus(status, code);
   }catch(e){
     console.error('loadPartnerStatus failed', e);
@@ -8213,6 +8220,11 @@ async function loadPartnerStatus(){
 function renderPartnerStatus(status, fallbackCode){
   const el = document.getElementById('partnerStatusCard'); if(!el) return;
   if(!status){ el.innerHTML = `<div class="card-title">TecXPARTNER Status</div><div style="font-size:12px;color:var(--muted)">Could not load your TecXPARTNER status right now.</div>`; return; }
+  if(status.approved === false){
+    el.innerHTML = `<div class="card-title">TecXPARTNER</div>
+      <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7">TecXPARTNER is by approval. The BYINFORGH team approves businesses it believes are ready and serious about referring other shops, and earns them a monthly payout for every shop that stays active.<br>${status.approval_status==='revoked' ? 'Your TecXPARTNER access is currently on hold. Message the BYINFORGH team if you would like to talk about it.' : 'Message the BYINFORGH team if you would like to be considered.'}</div>`;
+    return;
+  }
   const code = status.code || fallbackCode || '';
   const link = status.referral_link || (code ? `https://www.tecxfra.com/?ref=${code}` : '');
   const active = status.active_referrals || {starter:0,growth:0,enterprise:0,pending:0};
@@ -8334,6 +8346,61 @@ function switchPlan(key){
 }
 // One place that turns the subscription row into plain words for the owner,
 // including the 14 day trial and the paused state set by the daily billing job.
+// Paused account: shows a popup once per browser session telling the owner
+// the account is paused for non-renewal and when it will be deactivated if
+// payment is not received. Data comes from get_my_billing_notice (server
+// side, scoped to the signed-in user), never from anything the browser sets.
+async function loadBillingNotice(){
+  try{
+    const { data, error } = await sb.rpc('get_my_billing_notice');
+    if(error) throw error;
+    CUR_BILLING_NOTICE = data || null;
+    if(data && data.status==='paused') showPausedPopup(data);
+  }catch(e){ console.error('loadBillingNotice failed', e); }
+}
+function closePausedPopup(){
+  const el = document.getElementById('pausedPopup');
+  if(el) el.remove();
+  document.removeEventListener('keydown', pausedPopupKey);
+}
+function pausedPopupKey(e){ if(e.key==='Escape') closePausedPopup(); }
+function showPausedPopup(n){
+  try{
+    const key = 'tx_pause_popup_' + String(n.deactivate_after || 'x');
+    if(sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+  }catch(e){ /* storage blocked: show it anyway */ }
+  if(document.getElementById('pausedPopup')) return;
+  const label = (PLANS.find(p=>p.key===n.plan)||{}).label || n.plan || 'plan';
+  const when = n.deactivate_after ? new Date(n.deactivate_after).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}) : '';
+  const left = (n.days_left===null || n.days_left===undefined) ? null : Number(n.days_left);
+  const deadline = left===null ? '' : `It will be <b>deactivated in ${left} day${left===1?'':'s'}</b>${when ? ` (on ${esc(when)})` : ''} if payment is not received.`;
+  const wrap = document.createElement('div');
+  wrap.id = 'pausedPopup';
+  wrap.setAttribute('role','dialog');
+  wrap.setAttribute('aria-modal','true');
+  wrap.setAttribute('aria-labelledby','pausedPopupTitle');
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(12,38,47,.55);display:flex;align-items:center;justify-content:center;padding:18px';
+  wrap.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:440px;width:100%;padding:22px 22px 18px;box-shadow:0 24px 60px -20px rgba(12,38,47,.5);border-top:4px solid var(--coral,#c8553d)">
+    <div id="pausedPopupTitle" style="font-size:17px;font-weight:800;color:var(--navy);margin-bottom:8px">Your account is paused</div>
+    <div style="font-size:13px;line-height:1.65;color:var(--ink-dim)">
+      Your TecXFRA <b>${esc(label)}</b> subscription was not renewed, so your account is paused. ${deadline}<br><br>
+      Your business and all your data are safe, and you keep Starter access meanwhile. To keep your account, complete payment under Settings, then Plan, or message the BYINFORGH team.
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn btn-primary" id="pausedPayBtn" style="flex:1;min-width:140px">Pay now</button>
+      <button class="btn btn-ghost" id="pausedLaterBtn" style="flex:1;min-width:140px">Remind me later</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  document.getElementById('pausedPayBtn').onclick = function(){
+    closePausedPopup();
+    try{ settingsTab = 'plan'; navTo('settings'); }catch(e){ console.error(e); }
+  };
+  document.getElementById('pausedLaterBtn').onclick = closePausedPopup;
+  document.addEventListener('keydown', pausedPopupKey);
+  try{ document.getElementById('pausedPayBtn').focus(); }catch(e){}
+}
 function trialDaysLeft(sub){
   if(!(sub && sub.provider==='trial' && sub.status==='active' && sub.current_period_end)) return null;
   return Math.max(0, Math.ceil((new Date(sub.current_period_end).getTime() - Date.now())/86400000));
