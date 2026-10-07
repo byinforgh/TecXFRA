@@ -1901,9 +1901,8 @@ function cohortBanner(){
   if(!WIZ_COHORT) return '';
   const s = COHORT_SLOTS && COHORT_SLOTS[WIZ_COHORT];
   const label = WIZ_COHORT==='diaspora' ? 'Founding Diaspora Cohort' : 'Founding Ghana Cohort';
-  const desc = WIZ_COHORT==='diaspora'
-    ? 'Prestige, free for keeps, one of 10 spots reserved for this launch group.'
-    : 'Your chosen plan, free for keeps, one of 10 spots reserved for this launch group.';
+  // Both cohorts get Prestige, free for keeps, so there is nothing to choose.
+  const desc = 'Prestige, free for keeps, one of 10 spots reserved for this launch group.';
   if(!s) return `<div style="font-size:11.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px">🎉 ${label}: ${desc}</div>`;
   // Once every spot is claimed the message is removed completely, there is
   // nothing left to announce, they simply continue as a normal signup.
@@ -1917,11 +1916,12 @@ function cohortBanner(){
 async function claimCohortSlotIfChosen(planKey){
   if(!WIZ_COHORT) return false;
   try{
-    const { data, error } = await sb.rpc('claim_cohort_slot', { p_cohort: WIZ_COHORT, p_plan: planKey });
+    // Both cohorts are Prestige. The server enforces this too.
+    const { data, error } = await sb.rpc('claim_cohort_slot', { p_cohort: WIZ_COHORT, p_plan: 'prestige' });
     if(error) throw error;
     if(data && data.success){
       const label = WIZ_COHORT==='diaspora' ? 'Founding Diaspora Cohort' : 'Founding Ghana Cohort';
-      showToast(`🎉 Welcome to the ${label}, ${PLANS.find(p=>p.key===planKey).label} is free, for keeps.`);
+      showToast(`🎉 Welcome to the ${label}, Prestige is free, for keeps.`);
       return true;
     }
     return false;
@@ -2017,15 +2017,24 @@ function renderWizPlanStep(){
     }
   }
   const cohortHtml = WIZ_TRIAL ? trialBanner() : cohortBanner();
-  if(!isAfrican || WIZ_COHORT==='diaspora'){
+  // Cohort spots are Prestige for both Ghana and Diaspora. If the Ghana cohort
+  // is already full, fall back to the normal plan choice instead of promising
+  // a free spot that no longer exists.
+  const cohortSpots = WIZ_COHORT && COHORT_SLOTS && COHORT_SLOTS[WIZ_COHORT];
+  const cohortFull = !!(cohortSpots && cohortSpots.remaining<=0);
+  const cohortOn = !!WIZ_COHORT && !cohortFull;
+  if(sub && cohortOn && isAfrican){
+    sub.textContent = "You're joining the founding cohort: Prestige is your plan, free for keeps, with the TecXFRA Network, verified directory, direct B2B chat and industry channels.";
+  }
+  if(!isAfrican || WIZ_COHORT==='diaspora' || (WIZ_COHORT==='ghana' && cohortOn)){
     wizPlan = 'prestige';
     const p = PLANS.find(x=>x.key==='prestige');
     grid.style.gridTemplateColumns = '1fr';
     grid.innerHTML = `${cohortHtml}
     <div class="plan-pick sel" data-k="prestige" style="border:2px solid var(--teal);border-radius:12px;padding:16px;cursor:default">
-      <div style="font-size:10.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:6px;padding:3px 8px;display:inline-block;margin-bottom:8px">🌐 Global / diaspora market, Prestige is your plan</div>
+      <div style="font-size:10.5px;font-weight:700;color:var(--teal-dim);background:var(--cream);border:1px solid var(--line);border-radius:6px;padding:3px 8px;display:inline-block;margin-bottom:8px">${cohortOn ? '🎉 Founding cohort, Prestige is your plan' : '🌐 Global / diaspora market, Prestige is your plan'}</div>
       <div style="font-weight:800;font-size:14.5px;color:var(--navy)">${p.label}</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${planPriceDisplay('prestige', wizCurrency)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${cohortOn ? 'Free, for keeps, through the founding cohort' : planPriceDisplay('prestige', wizCurrency)}</div>
       <div style="font-size:11.5px;color:var(--ink-dim);margin:4px 0 6px;line-height:1.5">${p.tagline}</div>
     </div>`;
     return;
