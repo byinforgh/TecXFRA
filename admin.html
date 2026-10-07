@@ -211,7 +211,7 @@
       <div id="statGrid" class="stat-grid"></div>
       <div class="row" style="justify-content:space-between;margin:20px 0 10px">
         <div class="sub" style="margin-bottom:0">Founding spots left and free trials. Spots are claimed first come, first served and can never go past the cap.</div>
-        <button class="refresh-link" onclick="loadBillingSummary()">Refresh</button>
+        <button class="refresh-link" onclick="refreshOverview()">Refresh</button>
       </div>
       <div id="billingSummaryWrap" class="stat-grid"></div>
       <div id="trialInviteWrap" style="margin-top:14px"></div>
@@ -380,7 +380,7 @@
 
     <div id="tab-partners" class="tab-panel">
       <div class="row" style="justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
-        <div class="sub" style="margin-bottom:0">Every business's TecXPARTNER status: referred shops, what's due this cycle, and payout history. Settlement runs automatically on the 5th (see tecxpartner_schema.sql), amounts here are already calculated, "Mark Paid" is just recording that the MoMo transfer went out.</div>
+        <div class="sub" style="margin-bottom:0">Every business on TecXFRA, with its TecXPARTNER status. Approve a business you judge capable and serious and it gets a referral link. Referred shops, what's due this cycle and payout history show per business. Settlement runs automatically on the 5th and only pays approved partners. "Mark Paid" just records that the MoMo transfer went out.</div>
         <button class="refresh-link" onclick="loadPartnersAdmin()">Refresh</button>
       </div>
       <div id="partnersTableWrap"></div>
@@ -556,7 +556,23 @@ async function afterLogin(){
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.tab===name));
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('on', p.id==='tab-'+name));
+  refreshTab(name);
 }
+// Every tab reloads its own data when you open it, when you come back to
+// this browser tab, and (Overview only) once a minute. Before this, a page
+// left open all day kept showing the numbers from when it was first opened,
+// so a business that registered since then showed in the wrong place.
+function refreshOverview(){ loadStats(); loadBillingSummary(); }
+function refreshTab(name){
+  if(!sb) return;
+  if(name==='overview') refreshOverview();
+  else if(name==='businesses'){ loadBusinesses(); loadFoundingClaims(); }
+  else if(name==='partners') loadPartnersAdmin();
+  else if(name==='payments' && typeof loadRenewals==='function') loadRenewals();
+}
+function currentTabName(){ const t = document.querySelector('.tab.on'); return t ? t.dataset.tab : 'overview'; }
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') refreshTab(currentTabName()); });
+setInterval(()=>{ if(document.visibilityState==='visible' && currentTabName()==='overview') refreshOverview(); }, 60000);
 
 function fmtDate(d){ return d ? new Date(d).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}) : 'Not set'; }
 // BUG CAUGHT IN AUDIT: loadBusinesses() called fmtDateTime() for the new
@@ -619,7 +635,7 @@ function goToBusinesses(filter){
   // (active-paid, signups) resets both dropdowns and shows in the badge
   // below instead, since they don't map onto a single dropdown option.
   document.getElementById('bizPlanFilter').value = filter.kind==='plan' ? filter.value : 'all';
-  document.getElementById('bizSourceFilter').value = 'all';
+  document.getElementById('bizSourceFilter').value = filter.kind==='source' ? filter.value : 'all';
   loadBusinesses();
 }
 
@@ -755,11 +771,29 @@ function statusPill(status){
 // Founding/cohort slot holders: shows who's occupying a one-time free
 // spot, with real login activity next to it, so it's an informed
 // decision, not a guess, before releasing anything.
+let FOUNDER_VIEW = null;   // {source:'founding_tier'|'cohort', value:'growth'|'ghana'|'all'|...} set by the Overview cards
+function goToFounders(source, value){
+  FOUNDER_VIEW = {source, value};
+  switchTab('businesses');
+  loadFoundingClaims().then(()=>{
+    const el = document.getElementById('foundingClaimsWrap');
+    if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'});
+  });
+}
+function clearFounderView(){ FOUNDER_VIEW = null; loadFoundingClaims(); }
 async function loadFoundingClaims(){
   const wrap = document.getElementById('foundingClaimsWrap');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
-  const { data, error } = await sb.rpc('admin_list_founding_claims');
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not load: ${error.message||error}</div>`; return; }
+  const { data: allData, error } = await sb.rpc('admin_list_founding_claims');
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load: ${esc(error.message||error)}</div>`; return; }
+  let data = allData || [];
+  let viewBadge = '';
+  if(FOUNDER_VIEW){
+    data = data.filter(r=> r.source===FOUNDER_VIEW.source && (FOUNDER_VIEW.value==='all' || String(r.tier_or_cohort).toLowerCase()===FOUNDER_VIEW.value));
+    const nice = FOUNDER_VIEW.source==='cohort' ? `${FOUNDER_VIEW.value} cohort` : (FOUNDER_VIEW.value==='all' ? 'all founder' : `${FOUNDER_VIEW.value} founder`);
+    viewBadge = `<div style="margin-bottom:10px;font-size:12.5px;color:var(--teal-dim)">Showing ${esc(nice)} spot holders (${data.length}). <a href="#" onclick="clearFounderView();return false" style="color:inherit">Show everyone</a></div>`;
+    if(!data.length){ wrap.innerHTML = viewBadge + '<div class="card empty">Nobody holds a spot here yet.</div>'; return; }
+  }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No founding or cohort slots claimed yet.</div>'; return; }
   // Founding/cohort slot holders: shows who's occupying a one-time free
   // spot, with real login activity AND real data-in-the-app next to it,
@@ -769,7 +803,7 @@ async function loadFoundingClaims(){
   // accounts that signed up but never actually used the platform, the
   // two together are what actually separates a genuine early adopter
   // from an abandoned signup, a login alone doesn't prove usage.
-  wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
+  wrap.innerHTML = viewBadge + `<div class="table-scroll"><table class="biz-table"><thead><tr>
       <th>Business</th><th>Slot</th><th>Claimed</th><th>Last active</th><th>Activity</th><th>Sub status</th><th></th>
     </tr></thead><tbody>${data.map(r=>{
       const lastActive = r.last_active_at && (!r.last_sign_in_at || new Date(r.last_active_at) > new Date(r.last_sign_in_at))
@@ -931,15 +965,17 @@ async function loadBillingSummary(){
   const totalLeft = (data.founder||[]).reduce((a,r)=>a+Math.max(0,Number(r.remaining)||0),0);
   const totalCap = (data.founder||[]).reduce((a,r)=>a+(Number(r.cap)||0),0);
   const c = {}; (data.cohorts||[]).forEach(r=>{ c[r.cohort]=r; });
-  const card = (label, n, sub, danger)=>`<div class="stat-card" style="cursor:default"><div class="n"${danger?' style="color:var(--danger)"':''}>${n}</div><div class="l">${label}${sub?`<br><span style="font-weight:400">${sub}</span>`:''}</div></div>`;
-  const tier = (k,l)=>{ const r=f[k]||{remaining:0,cap:0}; return card(`${l} founder spots left`, `${r.remaining} / ${r.cap}`, '', Number(r.remaining)<=0); };
+  // action is always a constant built here (never user data), so it is safe
+  // to place in an inline handler.
+  const card = (label, n, sub, danger, action)=>`<div class="stat-card"${action?` role="button" tabindex="0" onclick="${action}" onkeydown="if(event.key==='Enter'){${action}}"`:' style="cursor:default"'}><div class="n"${danger?' style="color:var(--danger)"':''}>${n}</div><div class="l">${label}${sub?`<br><span style="font-weight:400">${sub}</span>`:''}</div></div>`;
+  const tier = (k,l)=>{ const r=f[k]||{remaining:0,cap:0}; return card(`${l} founder spots left`, `${r.remaining} / ${r.cap}`, 'Click to see who holds them', Number(r.remaining)<=0, `goToFounders('founding_tier','${k}')`); };
   wrap.innerHTML =
-    card('Founder spots left (all plans)', `${totalLeft} / ${totalCap}`, totalLeft<=0 ? 'All gone, signup message is hidden' : 'Signup message is showing', totalLeft<=0) +
+    card('Founder spots left (all plans)', `${totalLeft} / ${totalCap}`, totalLeft<=0 ? 'All gone, signup message is hidden. Click to see holders' : 'Signup message is showing. Click to see holders', totalLeft<=0, `goToFounders('founding_tier','all')`) +
     tier('enterprise','Enterprise') + tier('growth','Growth') + tier('starter','Starter') +
-    card('Ghana cohort spots left', c.ghana ? `${c.ghana.remaining} / ${c.ghana.cap}` : 'n/a') +
-    card('Diaspora cohort spots left', c.diaspora ? `${c.diaspora.remaining} / ${c.diaspora.cap}` : 'n/a') +
-    card('Trials running', data.trials_active ?? 0) +
-    card('Trials ended, not paid yet', data.trials_ended_unpaid ?? 0, '', (data.trials_ended_unpaid||0)>0);
+    card('Ghana cohort spots left', c.ghana ? `${c.ghana.remaining} / ${c.ghana.cap}` : 'n/a', 'Click to see holders', false, `goToFounders('cohort','ghana')`) +
+    card('Diaspora cohort spots left', c.diaspora ? `${c.diaspora.remaining} / ${c.diaspora.cap}` : 'n/a', 'Click to see holders', false, `goToFounders('cohort','diaspora')`) +
+    card('Trials running', data.trials_active ?? 0, 'Click to see them', false, `goToBusinesses({kind:'source',value:'trial'})`) +
+    card('Trials ended, not paid yet', data.trials_ended_unpaid ?? 0, 'Click to see them', (data.trials_ended_unpaid||0)>0, `goToBusinesses({kind:'source',value:'trial'})`);
 }
 // The 14 day trial link. Separate from a normal signup and from both
 // founding cohorts: it never uses a founding slot.
@@ -982,11 +1018,40 @@ async function setRenewalAction(venueId, value, previous, selEl){
   loadRenewals();
 }
 function autoActionNote(b){
+  if(b.status==='paused' && b.deactivate_after) return `<div class="sub" style="margin:2px 0 0;color:var(--danger)">Paused. Deactivates ${fmtDate(b.deactivate_after)} unless paid</div>`;
   if(b.delete_after) return `<div class="sub" style="margin:2px 0 0;color:var(--danger)">Deletes ${fmtDate(b.delete_after)} unless paid</div>`;
   if(b.last_auto_action==='auto_renewed') return `<div class="sub" style="margin:2px 0 0">Auto renewed ${fmtDate(b.last_auto_action_at)}</div>`;
   if(b.last_auto_action==='paused') return `<div class="sub" style="margin:2px 0 0">Paused ${fmtDate(b.last_auto_action_at)}</div>`;
   if(b.last_auto_action==='trial_ended') return `<div class="sub" style="margin:2px 0 0">Trial ended ${fmtDate(b.last_auto_action_at)}</div>`;
   return '';
+}
+// Pause an account for non-renewal. The owner gets a popup next time they open
+// the app, plus an in-app message and an email, telling them it will be
+// deactivated in N days if payment is not received. They keep Starter access
+// and all their data. Paying (or you pressing Resume) clears it at once, and
+// the daily job deactivates it automatically when the days run out.
+async function confirmPause(venueId, name){
+  const raw = window.prompt(`Pause "${name}" for non-renewal?\n\nThey will get a popup, a message and an email saying their account is paused and will be deactivated if unpaid. They keep Starter access and all their data.\n\nDays until deactivation if unpaid (1 to 90):`, '7');
+  if(raw===null) return;
+  const days = Number(String(raw).trim());
+  if(!Number.isInteger(days) || days<1 || days>90){ alert('Enter a whole number from 1 to 90.'); return; }
+  const { data, error } = await sb.rpc('admin_pause_subscription', { p_venue_id: venueId, p_days: days });
+  if(error){ alert(`Could not pause: ${error.message||error}`); return; }
+  if(data && data.success===false){ alert(data.message || 'Could not pause.'); return; }
+  alert(`${name} is paused. They will be deactivated in ${days} day${days===1?'':'s'} if they do not pay.`);
+  refreshAfterBillingChange();
+}
+async function confirmResume(venueId, name){
+  if(!confirm(`Resume ${name}? Their plan goes back to active, the deactivation countdown is cancelled and they get a message saying so.`)) return;
+  const { data, error } = await sb.rpc('admin_resume_subscription', { p_venue_id: venueId });
+  if(error){ alert(`Could not resume: ${error.message||error}`); return; }
+  if(data && data.success===false){ alert(data.message || 'Could not resume.'); return; }
+  alert(`${name} is active again.`);
+  refreshAfterBillingChange();
+}
+function refreshAfterBillingChange(){
+  loadBusinesses(); loadStats(); loadBillingSummary();
+  if(typeof loadRenewals==='function') loadRenewals();
 }
 // Direct renewal-date editor, separate from "Grant paid plan": that flow
 // only ever sets a date at the moment a plan is granted, there was no way
@@ -1155,7 +1220,7 @@ async function loadBusinesses(){
   // distinction matters and shouldn't be hidden by falling back to
   // created_at.
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
-      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Source</th><th>Status</th><th>Renews</th><th>After the date</th><th>Signed up</th><th>Last active</th><th colspan="3"></th>
+      <th>Business</th><th>Owner</th><th>Phone</th><th>Owner email</th><th>Industry</th><th>Country</th><th>Plan</th><th>Source</th><th>Status</th><th>Renews</th><th>After the date</th><th>Signed up</th><th>Last active</th><th colspan="4"></th>
     </tr></thead><tbody>${rows.map(b=>{
       const lastActive = b.last_active_at && (!b.last_sign_in_at || new Date(b.last_active_at) > new Date(b.last_sign_in_at))
         ? b.last_active_at : b.last_sign_in_at;
@@ -1176,26 +1241,43 @@ async function loadBusinesses(){
         <td>${fmtDate(b.created_at)}</td>
         <td>${lastActive ? fmtDateTime(lastActive) : '<span style="color:#b45309">Never</span>'}</td>
         <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}',${nameJs},'${b.plan_source}')">Grant paid plan</button></td>
-        <td>${b.status==='active' ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${b.venue_id}',${nameJs})">Deactivate</button>` : ''}</td>
+        <td>${(b.status==='active' && b.plan_source!=='trial') ? `<button class="refresh-link" style="color:var(--amber,#b45309)" onclick="confirmPause('${b.venue_id}',${nameJs})">Pause</button>` : (b.status==='paused' ? `<button class="refresh-link" onclick="confirmResume('${b.venue_id}',${nameJs})">Resume</button>` : '')}</td>
+        <td>${(b.status==='active' || b.status==='paused') ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${b.venue_id}',${nameJs})">Deactivate</button>` : ''}</td>
         <td><button class="refresh-link" style="color:var(--danger);font-weight:700" onclick="confirmDeleteBusiness('${b.venue_id}',${nameJs},'${b.status}','${b.plan_source||'none'}')">Delete</button></td>
       </tr>`;}).join('')}</tbody></table></div>`;
 }
 
+let PARTNER_FILTER = 'all';
 async function loadPartnersAdmin(){
   const wrap = document.getElementById('partnersTableWrap'); if(!wrap) return;
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
   const { data, error } = await sb.rpc('admin_list_partner_status');
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not load TecXPARTNER status: ${error.message||error}. Has tecxpartner_schema.sql been run yet?</div>`; return; }
-  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No businesses have a TecXPARTNER code yet, this fills in as businesses visit Settings → Account.</div>'; return; }
-  wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
-      <th>Business</th><th>Code</th><th>Partner account</th><th>Starter active</th><th>Growth active</th><th>Enterprise active</th><th>Pending (2-mo lock)</th><th>Due now</th><th>Last period</th><th>Last status</th><th></th>
-    </tr></thead><tbody>${data.map(p=>{
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load TecXPARTNER status: ${esc(error.message||error)}</div>`; return; }
+  if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No businesses have signed up yet.</div>'; return; }
+  const approvedCount = data.filter(p=>p.approval_status==='approved').length;
+  const rows = data.filter(p=> PARTNER_FILTER==='all' ? true : (PARTNER_FILTER==='approved' ? p.approval_status==='approved' : p.approval_status!=='approved'));
+  const pill = (st)=> st==='approved' ? '<span class="pill pill-active">Approved</span>' : (st==='revoked' ? '<span class="pill pill-inactive">Revoked</span>' : '<span class="pill pill-paused">Not approved</span>');
+  const top = `<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap">
+      <div class="sub" style="margin:0">${approvedCount} of ${data.length} businesses approved as TecXPARTNER. Only approved businesses get a referral link and are paid.</div>
+      <select onchange="PARTNER_FILTER=this.value;loadPartnersAdmin()" style="width:auto;padding:6px 10px;font-size:12.5px">
+        <option value="all" ${PARTNER_FILTER==='all'?'selected':''}>All businesses</option>
+        <option value="approved" ${PARTNER_FILTER==='approved'?'selected':''}>Approved only</option>
+        <option value="not" ${PARTNER_FILTER==='not'?'selected':''}>Not approved only</option>
+      </select></div>`;
+  if(!rows.length){ wrap.innerHTML = top + '<div class="card empty">No businesses match this filter.</div>'; return; }
+  wrap.innerHTML = top + `<div class="table-scroll"><table class="biz-table"><thead><tr>
+      <th>Business</th><th>Plan</th><th>Account</th><th>TecXPARTNER</th><th>Code</th><th>Starter active</th><th>Growth active</th><th>Enterprise active</th><th>Pending (2-mo lock)</th><th>Due now</th><th>Last period</th><th>Last status</th><th></th>
+    </tr></thead><tbody>${rows.map(p=>{
       const dueNow = Number(p.current_due||0);
+      const nameJs = jsArg(p.business_name);
+      const approved = p.approval_status==='approved';
       return `
       <tr>
         <td><b>${esc(p.business_name)||'Unnamed business'}</b></td>
-        <td style="font-family:monospace;font-size:11.5px">${esc(p.code)||'—'}</td>
-        <td>${statusPill(p.partner_active?'active':'inactive')}</td>
+        <td>${planPill(p.plan)}</td>
+        <td>${statusPill(p.sub_status)}</td>
+        <td>${pill(p.approval_status)}</td>
+        <td style="font-family:monospace;font-size:11.5px">${approved ? (esc(p.code)||'None') : 'None'}</td>
         <td>${p.starter_active||0}</td>
         <td>${p.growth_active||0}</td>
         <td>${p.enterprise_active||0}</td>
@@ -1203,8 +1285,25 @@ async function loadPartnersAdmin(){
         <td><b>${dueNow ? 'GHS '+dueNow.toFixed(2) : '—'}</b></td>
         <td>${esc(p.last_period)||'—'}</td>
         <td>${p.last_status ? `<span class="pill ${p.last_status==='paid'?'pill-active':'pill-inactive'}">${esc(p.last_status)}</span>` : '—'}</td>
-        <td>${(p.last_status==='due') ? `<button class="refresh-link" onclick="markPartnerPaid('${p.venue_id}','${esc(p.last_period)}')">Mark Paid</button>` : ''}</td>
+        <td>${approved
+            ? `<button class="refresh-link" style="color:var(--danger)" onclick="setPartnerApproval('${p.venue_id}',${nameJs},false)">Revoke</button>`
+            : `<button class="refresh-link" style="font-weight:700" onclick="setPartnerApproval('${p.venue_id}',${nameJs},true)">Approve</button>`}
+          ${(p.last_status==='due') ? `<button class="refresh-link" onclick="markPartnerPaid('${p.venue_id}',${jsArg(p.last_period)})">Mark Paid</button>` : ''}</td>
       </tr>`;}).join('')}</tbody></table></div>`;
+}
+// Approve or revoke a business as a TecXPARTNER. Approving creates their
+// referral code and sends them a message. Revoking makes the link stop
+// counting new referrals and stops payouts, nothing already recorded is
+// deleted, and approving again restores it.
+async function setPartnerApproval(venueId, name, approve){
+  const ok = approve
+    ? confirm(`Approve "${name}" as a TecXPARTNER?\n\nThey get a referral link and are paid monthly for shops they refer that stay active. Only approve a business you are confident is capable and serious.`)
+    : confirm(`Revoke "${name}" as a TecXPARTNER?\n\nTheir referral link stops counting new referrals and they stop being paid. Records already made are kept, and you can approve them again later.`);
+  if(!ok) return;
+  const { data, error } = await sb.rpc('admin_set_partner_approval', { p_venue_id: venueId, p_approved: !!approve, p_note: null });
+  if(error){ alert(`Could not save: ${error.message||error}`); return; }
+  if(data && data.success===false){ alert(data.message || 'Could not save.'); return; }
+  loadPartnersAdmin();
 }
 async function markPartnerPaid(venueId, period){
   if(!confirm(`Mark this TecXPARTNER payout (${period}) as paid via MoMo?`)) return;
