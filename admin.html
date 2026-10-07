@@ -1318,7 +1318,7 @@ async function markPartnerPaid(venueId, period){
 // widely can never hand out more than 10 spots per cohort.
 const COHORT_SITE = 'https://www.tecxfra.com/';
 const COHORT_INVITES = {
-  ghana:    { label:'🇬🇭 Ghana Cohort (10 spots)',     blurb:'Free for keeps on the plan they choose.', msg:'Hi, I am inviting you to be one of 10 founding Ghana businesses on TecXFRA, the system that runs your sales, customers, money and daily follow-ups from your phone. Your spot is free for keeps. Join here: ' },
+  ghana:    { label:'🇬🇭 Ghana Cohort (10 spots)',     blurb:'Prestige plan, free for keeps.', msg:'Hi, I am inviting you to be one of 10 founding Ghana businesses on TecXFRA, the system that runs your sales, customers, money and daily follow-ups from your phone. Your Prestige spot is free for keeps. Join here: ' },
   diaspora: { label:'🌐 Diaspora Cohort (10 spots)',   blurb:'Prestige plan, free for keeps.',          msg:'Hi, I am inviting you to be one of 10 founding diaspora businesses on TecXFRA, the system that runs your sales, customers, money and daily follow-ups from your phone. Your Prestige spot is free for keeps. Join here: ' }
 };
 function renderCohortInvites(){
@@ -1363,7 +1363,7 @@ async function loadCohortAdmin(){
     const s = byKey[key] || {cap:10, used:0, remaining:10};
     return `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-num">${s.remaining} / ${s.cap}</div><div class="sub" style="margin:2px 0 0">spots remaining</div></div>`;
   };
-  statWrap.innerHTML = card('diaspora','Diaspora Cohort (Prestige)') + card('ghana','Ghana Cohort (local tier)');
+  statWrap.innerHTML = card('diaspora','Diaspora Cohort (Prestige)') + card('ghana','Ghana Cohort (Prestige)');
   if(claims.error){ listWrap.innerHTML = `<div class="card empty">Could not load claimed businesses: ${claims.error.message||claims.error}</div>`; return; }
   if(!claims.data || !claims.data.length){ listWrap.innerHTML = '<div class="card empty">No cohort spots claimed yet. Share an invite link ending in ?cohort=diaspora or ?cohort=ghana with the businesses you\'re targeting.</div>'; return; }
   listWrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr><th>Business</th><th>Cohort</th><th>Plan</th><th>Claimed</th></tr></thead><tbody>${claims.data.map(c=>`
