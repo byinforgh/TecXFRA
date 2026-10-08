@@ -1030,6 +1030,36 @@ function autoActionNote(b){
 // deactivated in N days if payment is not received. They keep Starter access
 // and all their data. Paying (or you pressing Resume) clears it at once, and
 // the daily job deactivates it automatically when the days run out.
+const ADDON_KEYS = {1:'contacts_100', 2:'transactions_300', 3:'staff_5', 4:'business_plan'};
+const ADDON_NAMES = {contacts_100:'+100 contacts', transactions_300:'+300 transactions a month', staff_5:'+5 team members', business_plan:'Business Plan Pass'};
+async function manageAddons(venueId, name){
+  const { data: rows, error: le } = await sb.rpc('admin_list_addons', { p_venue: venueId });
+  if(le){ alert(`Could not load add-ons: ${le.message||le}`); return; }
+  const now = Date.now();
+  const live = (rows||[]).filter(r=>!r.revoked_at && new Date(r.expires_at).getTime()>now);
+  const liveTxt = live.length ? live.map((r,i)=>`${i+1}. ${ADDON_NAMES[r.addon_key]||r.addon_key}, until ${String(r.expires_at).slice(0,10)}`).join('\n') : 'None active.';
+  const raw = window.prompt(`Add-ons for "${name}"\n\nActive now:\n${liveTxt}\n\nType 1 to 4 to ADD one for a period:\n1 = +100 contacts\n2 = +300 transactions a month\n3 = +5 team members\n4 = Business Plan Pass\n\nOr type R to REVOKE one of the active ones.`);
+  if(raw===null) return;
+  const t = String(raw).trim().toUpperCase();
+  if(t==='R'){
+    if(!live.length){ alert('Nothing active to revoke.'); return; }
+    const n = Number(window.prompt(`Revoke which one? Type its number (1 to ${live.length}).\n\n${liveTxt}`));
+    if(!Number.isInteger(n) || n<1 || n>live.length) return;
+    const { error } = await sb.rpc('admin_revoke_addon', { p_id: live[n-1].id });
+    if(error){ alert(`Could not revoke: ${error.message||error}`); return; }
+    alert('Revoked. The owner keeps every record, they just cannot add past their plan limit.'); return;
+  }
+  const key = ADDON_KEYS[Number(t)];
+  if(!key){ alert('Type 1, 2, 3, 4 or R.'); return; }
+  const dRaw = window.prompt(`How many days should "${ADDON_NAMES[key]}" last for ${name}? (1 to 366, one month is 30)`, '30');
+  if(dRaw===null) return;
+  const days = Number(String(dRaw).trim());
+  if(!Number.isInteger(days) || days<1 || days>366){ alert('Enter a whole number from 1 to 366.'); return; }
+  const note = window.prompt('Payment note (optional, for your records, for example MoMo reference):', '') || null;
+  const { data, error } = await sb.rpc('admin_grant_addon', { p_venue: venueId, p_key: key, p_days: days, p_note: note });
+  if(error){ alert(`Could not grant: ${error.message||error}`); return; }
+  alert(`${ADDON_NAMES[key]} is on for ${name} until ${String((data&&data.expires_at)||'').slice(0,10)}. It shows the next time they open the app.`);
+}
 async function confirmPause(venueId, name){
   const raw = window.prompt(`Pause "${name}" for non-renewal?\n\nThey will get a popup, a message and an email saying their account is paused and will be deactivated if unpaid. They keep Starter access and all their data.\n\nDays until deactivation if unpaid (1 to 90):`, '7');
   if(raw===null) return;
@@ -1240,7 +1270,7 @@ async function loadBusinesses(){
         <td>${(b.provider==='founding_free'||b.provider==='trial'||!b.provider)?'<span class="sub" style="margin:0">'+(b.provider==='trial'?'Reminder then asks to pay':'n/a')+'</span>':renewalActionSelect(b.venue_id,b.business_name,b.renewal_action)}${autoActionNote(b)}</td>
         <td>${fmtDate(b.created_at)}</td>
         <td>${lastActive ? fmtDateTime(lastActive) : '<span style="color:#b45309">Never</span>'}</td>
-        <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}',${nameJs},'${b.plan_source}')">Grant paid plan</button></td>
+        <td><button class="refresh-link" onclick="openGrantPlan('${b.venue_id}',${nameJs},'${b.plan_source}')">Grant paid plan</button> <button class="refresh-link" onclick="manageAddons('${b.venue_id}',${nameJs})">Add-on</button></td>
         <td>${(b.status==='active' && b.plan_source!=='trial') ? `<button class="refresh-link" style="color:var(--amber,#b45309)" onclick="confirmPause('${b.venue_id}',${nameJs})">Pause</button>` : (b.status==='paused' ? `<button class="refresh-link" onclick="confirmResume('${b.venue_id}',${nameJs})">Resume</button>` : '')}</td>
         <td>${(b.status==='active' || b.status==='paused') ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${b.venue_id}',${nameJs})">Deactivate</button>` : ''}</td>
         <td><button class="refresh-link" style="color:var(--danger);font-weight:700" onclick="confirmDeleteBusiness('${b.venue_id}',${nameJs},'${b.status}','${b.plan_source||'none'}')">Delete</button></td>
