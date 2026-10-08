@@ -1323,7 +1323,7 @@ async function loadAll(){
       CFG = (row.cfg && Object.keys(row.cfg).length) ? row.cfg : null;
       DATA = (row.data && Object.keys(row.data).length) ? hydrateData(row.data) : null;
       CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, provider: row.provider, current_period_end: row.current_period_end };
-      if(row.status==='paused'){ loadBillingNotice(); } else { CUR_BILLING_NOTICE = null; }
+      if(row.status==='paused'){ loadBillingNotice(); } else { CUR_BILLING_NOTICE = null; } loadAddons();
       if(CFG){
         const correctedPlan = (row.status === 'active') ? row.plan : 'starter';
         const storedPlan = row.cfg && row.cfg.plan;
@@ -1370,7 +1370,7 @@ async function syncSubscription(){
     const row = Array.isArray(rows) ? rows[0] : rows;
     if(row){
       CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, provider: row.provider, current_period_end: row.current_period_end };
-      if(row.status==='paused'){ loadBillingNotice(); } else { CUR_BILLING_NOTICE = null; }
+      if(row.status==='paused'){ loadBillingNotice(); } else { CUR_BILLING_NOTICE = null; } loadAddons();
       if(CFG){
         const active = row.status === 'active';
         const correctedPlan = active ? row.plan : 'starter';
@@ -2569,7 +2569,7 @@ function planUsage(){
 // nudge, this is the mechanism that makes Starter → Growth a real,
 // enforced growth path instead of just a marketing distinction.
 function capHit(resource){
-  const limit = currentPlan().limits?.[resource];
+  const limit = effectiveLimit(resource);
   if(limit == null || limit === Infinity) return null;
   return planUsage()[resource] >= limit ? limit : null;
 }
@@ -3788,7 +3788,7 @@ function renderToday(){
   const hotLeads = (DATA.contacts||[]).filter(c=>c.temp==='hot').length;
   const onDuty = (DATA.staff||[]).filter(s=>s.onDuty).length;
   const tip = currentPlan().network ? mentorReflection() : dailyTip();
-  const usage = planUsage(); const limits = currentPlan().limits || {};
+  const usage = planUsage(); const limits = {contacts:effectiveLimit('contacts'), staff:effectiveLimit('staff'), monthlyTransactions:effectiveLimit('monthlyTransactions')};
   const nearCap = ['contacts','staff','monthlyTransactions'].find(r=>limits[r] && limits[r]!==Infinity && usage[r]/limits[r] >= 0.8);
   const capLabel = {contacts:'contacts', staff:'team members', monthlyTransactions:'transactions this month'}[nearCap];
 
@@ -3814,6 +3814,7 @@ function renderToday(){
       return infiniteList('tiplog', list, row, `<div style="font-size:11.5px;color:var(--muted);padding:8px 4px">${TIPS_ARCHIVED_VIEW?'Nothing archived.':"Nothing saved yet, write today's tip above and hit Save, it'll show up here and feed straight into your Business Brain."}</div>`, 260)
         + ((arch.length||TIPS_ARCHIVED_VIEW) ? `<div style="margin-top:6px"><span style="cursor:pointer;color:var(--teal-dim);font-size:11.5px;font-weight:600" onclick="TIPS_ARCHIVED_VIEW=!TIPS_ARCHIVED_VIEW;INF_SHOWN['tiplog']=0;renderToday()">${TIPS_ARCHIVED_VIEW?'← Back to tips':'View archived ('+arch.length+')'}</span></div>` : '');
     })()}</div></div>`;
+  html += reportNudge();
   html += renderInsightsCard();
   setTimeout(initInfiniteLists, 0);
   html += `<div class="grid-metrics">
@@ -3827,10 +3828,7 @@ function renderToday(){
   </div>
   <div class="two-col">
     <div>
-      <div class="card">
-        <div class="card-title">Due Today <span class="sub">tap to open</span></div>
-        ${dueFollowups.length ? dueFollowups.slice(0,6).map(f=>`<div class="list-row" style="cursor:pointer" onclick="navTo('followups')"><span>${esc(f.contactName)}, ${esc(f.detail)}</span><span class="pill pill-hot">${fmtDate(f.due)}</span></div>`).join('') : '<div class="empty">Nothing due today, clean slate.</div>'}
-      </div>
+      ${dueTodayCard()}
       <div class="card">
         <div class="card-title">Today's Calendar</div>
         ${todayEvents.length ? todayEvents.map(e=>`<div class="list-row"><span>${esc(e.time)}, ${esc(e.title)}</span></div>`).join('') : '<div class="empty">Nothing scheduled today.</div>'}
@@ -3864,6 +3862,320 @@ function renderToday(){
     </div>
   </div>`;
   document.getElementById('pageContent').innerHTML = html;
+}
+
+/* ============================================================
+   DATA DOWNLOADS, MONTHLY REPORT, BUSINESS PLAN DRAFT, ONE-MONTH ADD-ONS
+   Everything below runs in the browser from data already loaded, so it adds no database load.
+   ============================================================ */
+const ADDON_CATALOG = {
+  contacts_100:     {label:'+100 contacts', resource:'contacts', qty:100, blurb:'Room for 100 more contacts for one month.'},
+  transactions_300: {label:'+300 transactions a month', resource:'monthlyTransactions', qty:300, blurb:'Room for 300 more sales or transactions each month while it runs.'},
+  staff_5:          {label:'+5 team members', resource:'staff', qty:5, blurb:'Room for 5 more team members for one month.'},
+  business_plan:    {label:'Business Plan Pass', resource:'feature', qty:0, blurb:'Generate a business plan draft from everything in your account.'}
+};
+let ADDON_BONUS = {contacts:0, staff:0, monthlyTransactions:0};
+let ADDON_FEATURES = new Set();
+let ADDON_ROWS = [];
+async function loadAddons(){
+  try{
+    const { data, error } = await sb.rpc('get_my_addons');
+    if(error) throw error;
+    const b = {contacts:0, staff:0, monthlyTransactions:0}, f = new Set(); const rows = Array.isArray(data) ? data : [];
+    rows.forEach(r=>{ const c = ADDON_CATALOG[r.addon_key]; if(!c) return; if(c.resource==='feature') f.add(r.addon_key); else b[c.resource] += c.qty; });
+    ADDON_BONUS = b; ADDON_FEATURES = f; ADDON_ROWS = rows;
+  }catch(e){ /* add-ons are optional, the app works on plan limits alone */ }
+}
+function effectiveLimit(resource){
+  const base = currentPlan().limits?.[resource];
+  if(base == null || base === Infinity) return base;
+  return base + (ADDON_BONUS[resource]||0);
+}
+function addonCard(){
+  const active = ADDON_ROWS.map(r=>{ const c = ADDON_CATALOG[r.addon_key]; return c ? `<div class="list-row"><span><b>${esc(c.label)}</b></span><span class="mono" style="font-size:11.5px">until ${fmtDate(String(r.expires_at).slice(0,10))}</span></div>` : ''; }).join('');
+  const opts = Object.entries(ADDON_CATALOG).map(([k,c])=>`<div class="list-row" style="align-items:flex-start"><span><b>${esc(c.label)}</b><br><span style="font-size:11.5px;color:var(--ink-dim)">${esc(c.blurb)}</span></span><button class="btn btn-ghost" style="padding:6px 10px;white-space:nowrap" onclick="requestAddon('${k}')">Request</button></div>`).join('');
+  return `<div class="card" style="margin-bottom:14px"><div class="card-title">One-month add-ons <span class="sub">more room without changing plan</span></div>
+    <div style="font-size:12px;color:var(--ink-dim);line-height:1.7;margin-bottom:8px">Add-ons last for the period you pay for. When one ends, nothing is deleted: you keep every record, you just cannot add past your plan limit until you renew it or upgrade.</div>
+    ${active ? `<div style="margin-bottom:8px"><div style="font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Active now</div>${active}</div>` : ''}${opts}</div>`;
+}
+async function requestAddon(key){
+  const c = ADDON_CATALOG[key]; if(!c) return;
+  try{
+    const { error } = await sb.rpc('submit_support_ticket', { p_page: 'add-on request', p_message: `Add-on request: ${c.label} for one month. Business: ${CFG.bizName}. Plan: ${currentPlan().label}.` });
+    if(error) throw error;
+    showToast('Request sent. We will confirm payment and switch it on.');
+  }catch(e){ showToast(e && e.message ? e.message : 'Could not send the request, try again'); }
+}
+
+/* ---------- CSV + ZIP ---------- */
+function csvCell(v){
+  if(v===null || v===undefined) return '';
+  if(typeof v==='object') v = JSON.stringify(v);
+  let s = String(v);
+  // Spreadsheet formula guard: a text cell starting with = + - @ would run as a formula in Excel.
+  if(/^[=+\-@\t\r]/.test(s) && !/^[+\-]?[\d\s().]+$/.test(s)) s = "'" + s;
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+function toCSV(rows, pref){
+  rows = rows || [];
+  const seen = new Set(pref||[]); rows.forEach(r=>Object.keys(r||{}).forEach(k=>seen.add(k)));
+  const cols = Array.from(seen);
+  return [cols.map(csvCell).join(',')].concat(rows.map(r=>cols.map(c=>csvCell((r||{})[c])).join(','))).join('\r\n');
+}
+function downloadBlob(blob, name){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+let CRC_TABLE = null;
+function crc32(u8){
+  if(!CRC_TABLE){ CRC_TABLE = new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = (c&1) ? (0xEDB88320 ^ (c>>>1)) : (c>>>1); CRC_TABLE[n]=c>>>0; } }
+  let crc = 0xFFFFFFFF; for(let i=0;i<u8.length;i++) crc = CRC_TABLE[(crc ^ u8[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function makeZip(files){
+  const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+  files.forEach(f=>{
+    const nameB = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true); lh.setUint16(8,0,true); lh.setUint16(10,0,true); lh.setUint16(12,0x21,true);
+    lh.setUint32(14,crc,true); lh.setUint32(18,data.length,true); lh.setUint32(22,data.length,true); lh.setUint16(26,nameB.length,true); lh.setUint16(28,0,true);
+    parts.push(new Uint8Array(lh.buffer), nameB, data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true); ch.setUint16(10,0,true); ch.setUint16(12,0,true); ch.setUint16(14,0x21,true);
+    ch.setUint32(16,crc,true); ch.setUint32(20,data.length,true); ch.setUint32(24,data.length,true); ch.setUint16(28,nameB.length,true); ch.setUint32(42,offset,true);
+    central.push(new Uint8Array(ch.buffer), nameB);
+    offset += 30 + nameB.length + data.length;
+  });
+  const cdSize = central.reduce((s,p)=>s+p.length,0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true); end.setUint16(8,files.length,true); end.setUint16(10,files.length,true); end.setUint32(12,cdSize,true); end.setUint32(16,offset,true);
+  return new Blob(parts.concat(central, [new Uint8Array(end.buffer)]), {type:'application/zip'});
+}
+function expRange(){
+  const f = (document.getElementById('expFrom')||{}).value || '', t = (document.getElementById('expTo')||{}).value || '';
+  return {from:f, to:t};
+}
+function inExpRange(d){ const r = expRange(); const s = (d||'').slice(0,10); return (!r.from || s>=r.from) && (!r.to || s<=r.to); }
+async function logExport(kind){
+  try{ if(!Array.isArray(DATA.exportLog)) DATA.exportLog = []; DATA.exportLog.push({date:todayStr(), kind}); DATA.exportLog = DATA.exportLog.slice(-50); await saveData(); }catch(e){}
+}
+function safeName(s){ return String(s||'business').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40) || 'business'; }
+function exportRevenueCSV(){
+  const rows = (DATA.transactions||[]).filter(x=>inExpRange(x.date));
+  downloadBlob(new Blob(['\ufeff'+toCSV(rows,['date','item','amount','type','contact','staff','id'])],{type:'text/csv;charset=utf-8'}), `${safeName(CFG.bizName)}-revenue-${todayStr()}.csv`);
+  logExport('revenue_csv'); showToast(`Revenue downloaded (${rows.length} rows)`);
+}
+function exportExpensesCSV(){
+  const rows = (DATA.expenses||[]).filter(x=>inExpRange(x.date));
+  downloadBlob(new Blob(['\ufeff'+toCSV(rows,['date','item','category','amount','paidBy','id'])],{type:'text/csv;charset=utf-8'}), `${safeName(CFG.bizName)}-expenses-${todayStr()}.csv`);
+  logExport('expenses_csv'); showToast(`Expenses downloaded (${rows.length} rows)`);
+}
+function exportEverythingZip(){
+  const bom = '\ufeff', d = DATA || {};
+  const readme = `TecXFRA data download\r\nBusiness: ${CFG.bizName}\r\nOwner: ${CFG.ownerName||''}\r\nCountry: ${CFG.country||''}   Currency: ${CFG.currency||''}\r\nDownloaded: ${todayStr()}\r\n\r\nThis folder holds a copy of the records currently live in your TecXFRA account, one CSV file per area, plus data.json which holds everything in one file.\r\nRecords older than ${typeof ARCHIVE_AFTER_MONTHS!=='undefined'?ARCHIVE_AFTER_MONTHS:12} months are moved to your archive automatically. Open Settings, then Data, to browse archived records. They are not in this download.\r\nKeep this copy somewhere safe and off your phone. These files are your records, they are yours to keep.\r\n`;
+  const jrows = (d.journal||[]).map(j=>Object.assign({}, j));
+  const files = [
+    {name:'README.txt', data:readme},
+    {name:'revenue.csv', data:bom+toCSV(d.transactions,['date','item','amount','type','contact','staff','id'])},
+    {name:'expenses.csv', data:bom+toCSV(d.expenses,['date','item','category','amount','paidBy','id'])},
+    {name:'contacts.csv', data:bom+toCSV(d.contacts,['name','phone','company','temp','id'])},
+    {name:'followups.csv', data:bom+toCSV(d.followups,['contactName','due','detail','done','id'])},
+    {name:'reminders.csv', data:bom+toCSV(d.reminders,['title','type','dueDate','recurring','done','notes','id'])},
+    {name:'inventory.csv', data:bom+toCSV(d.inventory)},
+    {name:'items.csv', data:bom+toCSV(d.items)},
+    {name:'staff.csv', data:bom+toCSV(d.staff)},
+    {name:'calendar.csv', data:bom+toCSV(d.events)},
+    {name:'journal.csv', data:bom+toCSV(jrows)},
+    {name:'referrals.csv', data:bom+toCSV(d.referrals)},
+    {name:'data.json', data:JSON.stringify(d, null, 1)}
+  ];
+  downloadBlob(makeZip(files), `${safeName(CFG.bizName)}-full-download-${todayStr()}.zip`);
+  logExport('full_zip'); showToast('Full download ready');
+}
+function openPrintable(title, body){
+  const w = window.open('', '_blank');
+  if(!w){ showToast('Allow pop-ups to open the printable version'); return; }
+  w.document.write(`<!DOC`+`TYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>body{font-family:Inter,Arial,sans-serif;color:#123642;max-width:780px;margin:24px auto;padding:0 16px;line-height:1.55}h1{font-size:22px;margin-bottom:2px}h2{font-size:15px;border-bottom:1px solid #d9d9d9;padding-bottom:4px;margin-top:22px}table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px 6px;border-bottom:1px solid #eee;text-align:left}td.n,th.n{text-align:right}.sub{color:#6b7c85;font-size:12px}.foot{font-size:11px;color:#777;margin-top:26px}.btn{padding:8px 14px;margin-bottom:14px;cursor:pointer}@media print{.btn{display:none}}</style></head><body><button class="btn" onclick="window.print()">Print / Save as PDF</button>${body}</body></html>`);
+  w.document.close();
+}
+function isGrowthPlus(){ return currentPlan().key !== 'starter'; }
+function exportProfitLoss(){
+  if(!isGrowthPlus()){ showToast('Formatted statements are on Growth and above. CSV downloads are on every plan.'); return; }
+  const r = expRange(), tx = (DATA.transactions||[]).filter(x=>inExpRange(x.date)), ex = (DATA.expenses||[]).filter(x=>inExpRange(x.date));
+  const sum = (a)=>a.reduce((s,x)=>s+(parseFloat(x.amount)||0),0), rev = sum(tx), exp = sum(ex), cat = {};
+  ex.forEach(x=>{ const k = x.category || 'Other'; cat[k] = (cat[k]||0) + (parseFloat(x.amount)||0); });
+  const rows = Object.entries(cat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`).join('');
+  openPrintable('Income and expense statement', `<h1>${esc(CFG.bizName)}</h1><div class="sub">Income and expense statement, ${esc(r.from||'start')} to ${esc(r.to||todayStr())}</div>
+    <h2>Income</h2><table><tr><td>Sales and transactions (${tx.length})</td><td class="n">${money(rev)}</td></tr></table>
+    <h2>Expenses</h2><table>${rows || '<tr><td>No expenses in this period</td><td class="n">'+money(0)+'</td></tr>'}<tr><td><b>Total expenses</b></td><td class="n"><b>${money(exp)}</b></td></tr></table>
+    <h2>Result</h2><table><tr><td><b>Net (income minus expenses)</b></td><td class="n"><b>${money(rev-exp)}</b></td></tr><tr><td>Margin</td><td class="n">${rev>0?Math.round((rev-exp)/rev*100)+'%':'n/a'}</td></tr></table>
+    <div class="foot">Prepared from the records entered in TecXFRA on ${esc(todayStr())}. This is a management summary, not an audited statement. Check tax treatment with a qualified accountant or your local tax authority.</div>`);
+  logExport('profit_loss');
+}
+function downloadsCard(){
+  const g = isGrowthPlus();
+  return `<div class="card" style="margin-bottom:14px"><div class="card-title">Download my records <span class="sub">your data, always yours</span></div>
+    <div style="font-size:12px;color:var(--ink-dim);line-height:1.7;margin-bottom:10px">Download your revenue and expenses for any period, or your whole account in one file. Spreadsheets open in Excel, Google Sheets or any accountant's software. Keep a copy somewhere safe, off your phone.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div><label class="lbl">From (optional)</label><input class="inp" type="date" id="expFrom"></div>
+      <div><label class="lbl">To (optional)</label><input class="inp" type="date" id="expTo"></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="exportRevenueCSV()">Revenue (CSV)</button>
+      <button class="btn btn-primary" onclick="exportExpensesCSV()">Expenses (CSV)</button>
+      <button class="btn btn-ghost" onclick="exportProfitLoss()">Income statement (PDF)${g?'':' 🔒'}</button>
+      <button class="btn btn-ghost" onclick="exportEverythingZip()">Download my whole account</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6">${g?'':'The formatted income statement is on Growth and above. '}The whole account download includes every area as a CSV plus one data.json file. Records older than ${typeof ARCHIVE_AFTER_MONTHS!=='undefined'?ARCHIVE_AFTER_MONTHS:12} months are in your archive below.</div>
+  </div>
+  <div class="card" style="margin-bottom:14px"><div class="card-title">Reports and plan <span class="sub">built from what you log</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="openMonthlyReport()">Monthly report</button><button class="btn btn-ghost" onclick="openBusinessPlan()">Business plan draft${canBusinessPlan()?'':' 🔒'}</button></div>
+  </div>
+  ${addonCard()}`;
+}
+
+/* ---------- MONTHLY REPORT ---------- */
+function prevMonthKey(mk){ const y = +mk.slice(0,4), m = +mk.slice(5,7); const d = new Date(Date.UTC(y, m-2, 1)); return d.toISOString().slice(0,7); }
+function monthLabel(mk){ const d = new Date(mk+'-01T00:00:00'); return d.toLocaleDateString('en-GB',{month:'long',year:'numeric'}); }
+function lastMonthKeys(n){ const out = []; let k = todayStr().slice(0,7); for(let i=0;i<n;i++){ out.push(k); k = prevMonthKey(k); } return out; }
+function reportData(mk){
+  const inM = (a,f)=>(a||[]).filter(x=>(x[f]||'').slice(0,7)===mk);
+  const sum = (a,f)=>a.reduce((s,x)=>s+(parseFloat(x[f])||0),0);
+  const pk = prevMonthKey(mk), tx = inM(DATA.transactions,'date'), ex = inM(DATA.expenses,'date');
+  const prevTx = (DATA.transactions||[]).filter(x=>(x.date||'').slice(0,7)===pk), prevEx = (DATA.expenses||[]).filter(x=>(x.date||'').slice(0,7)===pk);
+  const rev = sum(tx,'amount'), exp = sum(ex,'amount'), prevRev = sum(prevTx,'amount'), prevExp = sum(prevEx,'amount');
+  const by = (a,keyf,valf)=>{ const m={}; a.forEach(x=>{ const k = keyf(x); m[k] = (m[k]||0) + (parseFloat(x[valf])||0); }); return Object.entries(m).sort((x,y)=>y[1]-x[1]); };
+  const topItems = by(tx, x=>x.item||'Sale', 'amount').slice(0,5), topCats = by(ex, x=>x.category||'Other', 'amount').slice(0,3);
+  const custs = {}; tx.forEach(x=>{ const c = (x.contact||'').trim(); if(c) custs[c] = (custs[c]||0) + 1; });
+  const earlier = new Set((DATA.transactions||[]).filter(x=>(x.date||'').slice(0,7)<mk).map(x=>(x.contact||'').trim()).filter(Boolean));
+  const uniqueCust = Object.keys(custs).length, repeatCust = Object.keys(custs).filter(c=>custs[c]>=2 || earlier.has(c)).length;
+  const t = todayStr(), openFU = (DATA.followups||[]).filter(f=>!f.done), overdueFU = openFU.filter(f=>f.due<t).length;
+  const overdueRem = (DATA.reminders||[]).filter(r=>!r.done && r.dueDate<t).length;
+  const daily = (DATA.accountability&&DATA.accountability.daily)||{}, days = Object.keys(daily).filter(d=>d.slice(0,7)===mk), nTasks = getAccountabilityTasks().length;
+  const doneSum = days.reduce((s,d)=>s+Object.keys(daily[d]||{}).filter(k=>daily[d][k]).length,0);
+  const accAvg = (days.length && nTasks) ? Math.min(100, Math.round(doneSum/(days.length*nTasks)*100)) : null;
+  const months = lastMonthKeys(12).reverse().map(k=>({k, rev: sum((DATA.transactions||[]).filter(x=>(x.date||'').slice(0,7)===k),'amount'), exp: sum((DATA.expenses||[]).filter(x=>(x.date||'').slice(0,7)===k),'amount')}));
+  return {mk, rev, exp, net: rev-exp, prevRev, prevExp, txCount: tx.length, avgSale: tx.length ? rev/tx.length : 0, topItems, topCats, uniqueCust, repeatCust,
+    hot: (DATA.contacts||[]).filter(c=>c.temp==='hot').length, contacts: (DATA.contacts||[]).length, openFU: openFU.length, overdueFU, overdueRem, accAvg, accDays: days.length, journalCount: (DATA.journal||[]).filter(j=>(j.date||'').slice(0,7)===mk).length, months};
+}
+function reportActions(r){
+  const a = [], pct = (x,y)=>y>0?Math.round((x-y)/y*100):null;
+  if(r.txCount===0) a.push('No sales were logged this month. Log every sale on the day it happens so next month\'s report can show you real patterns.');
+  if(r.net<0) a.push(`You spent ${money(-r.net)} more than you earned. Start with ${r.topCats[0]?esc(r.topCats[0][0]):'your biggest cost'}, it is where the most money went.`);
+  const g = pct(r.rev, r.prevRev); if(g!==null && g<=-10) a.push(`Revenue fell ${-g}% against last month. Contact your ten most recent customers this week and ask what they need.`);
+  if(r.overdueFU>0) a.push(`${r.overdueFU} follow-up${r.overdueFU>1?'s are':' is'} overdue. Clear them first, they are money already in your phone.`);
+  if(r.uniqueCust>=3 && r.repeatCust/r.uniqueCust<0.2) a.push('Few customers came back. Send a thank-you and a return offer to everyone you served this month.');
+  if(r.exp>0 && r.topCats[0] && r.topCats[0][1]/r.exp>0.4) a.push(`${esc(r.topCats[0][0])} is ${Math.round(r.topCats[0][1]/r.exp*100)}% of your spending. Ask whether it can be cut, shared or negotiated.`);
+  if(r.accAvg!==null && r.accAvg<50) a.push(`Your daily checklist score averaged ${r.accAvg}%. Pick two tasks and do them every day next month.`);
+  if(r.overdueRem>0) a.push(`${r.overdueRem} reminder${r.overdueRem>1?'s are':' is'} overdue, including renewals and deadlines. Deal with them this week.`);
+  ['Set a revenue target for next month and write it under Goals so the report can measure you against it.','Ask three customers what almost stopped them buying, and write their answers in your journal or notes.','Log every sale and expense daily. The more you record, the sharper this report gets.'].forEach(x=>{ if(a.length<3) a.push(x); });
+  return a.slice(0,3);
+}
+function reportHTML(r){
+  const g = isGrowthPlus(), ent = !!currentPlan().whiteLabel, pct = (x,y)=>y>0?Math.round((x-y)/y*100):null;
+  const chg = (x,y)=>{ const p = pct(x,y); return p===null ? 'no earlier month to compare' : (p>=0?'+':'')+p+'% vs last month'; };
+  const row = (l,v,s)=>`<tr><td>${l}${s?`<div class="sub">${s}</div>`:''}</td><td class="n">${v}</td></tr>`;
+  let h = `<h1>${esc(CFG.bizName)}</h1><div class="sub">Monthly report, ${esc(monthLabel(r.mk))}</div>
+  <h2>The month in numbers</h2><table>${row('Revenue',money(r.rev),chg(r.rev,r.prevRev))}${row('Expenses',money(r.exp),chg(r.exp,r.prevExp))}${row('<b>Net</b>','<b>'+money(r.net)+'</b>',r.net>=0?'you kept more than you spent':'you spent more than you made')}${row('Sales logged',r.txCount)}${row('Average sale',money(r.avgSale))}</table>
+  <h2>Best sellers</h2><table>${r.topItems.length ? r.topItems.map(([k,v])=>row(esc(k),money(v))).join('') : row('Nothing logged yet','')}</table>
+  <h2>Where the money went</h2><table>${r.topCats.length ? r.topCats.map(([k,v])=>row(esc(k),money(v), r.exp>0?Math.round(v/r.exp*100)+'% of spending':'')).join('') : row('No expenses logged','')}</table>`;
+  if(g) h += `<h2>Customers and follow-up</h2><table>${row('Customers served',r.uniqueCust)}${row('Customers who came back',r.repeatCust, r.uniqueCust?Math.round(r.repeatCust/r.uniqueCust*100)+'% of customers served':'')}${row('Hot leads right now',r.hot)}${row('Contacts in total',r.contacts)}${row('Open follow-ups',r.openFU, r.overdueFU+' overdue')}${row('Overdue reminders',r.overdueRem)}</table>
+  <h2>Daily discipline</h2><table>${row('Days with checklist activity',r.accDays)}${row('Average checklist score',r.accAvg===null?'not tracked':r.accAvg+'%')}${row('Journal entries',r.journalCount)}</table>`;
+  else h += `<div class="sub" style="margin-top:14px">Customers, follow-up and daily discipline sections are on Growth and above.</div>`;
+  if(ent){ const ytd = r.months.filter(m=>m.k.slice(0,4)===r.mk.slice(0,4) && m.k<=r.mk), q = Math.floor((+r.mk.slice(5,7)-1)/3), qm = ytd.filter(m=>Math.floor((+m.k.slice(5,7)-1)/3)===q);
+    const tot = a=>({rev:a.reduce((s,m)=>s+m.rev,0), exp:a.reduce((s,m)=>s+m.exp,0)});
+    h += `<h2>Quarter, year to date and 12 months</h2><table>${row('This quarter, revenue / expenses', money(tot(qm).rev)+' / '+money(tot(qm).exp))}${row('Year to date, revenue / expenses', money(tot(ytd).rev)+' / '+money(tot(ytd).exp))}</table>
+    <table style="margin-top:8px"><tr><th>Month</th><th class="n">Revenue</th><th class="n">Expenses</th><th class="n">Net</th></tr>${r.months.map(m=>`<tr><td>${esc(monthLabel(m.k))}</td><td class="n">${money(m.rev)}</td><td class="n">${money(m.exp)}</td><td class="n">${money(m.rev-m.exp)}</td></tr>`).join('')}</table>`; }
+  h += `<h2>What to do next month</h2><ol style="padding-left:18px;margin:6px 0">${reportActions(r).map(x=>`<li style="margin-bottom:6px">${x}</li>`).join('')}</ol>
+  <div class="foot">Built from the records in your TecXFRA account. The more you log each day, the more useful this becomes.</div>`;
+  return h;
+}
+function openMonthlyReport(mk){
+  mk = mk || lastMonthKeys(2)[1] || todayStr().slice(0,7);
+  const r = reportData(mk);
+  const opts = lastMonthKeys(12).map(k=>`<option value="${k}" ${k===mk?'selected':''}>${esc(monthLabel(k))}</option>`).join('');
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:560px">
+    <div class="modal-head"><h3>Monthly report</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <select class="inp" onchange="openMonthlyReport(this.value)" style="margin-bottom:10px">${opts}</select>
+    <div id="repBody" style="max-height:60vh;overflow-y:auto;font-size:13px;line-height:1.6">${reportHTML(r).replace(/<table>/g,'<table style="width:100%;font-size:12.5px">').replace(/class="n"/g,'style="text-align:right"')}</div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-primary" onclick="printMonthlyReport('${mk}')">Print / Save as PDF</button><button class="btn btn-ghost" onclick="downloadMonthlyReportCSV('${mk}')">Download (CSV)</button></div>
+  </div></div>`;
+}
+function printMonthlyReport(mk){ openPrintable('Monthly report '+mk, reportHTML(reportData(mk))); }
+function downloadMonthlyReportCSV(mk){
+  const r = reportData(mk);
+  const rows = [{section:'Summary',item:'Revenue',value:r.rev},{section:'Summary',item:'Expenses',value:r.exp},{section:'Summary',item:'Net',value:r.net},{section:'Summary',item:'Sales logged',value:r.txCount},{section:'Summary',item:'Average sale',value:Math.round(r.avgSale*100)/100}]
+    .concat(r.topItems.map(([k,v])=>({section:'Best sellers',item:k,value:v}))).concat(r.topCats.map(([k,v])=>({section:'Expenses by category',item:k,value:v})))
+    .concat(reportActions(r).map((x,i)=>({section:'Next month',item:'Action '+(i+1),value:x.replace(/&amp;/g,'&')})));
+  downloadBlob(new Blob(['\ufeff'+toCSV(rows,['section','item','value'])],{type:'text/csv;charset=utf-8'}), `${safeName(CFG.bizName)}-report-${mk}.csv`);
+  logExport('report_csv');
+}
+function reportNudge(){
+  const d = new Date().getDate(); if(d>7) return '';
+  const mk = lastMonthKeys(2)[1];
+  return `<div class="card" style="border-color:var(--teal);margin-bottom:14px;cursor:pointer" onclick="openMonthlyReport('${mk}')"><div style="font-size:13px;color:var(--navy)"><b>Your ${esc(monthLabel(mk))} report is ready.</b> See what worked, what to fix, and what to do next. <span style="color:var(--teal);font-weight:600">Open report →</span></div></div>`;
+}
+
+/* ---------- BUSINESS PLAN DRAFT ---------- */
+function canBusinessPlan(){ return isGrowthPlus() || ADDON_FEATURES.has('business_plan'); }
+function openBusinessPlan(){
+  if(!canBusinessPlan()){
+    document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px"><div class="disp" style="font-size:17px;font-weight:700;margin-bottom:6px">Business plan draft</div>
+      <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7;margin-bottom:14px">TecXFRA builds a business plan draft from everything you have logged: your customers, sales, expenses, goals and ideal client. It is included on Growth and above, or you can add the Business Plan Pass for one month.</div>
+      <button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="closeModal();requestAddon('business_plan')">Request the Business Plan Pass</button>
+      <button class="btn btn-ghost btn-full" onclick="closeModal();setSettingsTab('plan');navTo('settings')">See plans</button></div></div>`;
+    return;
+  }
+  const gaps = [], p = DATA.persona, goals = activeGoals(), months = lastMonthKeys(6).reverse().map(k=>reportData(k)), withData = months.filter(m=>m.rev>0 || m.exp>0);
+  const rev3 = months.slice(-3), avgRev = rev3.reduce((s,m)=>s+m.rev,0)/Math.max(1,rev3.filter(m=>m.rev>0).length), avgExp = rev3.reduce((s,m)=>s+m.exp,0)/Math.max(1,rev3.filter(m=>m.exp>0).length);
+  const itemsAll = {}; (DATA.transactions||[]).forEach(x=>{ const k = x.item||'Sale'; itemsAll[k] = (itemsAll[k]||0) + (parseFloat(x.amount)||0); });
+  const topItems = Object.entries(itemsAll).sort((a,b)=>b[1]-a[1]).slice(0,8), totalRev = Object.values(itemsAll).reduce((a,b)=>a+b,0);
+  const facts = (DATA.knowledge?.facts||[]).filter(f=>f.source==='owner').slice(-8);
+  if(!p || !p.name) gaps.push('Ideal client: complete the Ideal Client Persona so the plan can say who you serve.');
+  if(!goals.length) gaps.push('Goals: add at least one goal in Settings, Business Brain so the plan has a direction and targets.');
+  if(withData.length<3) gaps.push('Financial history: fewer than three months of sales and expenses are logged, so the outlook below is thin.');
+  if(!topItems.length) gaps.push('Products and services: log sales so the plan can show what actually sells.');
+  if(!(DATA.staff||[]).length) gaps.push('Team: add your team members if you have any.');
+  if(DATA.auditScore===null || DATA.auditScore===undefined) gaps.push('Business audit: complete the audit so the plan can name your strengths and weaknesses.');
+  const risks = [];
+  if(topItems[0] && totalRev>0 && topItems[0][1]/totalRev>0.5) risks.push(`More than half of your revenue comes from one item or service (${esc(topItems[0][0])}). A dip there hits the whole business.`);
+  if(withData.some(m=>m.net<0)) risks.push('At least one of the last six months spent more than it earned. Cash flow needs watching.');
+  const od = (DATA.followups||[]).filter(f=>!f.done && f.due<todayStr()).length; if(od) risks.push(`${od} follow-ups are overdue, which means warm leads may be going cold.`);
+  if(!risks.length) risks.push('No clear risks show up in the current records. Keep logging so this stays true.');
+  const tbl = (head, rows)=>`<table><tr>${head.map((h,i)=>`<th class="${i?'n':''}">${h}</th>`).join('')}</tr>${rows.join('')}</table>`;
+  const body = `<h1>${esc(CFG.bizName)}</h1><div class="sub">Business plan draft, prepared ${esc(todayStr())}</div>
+  <h2>1. Business overview</h2><p>${esc(CFG.bizName)} is a ${esc(CUR_INDUSTRY_OBJ.label)} business in ${esc(CFG.country||'')}, owned by ${esc(CFG.ownerName||'the owner')}. It trades in ${esc(CFG.currency||'')}${(DATA.staff||[]).length?` with a team of ${(DATA.staff||[]).length}`:''}.</p>
+  <h2>2. Ideal customer</h2>${p && p.name ? `<table><tr><td>Who</td><td>${esc(p.name)}${p.age?', '+esc(p.age):''}</td></tr><tr><td>Income</td><td>${esc(p.income||'not set')}</td></tr><tr><td>Main problem</td><td>${esc(p.pain||'not set')}</td></tr><tr><td>Where to find them</td><td>${esc(p.where||'not set')}</td></tr><tr><td>What holds them back</td><td>${esc(p.objection||'not set')}</td></tr><tr><td>What makes them buy</td><td>${esc(p.trigger||'not set')}</td></tr></table>` : '<p class="sub">Not completed yet.</p>'}
+  <h2>3. Products and services</h2>${topItems.length ? tbl(['Item','Sales to date'], topItems.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`)) : '<p class="sub">No sales logged yet.</p>'}
+  <h2>4. Customers and sales activity</h2><p>${(DATA.contacts||[]).length} contacts on record, ${(DATA.contacts||[]).filter(c=>c.temp==='hot').length} hot leads and ${(DATA.contacts||[]).filter(c=>c.temp==='active').length} active customers.</p>
+  <h2>5. Operations and team</h2>${(DATA.staff||[]).length ? tbl(['Name','Role'], (DATA.staff||[]).slice(0,15).map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.role||'')}</td></tr>`)) : '<p class="sub">No team recorded.</p>'}
+  <h2>6. Financial summary, last six months</h2>${tbl(['Month','Revenue','Expenses','Net'], months.map(m=>`<tr><td>${esc(monthLabel(m.mk))}</td><td class="n">${money(m.rev)}</td><td class="n">${money(m.exp)}</td><td class="n">${money(m.net)}</td></tr>`))}
+  <h2>7. Twelve month outlook</h2>${avgRev>0 ? `<p>These are illustrative ranges based only on your own recent monthly averages (average revenue ${money(avgRev)}, average expenses ${money(avgExp)}). They are not forecasts.</p>${tbl(['Scenario','Revenue','Expenses','Net'], [['Cautious (90% of recent revenue)',0.9],['Steady (same as recent)',1],['Stretch (120% of recent revenue)',1.2]].map(([l,f])=>`<tr><td>${l}</td><td class="n">${money(avgRev*12*f)}</td><td class="n">${money(avgExp*12)}</td><td class="n">${money(avgRev*12*f-avgExp*12)}</td></tr>`))}` : '<p class="sub">Not enough revenue logged to show an outlook.</p>'}
+  <h2>8. Goals</h2>${goals.length ? '<ul>'+goals.map(g=>`<li>${esc(g.text)}</li>`).join('')+'</ul>' : '<p class="sub">No goals set yet.</p>'}
+  <h2>9. What the owner has told TecXFRA</h2>${facts.length ? '<ul>'+facts.map(f=>`<li>${esc(f.text)}</li>`).join('')+'</ul>' : '<p class="sub">Nothing recorded yet.</p>'}
+  <h2>10. Risks</h2><ul>${risks.map(x=>`<li>${x}</li>`).join('')}</ul>
+  <h2>11. Next 90 days</h2><ol>${reportActions(reportData(todayStr().slice(0,7))).map(x=>`<li>${x}</li>`).join('')}${goals[0]?`<li>Move towards your goal: ${esc(goals[0].text)}</li>`:''}</ol>
+  ${gaps.length ? `<h2>What is missing from this draft</h2><ul>${gaps.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+  <div class="foot">This is a draft assembled from the information recorded in TecXFRA. It is not financial, legal or tax advice. Review every figure and have it checked by a qualified adviser before sharing it with a bank or investor.</div>`;
+  openPrintable('Business plan draft', body);
+  logExport('business_plan');
+}
+
+/* ---------- TODAY: DUE TODAY CARD (follow-ups, reminders, tasks) ---------- */
+async function todayTaskDone(key){ await logAccountability(key); renderToday(); }
+function dueTodayCard(){
+  const t = todayStr();
+  const fu = (DATA.followups||[]).filter(f=>!f.done && f.due<=t).sort((a,b)=>(a.due||'').localeCompare(b.due||''));
+  const rem = (DATA.reminders||[]).filter(r=>!r.done && r.dueDate<=addDays(t,3)).sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+  const canTasks = CFG.modules.includes('accountability') && !isLocked('accountability');
+  const day = (DATA.accountability && DATA.accountability.daily && DATA.accountability.daily[t]) || {};
+  const tasks = canTasks ? getAccountabilityTasks() : [], openTasks = tasks.filter(k=>!day[k.key]);
+  const sec = (title, count, body)=>`<div style="margin-top:8px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">${title}${count!==''?' ('+count+')':''}</div>${body}`;
+  let h = '';
+  if(fu.length) h += sec('Follow-ups', fu.length, fu.slice(0,6).map(f=>`<div class="list-row" style="cursor:pointer" onclick="navTo('followups')"><span>${esc(f.contactName)}, ${esc(f.detail)}</span><span class="pill ${f.due<t?'pill-hot':'pill-warm'}">${f.due<t?'overdue':'today'}</span></div>`).join(''));
+  if(rem.length) h += sec('Reminders', rem.length, rem.slice(0,6).map(r=>{ const tag = r.dueDate<t ? 'overdue' : r.dueDate===t ? 'today' : 'in '+Math.round((new Date(r.dueDate)-new Date(t))/86400000)+' days'; return `<div class="list-row" style="cursor:pointer" onclick="navTo('reminders')"><span>${esc(r.title)}</span><span class="pill ${r.dueDate<=t?'pill-hot':'pill-cold'}">${tag}</span></div>`; }).join(''));
+  if(canTasks && tasks.length) h += sec('Today\'s tasks', (tasks.length-openTasks.length)+' of '+tasks.length+' done', openTasks.length ? openTasks.slice(0,6).map(k=>`<div class="list-row"><span>${esc(k.label||k.key)}</span><button class="btn btn-ghost" style="padding:5px 10px" onclick="todayTaskDone('${esc(k.key)}')">Done</button></div>`).join('') : '<div class="empty">All tasks done today.</div>');
+  return `<div class="card"><div class="card-title">Due Today <span class="sub">tap to open</span></div>${h || '<div class="empty">Nothing due today, clean slate.</div>'}</div>`;
 }
 
 /* ---------- DAILY TIP ENGINE (tone-aware) ---------- */
@@ -3942,12 +4254,74 @@ const PRESTIGE_TIP_LIBRARY = {
     "Review your payment terms today, are you planning cash flow around when money actually arrives, or when the invoice was sent."
   ]
 };
+const TIP_EXTRA = {
+ "faith": [
+  "\"But my Yahuah shall supply all your need according to his riches in glory by Yahusha haMashiach.\", Philippians 4:19. Bring today's real needs to Him, then do the next faithful task in front of you.",
+  "\"Therefore take no thought, saying, What shall we eat? or, What shall we drink? or, Wherewithal shall we be clothed? But seek ye first the kingdom of Yahuah, and his righteousness; and all these things shall be added unto you.\", Matthew 6:31 to 33. Put the right thing first today, serve well, and let provision follow the order.",
+  "\"Yahuah is my shepherd; I shall not want.\", Psalm 23:1. Work from enough today, not from fear. Decisions made in scarcity create scarcity.",
+  "\"If any of you lack wisdom, let him ask of Yahuah, that giveth to all men liberally, and upbraideth not; and it shall be given him.\", James 1:5. Ask for wisdom on the hardest decision in front of you before you act on it.",
+  "\"Trust in Yahuah with all thine heart; and lean not unto thine own understanding. In all thy ways acknowledge him, and he shall direct thy paths.\", Proverbs 3:5 to 6. Acknowledge Him over today's plan, then take the next clear step.",
+  "\"He becometh poor that dealeth with a slack hand: but the hand of the diligent maketh rich.\", Proverbs 10:4. Slack habits cost more than they save. Finish today's follow-ups and log today's numbers.",
+  "\"And whatsoever ye do, do it heartily, as to Yahuah, and not unto men.\", Colossians 3:23. Serve the next customer as if He were the one standing at your counter.",
+  "\"He that tilleth his land shall be satisfied with bread: but he that followeth vain persons is void of understanding.\", Proverbs 12:11. Tend what is already in your hands, your customers and your records, before chasing something new.",
+  "\"Now faith is the substance of things hoped for, the evidence of things not seen.\", Hebrews 11:1. Keep doing the unseen work today. The evidence arrives later.",
+  "\"Delight thyself also in Yahuah; and he shall give thee the desires of thine heart. Commit thy way unto Yahuah; trust also in him; and he shall bring it to pass.\", Psalm 37:4 to 5. Commit today's plan to Him, then work it.",
+  "\"Yahuah shall open unto thee his good treasure, the heaven to give the rain unto thy land in his season, and to bless all the work of thine hand: and thou shalt lend unto many nations, and thou shalt not borrow.\", Deuteronomy 28:12. Do today's work with an open hand. He blesses the work of your hand, so give it your full attention.",
+  "\"Bring ye all the tithes into the storehouse, that there may be meat in mine house, and prove me now herewith, saith Yahuah of hosts, if I will not open you the windows of heaven, and pour you out a blessing, that there shall not be room enough to receive it.\", Malachi 3:10. Put the right things first when money comes in today, then plan the rest with order.",
+  "\"The name of Yahuah is a strong tower: the righteous runs into it, and is safe.\", Proverbs 18:10. When the day gets heavy, stop and pray before you panic, then return to the work.",
+  "\"Some trust in chariots, and some in horses: but we will remember the Name of Yahuah our Elohim.\", Psalm 20:7. Use your systems and your records well, but let your trust rest in Him, not only in tools.",
+  "\"Our help is in the Name of Yahuah, who made heaven and earth.\", Psalm 124:8. You are not carrying this alone. Do your part today and hand Him the rest.",
+  "\"Whatsoever ye do in word or deed, do all in the Name of Yahusha the Messiah, giving thanks to Yahuah the Father through Him.\", Colossians 3:17. Let every message you send and every price you quote carry that standard today.",
+  "\"And let us not be weary in well doing: for in due season we shall reap, if we faint not.\", Galatians 6:9. Do not stop on the quiet days. Quiet is part of the season, keep sowing.",
+  "\"I can do all things through Mashiach which strengtheneth me.\", Philippians 4:13. Take on the one task you have been avoiding today.",
+  "\"Being confident of this very thing, that he which hath begun a good work in you will perform it until the day of Yahusha Mashiach.\", Philippians 1:6. What He began in your business He can finish. Do your part of it today.",
+  "\"Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou art with me.\", Psalm 23:4. On the hard days, keep walking. Do the next small task and the one after it."
+ ],
+ "motivation": [
+  "Interest is free, commitment costs something. Follow up until you know which one you are dealing with, then give your time to the committed.",
+  "One yes is worth more than a hundred maybes. Count your yeses today, not your likes.",
+  "Silence after a message is information, not a verdict. Adjust the message, not your worth.",
+  "A no tells you what to adjust. Ask yourself today what this week's nos have in common.",
+  "Scarcity decisions create scarcity results. Never drop your price just because today was quiet.",
+  "Your value does not change because your balance is low. Quote your prices with confidence today.",
+  "Separate wants from needs in the business too. Look at last week's expenses and mark each one honestly.",
+  "Don't wait for customers to find you. Go where they already are today, with something useful to offer.",
+  "Teaching builds trust faster than selling. Share one useful tip with a customer today without asking for anything.",
+  "Free work needs limits. Decide today what you give away and what you charge for, then stick to it.",
+  "A number you did not write down is a lesson you cannot learn from. Log today's sales and expenses before you close.",
+  "Small wins compound. Write down one small win from today, however small.",
+  "You only need enough light for the next step. Take it, and the one after it shows up.",
+  "Don't chase people who show no buying signals. Spend today's energy on the three people most ready to say yes.",
+  "People are watching to see whether you will quit. Showing up again today is the proof."
+ ],
+ "neutral": [
+  "Count how many customers returned this week. Repeat customers are the cheapest revenue you have.",
+  "Check your three biggest expenses today and ask of each: does this earn its place?",
+  "Write down your top three priorities before you open your messages. Reactive days rarely move the business.",
+  "Compare this week's revenue to last week's, then name one reason for the difference.",
+  "Review every follow-up older than seven days. Close it, reschedule it, or let it go.",
+  "Pick one thing you repeat daily and write it as three steps. That is the start of a system.",
+  "Check tomorrow's stock or schedule tonight, so the morning starts ready.",
+  "Ask one customer today what almost stopped them buying, and write the answer down.",
+  "Keep business money and personal money apart for one day and note anything that moves between them.",
+  "Pick the one number you will watch this week and check it every day."
+ ]
+};
+['faith','motivation','neutral'].forEach(k=>{ TIP_LIBRARY[k].push(...TIP_EXTRA[k]); });
+['faith','motivation','neutral'].forEach(k=>{ PRESTIGE_TIP_LIBRARY[k].push(...TIP_EXTRA[k]); });
+function tipPerm(n, cycle){
+  const idx = Array.from({length:n}, (_,i)=>i); let s = (Math.imul(cycle+1, 2654435761) + n) >>> 0;
+  for(let i=n-1;i>0;i--){ s = (Math.imul(s,1664525) + 1013904223) >>> 0; const j = s % (i+1); const tmp=idx[i]; idx[i]=idx[j]; idx[j]=tmp; }
+  return idx;
+}
 function dailyTip(){
   const tone = CFG.tone || 'motivation';
   const useprestige = currentPlan().network === true;
   const list = (useprestige ? PRESTIGE_TIP_LIBRARY[tone] : TIP_LIBRARY[tone]) || TIP_LIBRARY.motivation;
-  const dayIndex = Math.floor(Date.now()/86400000) % list.length;
-  return list[dayIndex];
+  const n = list.length, day = Math.floor(Date.now()/86400000);
+  // One fixed shuffled order, one tip per day, so every tip is used exactly once before any tip comes back.
+  // Adding tips to the library lengthens the cycle automatically.
+  return list[tipPerm(n, 0)[day % n]];
 }
 // Prestige-only upgrade on the daily reflection: instead of one static
 // line from a library, this reads the actual Business Brain, live goals,
@@ -5790,6 +6164,7 @@ function renderRevenue(){
   </div>`;
 
   document.getElementById('pageContent').innerHTML = `
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-ghost" onclick="openMonthlyReport()">📄 Monthly report</button><button class="btn btn-ghost" onclick="setSettingsTab('data');navTo('settings')">⬇️ Download records</button></div>
   <div class="grid-metrics">
     <div class="metric navy" style="cursor:pointer" onclick="openRevenueTotalModal()"><div class="ml">Total Revenue</div><div class="mv">${money(totalRev)}</div></div>
     <div class="metric coral" style="cursor:pointer" onclick="openTotalExpensesModal()"><div class="ml">Total Expenses</div><div class="mv">${money(totalExp)}</div></div>
@@ -8129,7 +8504,7 @@ function drawSettingsBody(){
       inventory:(DATA.inventory||[]).length, staff:(DATA.staff||[]).length};
     const rollups = DATA.monthlyRollups || {};
     const rollupCount = Object.keys(rollups).length;
-    b.innerHTML = `<div class="card" style="margin-bottom:14px">
+    b.innerHTML = `${downloadsCard()}<div class="card" style="margin-bottom:14px">
       <div class="card-title">What's live right now</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:8px;font-size:12px;color:var(--ink-dim)">
         ${Object.entries(counts).map(([k,v])=>`<div><b style="color:var(--navy);font-size:16px;display:block">${v}</b>${k}</div>`).join('')}
