@@ -421,6 +421,13 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 .cart-row .cn{flex:1; font-size:12.5px; font-weight:600;}
 .stepper{display:flex; align-items:center; gap:7px;}
 .stepper button{width:22px; height:22px; border-radius:6px; border:1px solid var(--line); background:#fff; font-weight:700;}
+.cart-num{width:76px; text-align:center; border:1px solid var(--line); border-radius:6px; padding:3px 4px; font-family:'IBM Plex Mono',monospace; font-size:13px; background:#fff; color:var(--ink);}
+.cart-num.cart-price{width:92px; text-align:right; font-size:12px;}
+.qs-cell{display:flex; flex-direction:column; gap:4px;}
+.qs-cell .qs-item{width:100%;}
+.qs-pack{display:block; width:100%; text-align:left; font-size:10.5px; font-weight:600; padding:5px 7px; border:1px dashed var(--teal); border-radius:8px; background:#fff; color:var(--teal-dim); cursor:pointer;}
+.qs-pack:hover{background:var(--cream);}
+@media (max-width:700px){ .cart-num{font-size:16px;} .cart-num.cart-price{font-size:16px;} }
 .guide-item{border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:10px; cursor:pointer;}
 .guide-item:hover{border-color:var(--teal);}
 .guide-item h4{font-size:13px; font-weight:700; margin-bottom:4px;}
@@ -1762,6 +1769,9 @@ function hydrateData(d){
   if(!Array.isArray(out.knowledge.facts)) out.knowledge.facts = [];
   if(typeof out.knowledge.goal !== 'string') out.knowledge.goal = '';
   if(!Array.isArray(out.shiftLog)) out.shiftLog = [];
+  // Older accounts stored one lump balance per client. Turn any such balance
+  // into a proper debt record once, so nothing is lost and nothing is double counted.
+  if(Array.isArray(out.contacts)) out.contacts.forEach(c=>{ if(c && typeof c==='object') ensureDebts(c); });
   return out;
 }
 function getTemplates(){
@@ -2407,7 +2417,7 @@ function showNextBizMessage(){
     <h3 style="margin-bottom:4px">${esc(m.subject)}</h3>
     <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${esc(fmtDate((m.created_at||'').slice(0,10)))}</div>
     <div style="font-size:13.5px;line-height:1.7;color:var(--ink-dim);white-space:pre-line;max-height:50vh;overflow-y:auto">${esc(m.body)}</div>
-    <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="ackBizMessage('${esc(m.id)}')">Got it</button>
+    <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="ackBizMessage('${jsAttr(m.id)}')">Got it</button>
   </div></div>`;
 }
 async function ackBizMessage(id){
@@ -2424,7 +2434,7 @@ function showNextAnnouncement(){
     <div style="font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--teal-dim);margin-bottom:6px">${kindLabel}</div>
     <h3 style="margin-bottom:10px">${esc(a.title)}</h3>
     <div style="font-size:13.5px;line-height:1.7;color:var(--ink-dim);white-space:pre-line">${esc(a.body)}</div>
-    <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="ackAnnouncement('${a.id}')">Got it</button>
+    <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="ackAnnouncement('${jsAttr(a.id)}')">Got it</button>
   </div></div>`;
 }
 async function ackAnnouncement(id){
@@ -2807,12 +2817,12 @@ function moduleInsights(page){
         note: low.length ? `Restock soon: ${low.slice(0,3).map(i=>i.name).join(', ')}.` : 'Nothing is running low.'};
     }
     case 'invoicing': {
-      const owed = C.filter(c=>c.value>0), over = owed.filter(c=>c.dueDate && c.dueDate<t);
+      const open = openDebtList(), over = open.filter(o=>o.d.due && o.d.due<t);
       const paid = TX.filter(x=>x.type==='invoice' && (x.date||'').slice(0,7)===mk);
-      const big = owed.slice().sort((a,b)=>b.value-a.value)[0];
-      const dr = c=>[c.name||'Unnamed', money(c.value), c.dueDate?'due '+fmtDate(c.dueDate):'no due date'];
-      return {stats:[insightStat('Outstanding', money(sum(owed,c=>c.value)), owed.length+' open balances','coral',owed.slice().sort((a,b)=>b.value-a.value).map(dr)), insightStat('Overdue', money(sum(over,c=>c.value)), over.length+' past due date','coral',over.map(dr)), insightStat('Paid This Month', money(sum(paid,x=>x.amount)), 'invoice payments','green',paid.map(x=>[x.contact||x.item||'Payment', money(x.amount), fmtDate(x.date)]))],
-        note: big ? `Largest balance: ${big.name} owes ${money(big.value)}.` : 'No open balances.'};
+      const big = open.slice().sort((a,b)=>b.bal-a.bal)[0];
+      const dr = o=>[(o.c.name||'Unnamed')+(debtLabel(o.d)?' - '+debtLabel(o.d):''), money(o.bal), o.d.due?'due '+fmtDate(o.d.due):'no due date'];
+      return {stats:[insightStat('Outstanding', money(sum(open,o=>o.bal)), open.length+' open balances','coral',open.slice().sort((a,b)=>b.bal-a.bal).map(dr)), insightStat('Overdue', money(sum(over,o=>o.bal)), over.length+' past due date','coral',over.map(dr)), insightStat('Paid This Month', money(sum(paid,x=>x.amount)), 'invoice payments','green',paid.map(x=>[x.contact||x.item||'Payment', money(x.amount), fmtDate(x.date)]))],
+        note: big ? `Largest balance: ${big.c.name} owes ${money(big.bal)}.` : 'No open balances.'};
     }
     case 'expenses': {
       const m = EX.filter(x=>(x.date||'').slice(0,7)===mk), td = EX.filter(x=>x.date===t);
@@ -3176,11 +3186,11 @@ function networkCardHtml(p, isPreview){
   } else {
     const conn = connectionWith(p.business_id);
     let actionBtn;
-    if(!conn) actionBtn = `<button class="btn btn-primary btn-full" onclick="openConnectModal('${p.business_id}','${jsAttr(p.display_name)}')">Connect</button>`;
+    if(!conn) actionBtn = `<button class="btn btn-primary btn-full" onclick="openConnectModal('${jsAttr(p.business_id)}','${jsAttr(p.display_name)}')">Connect</button>`;
     else if(conn.status==='pending' && conn.requester_id===CUR_VENUE_ID) actionBtn = `<button class="btn btn-ghost btn-full" disabled>Request sent</button>`;
     else if(conn.status==='pending') actionBtn = `<button class="btn btn-primary btn-full" onclick="setNetworkTab('connections')">Respond to request →</button>`;
-    else if(conn.status==='accepted') actionBtn = `<button class="btn btn-primary btn-full" onclick="setNetworkTab('connections');setTimeout(()=>openNetworkChat('${conn.id}'),0)">Message →</button>`;
-    else actionBtn = `<button class="btn btn-ghost btn-full" onclick="openConnectModal('${p.business_id}','${jsAttr(p.display_name)}')">Reconnect</button>`;
+    else if(conn.status==='accepted') actionBtn = `<button class="btn btn-primary btn-full" onclick="setNetworkTab('connections');setTimeout(()=>openNetworkChat('${jsAttr(conn.id)}'),0)">Message →</button>`;
+    else actionBtn = `<button class="btn btn-ghost btn-full" onclick="openConnectModal('${jsAttr(p.business_id)}','${jsAttr(p.display_name)}')">Reconnect</button>`;
     const myLoc = (NETWORK_PROFILE?.hq_location||'').toLowerCase().trim();
     const theirLoc = (p.hq_location||'').toLowerCase().trim();
     const nearYou = myLoc && theirLoc && (myLoc===theirLoc || myLoc.includes(theirLoc) || theirLoc.includes(myLoc));
@@ -3256,7 +3266,7 @@ function openConnectModal(targetId, targetName){
     <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:4px">Connect with ${esc(targetName)}</div>
     <div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px;line-height:1.6">A short note gets a much better reply. What are you hoping to do together, collaboration, supply, investment?</div>
     <textarea class="inp" id="connectNote" rows="3" placeholder="e.g. We're looking for a cold-chain logistics partner in Kumasi…" style="margin-bottom:14px"></textarea>
-    <button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="sendConnectRequest('${targetId}')">Send request</button>
+    <button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="sendConnectRequest('${jsAttr(targetId)}')">Send request</button>
     <button class="btn btn-ghost btn-full" onclick="closeModal()">Cancel</button>
   </div></div>`;
 }
@@ -3296,13 +3306,13 @@ function networkSeekingHtml(){
           <span class="chip" style="margin:0 8px 0 0">${esc(n.category)}</span>
           <span style="font-weight:700;font-size:13px">${esc(n.title)}</span>
         </div>
-        ${mine?`<button class="btn btn-ghost" style="padding:5px 10px;font-size:10.5px" onclick="closeNetworkNeed('${n.id}')">Mark closed</button>`:''}
+        ${mine?`<button class="btn btn-ghost" style="padding:5px 10px;font-size:10.5px" onclick="closeNetworkNeed('${jsAttr(n.id)}')">Mark closed</button>`:''}
       </div>
       <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.6;margin-bottom:8px">${esc(n.description)}</div>
       <div style="font-size:10.5px;color:var(--muted);margin-bottom:${mine?'0':'10px'}">
         Posted by ${esc(nameFor(n.business_id))}${n.region?' · '+esc(n.region):''}${n.budget_range?' · '+esc(n.budget_range):''}
       </div>
-      ${!mine?`<button class="btn btn-primary" style="padding:8px 14px;font-size:11.5px" onclick="openConnectModal('${n.business_id}','${jsAttr(nameFor(n.business_id))}')">Respond to this</button>`:''}
+      ${!mine?`<button class="btn btn-primary" style="padding:8px 14px;font-size:11.5px" onclick="openConnectModal('${jsAttr(n.business_id)}','${jsAttr(nameFor(n.business_id))}')">Respond to this</button>`:''}
     </div>`;
   }
   return `
@@ -3364,14 +3374,14 @@ function networkConnectionsHtml(){
           <div style="font-weight:700;font-size:12.5px;margin-bottom:2px">${esc(nameFor(c.requester_id))}</div>
           ${c.note?`<div style="font-size:11.5px;color:var(--ink-dim);margin-bottom:8px;line-height:1.5">"${esc(c.note)}"</div>`:''}
           <div style="display:flex;gap:6px">
-            <button class="btn btn-primary" style="padding:8px 14px;font-size:11.5px" onclick="respondConnection('${c.id}','accepted')">Accept</button>
-            <button class="btn btn-ghost" style="padding:8px 14px;font-size:11.5px" onclick="respondConnection('${c.id}','declined')">Decline</button>
+            <button class="btn btn-primary" style="padding:8px 14px;font-size:11.5px" onclick="respondConnection('${jsAttr(c.id)}','accepted')">Accept</button>
+            <button class="btn btn-ghost" style="padding:8px 14px;font-size:11.5px" onclick="respondConnection('${jsAttr(c.id)}','declined')">Decline</button>
           </div>
         </div>`).join('')}
       </div>`:''}
       <div class="card">
         <div class="card-title">Your connections <span class="sub">${accepted.length}</span></div>
-        ${accepted.length ? accepted.map(c=>`<div class="sb-item" style="cursor:pointer;border-radius:8px" onclick="openNetworkChat('${c.id}')"><span class="ic">💬</span><span>${esc(nameFor(otherIdOf(c)))}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted)">${networkAccessLevel()==='full' ? 'No connections yet, accept a request above or connect from the Directory.' : 'No connections yet. When a Prestige member finds your profile and sends a request, it shows here and you can accept and reply for free.'}</div>`}
+        ${accepted.length ? accepted.map(c=>`<div class="sb-item" style="cursor:pointer;border-radius:8px" onclick="openNetworkChat('${jsAttr(c.id)}')"><span class="ic">💬</span><span>${esc(nameFor(otherIdOf(c)))}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted)">${networkAccessLevel()==='full' ? 'No connections yet, accept a request above or connect from the Directory.' : 'No connections yet. When a Prestige member finds your profile and sends a request, it shows here and you can accept and reply for free.'}</div>`}
         ${sent.length?`<div style="font-size:10.5px;color:var(--muted);margin-top:10px;padding-top:10px;border-top:1px solid var(--line-soft)">${sent.length} request${sent.length===1?'':'s'} sent, waiting on a reply</div>`:''}
       </div>
     </div>
@@ -3441,7 +3451,7 @@ function networkChannelsHtml(){
   return `<div class="network-split">
     <div class="card">
       <div class="card-title">Industry rooms</div>
-      ${NETWORK_CHANNELS.length ? NETWORK_CHANNELS.map(ch=>`<div class="sb-item" style="cursor:pointer;border-radius:8px" onclick="openNetworkChannel('${ch.id}')"><span class="ic">${ch.ic||'#'}</span><span>${esc(ch.label)}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted)">No rooms yet.</div>`}
+      ${NETWORK_CHANNELS.length ? NETWORK_CHANNELS.map(ch=>`<div class="sb-item" style="cursor:pointer;border-radius:8px" onclick="openNetworkChannel('${jsAttr(ch.id)}')"><span class="ic">${ch.ic||'#'}</span><span>${esc(ch.label)}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted)">No rooms yet.</div>`}
     </div>
     <div id="networkChannelPane"><div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:40px">Pick a room to see the conversation.</div></div>
   </div>`;
@@ -3743,7 +3753,7 @@ function infiniteList(id, items, renderRow, emptyHtml, maxH){
   const shown = Math.min(items.length, Math.max(INF_FIRST, INF_SHOWN[id]||0));
   INF_SHOWN[id] = shown;
   return `<div class="inf-list" id="inf_${id}" data-inf="${id}" style="max-height:${maxH||300}px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;padding:0 10px">${items.slice(0,shown).map(renderRow).join('')}</div>
-    <div class="sub" id="infcount_${id}" style="margin-top:4px;font-size:10.5px;color:var(--muted);cursor:pointer" onclick="infLoadMore('${id}')">${infCountText(id)}</div>`;
+    <div class="sub" id="infcount_${id}" style="margin-top:4px;font-size:10.5px;color:var(--muted);cursor:pointer" onclick="infLoadMore('${jsAttr(id)}')">${infCountText(id)}</div>`;
 }
 function infCountText(id){
   const L = INF_LISTS[id]; if(!L) return '';
@@ -3809,7 +3819,7 @@ function renderToday(){
       const live=(DATA.ownTipLog||[]).filter(t=>!t.archived), arch=(DATA.ownTipLog||[]).filter(t=>t.archived);
       const row=t=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
         <div style="display:flex;justify-content:space-between;width:100%;gap:8px"><span style="font-size:11.5px;color:var(--ink-dim);line-height:1.5">${esc(t.text)}</span><span style="color:var(--muted);font-size:10px;white-space:nowrap">${fmtDate(t.date)}</span></div>
-        <div style="display:flex;gap:12px;font-size:11px"><span style="cursor:pointer;color:var(--teal-dim)" onclick="archiveTip('${esc(t.id)}',${t.archived?'false':'true'})">${t.archived?'restore':'archive'}</span><span style="cursor:pointer;color:var(--coral)" onclick="deleteTip('${esc(t.id)}')">delete</span></div></div>`;
+        <div style="display:flex;gap:12px;font-size:11px"><span style="cursor:pointer;color:var(--teal-dim)" onclick="archiveTip('${jsAttr(t.id)}',${t.archived?'false':'true'})">${t.archived?'restore':'archive'}</span><span style="cursor:pointer;color:var(--coral)" onclick="deleteTip('${jsAttr(t.id)}')">delete</span></div></div>`;
       const list = TIPS_ARCHIVED_VIEW ? arch : live;
       return infiniteList('tiplog', list, row, `<div style="font-size:11.5px;color:var(--muted);padding:8px 4px">${TIPS_ARCHIVED_VIEW?'Nothing archived.':"Nothing saved yet, write today's tip above and hit Save, it'll show up here and feed straight into your Business Brain."}</div>`, 260)
         + ((arch.length||TIPS_ARCHIVED_VIEW) ? `<div style="margin-top:6px"><span style="cursor:pointer;color:var(--teal-dim);font-size:11.5px;font-weight:600" onclick="TIPS_ARCHIVED_VIEW=!TIPS_ARCHIVED_VIEW;INF_SHOWN['tiplog']=0;renderToday()">${TIPS_ARCHIVED_VIEW?'← Back to tips':'View archived ('+arch.length+')'}</span></div>` : '');
@@ -3839,7 +3849,7 @@ function renderToday(){
         <div class="list-row"><span>Expenses</span><span class="mono" style="color:var(--coral);font-weight:700">${money(todayExpenses)}</span></div>
         <div class="list-row" style="border-bottom:none"><span><b>Net</b></span><span class="mono" style="color:${todayNet>=0?'var(--green,#3a7a5d)':'var(--coral)'};font-weight:700"><b>${money(todayNet)}</b></span></div>
         ${todayTx.length ? `<div style="margin-top:8px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Income came from</div>${todayTx.map(x=>`<div class="list-row" style="cursor:pointer;align-items:flex-start" onclick="navTo('revenue')"><span>${esc(x.item||'Sale')}<br><span style="font-size:11px;color:var(--muted)">${esc(txTypeLabel(x.type))}${x.contact?' · '+esc(x.contact):''}${x.staff?' · by '+esc(x.staff):''}</span></span><span class="mono">${money(x.amount)}</span></div>`).join('')}` : ''}
-        ${todayExp.length ? `<div style="margin-top:8px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Spent on</div>${todayExp.map(x=>`<div class="list-row" style="cursor:pointer;align-items:flex-start" onclick="openExpenseModal('${esc(x.id)}')"><span>${esc(x.item)}${x.category?`<br><span style="font-size:11px;color:var(--muted)">${esc(x.category)}</span>`:''}</span><span class="mono">${money(x.amount)}</span></div>`).join('')}` : ''}
+        ${todayExp.length ? `<div style="margin-top:8px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Spent on</div>${todayExp.map(x=>`<div class="list-row" style="cursor:pointer;align-items:flex-start" onclick="openExpenseModal('${jsAttr(x.id)}')"><span>${esc(x.item)}${x.category?`<br><span style="font-size:11px;color:var(--muted)">${esc(x.category)}</span>`:''}</span><span class="mono">${money(x.amount)}</span></div>`).join('')}` : ''}
       </div>
     </div>
     <div>
@@ -3974,6 +3984,11 @@ function exportEverythingZip(){
   const bom = '\ufeff', d = DATA || {};
   const readme = `TecXFRA data download\r\nBusiness: ${CFG.bizName}\r\nOwner: ${CFG.ownerName||''}\r\nCountry: ${CFG.country||''}   Currency: ${CFG.currency||''}\r\nDownloaded: ${todayStr()}\r\n\r\nThis folder holds a copy of the records currently live in your TecXFRA account, one CSV file per area, plus data.json which holds everything in one file.\r\nRecords older than ${typeof ARCHIVE_AFTER_MONTHS!=='undefined'?ARCHIVE_AFTER_MONTHS:12} months are moved to your archive automatically. Open Settings, then Data, to browse archived records. They are not in this download.\r\nKeep this copy somewhere safe and off your phone. These files are your records, they are yours to keep.\r\n`;
   const jrows = (d.journal||[]).map(j=>Object.assign({}, j));
+  const debtRows = [], payRows = [];
+  (d.contacts||[]).forEach(c=>(Array.isArray(c.debts)?c.debts:[]).forEach(x=>{
+    debtRows.push({contact:c.name, description:x.desc, total:x.amount, paid:x.paid||0, balance:debtBal(x), due:x.due||'', created:x.created||''});
+    (x.payments||[]).forEach(pm=>payRows.push({contact:c.name, description:x.desc, date:pm.date, amount:pm.amount, note:pm.note||''}));
+  }));
   const files = [
     {name:'README.txt', data:readme},
     {name:'revenue.csv', data:bom+toCSV(d.transactions,['date','item','amount','type','contact','staff','id'])},
@@ -3987,6 +4002,8 @@ function exportEverythingZip(){
     {name:'calendar.csv', data:bom+toCSV(d.events)},
     {name:'journal.csv', data:bom+toCSV(jrows)},
     {name:'referrals.csv', data:bom+toCSV(d.referrals)},
+    {name:'debts.csv', data:bom+toCSV(debtRows,['contact','description','total','paid','balance','due','created'])},
+    {name:'debt-payments.csv', data:bom+toCSV(payRows,['contact','description','date','amount','note'])},
     {name:'data.json', data:JSON.stringify(d, null, 1)}
   ];
   downloadBlob(makeZip(files), `${safeName(CFG.bizName)}-full-download-${todayStr()}.zip`);
@@ -4174,7 +4191,7 @@ function dueTodayCard(){
   let h = '';
   if(fu.length) h += sec('Follow-ups', fu.length, fu.slice(0,6).map(f=>`<div class="list-row" style="cursor:pointer" onclick="navTo('followups')"><span>${esc(f.contactName)}, ${esc(f.detail)}</span><span class="pill ${f.due<t?'pill-hot':'pill-warm'}">${f.due<t?'overdue':'today'}</span></div>`).join(''));
   if(rem.length) h += sec('Reminders', rem.length, rem.slice(0,6).map(r=>{ const tag = r.dueDate<t ? 'overdue' : r.dueDate===t ? 'today' : 'in '+Math.round((new Date(r.dueDate)-new Date(t))/86400000)+' days'; return `<div class="list-row" style="cursor:pointer" onclick="navTo('reminders')"><span>${esc(r.title)}</span><span class="pill ${r.dueDate<=t?'pill-hot':'pill-cold'}">${tag}</span></div>`; }).join(''));
-  if(canTasks && tasks.length) h += sec('Today\'s tasks', (tasks.length-openTasks.length)+' of '+tasks.length+' done', openTasks.length ? openTasks.slice(0,6).map(k=>`<div class="list-row"><span>${esc(k.label||k.key)}</span><button class="btn btn-ghost" style="padding:5px 10px" onclick="todayTaskDone('${esc(k.key)}')">Done</button></div>`).join('') : '<div class="empty">All tasks done today.</div>');
+  if(canTasks && tasks.length) h += sec('Today\'s tasks', (tasks.length-openTasks.length)+' of '+tasks.length+' done', openTasks.length ? openTasks.slice(0,6).map(k=>`<div class="list-row"><span>${esc(k.label||k.key)}</span><button class="btn btn-ghost" style="padding:5px 10px" onclick="todayTaskDone('${jsAttr(k.key)}')">Done</button></div>`).join('') : '<div class="empty">All tasks done today.</div>');
   return `<div class="card"><div class="card-title">Due Today <span class="sub">tap to open</span></div>${h || '<div class="empty">Nothing due today, clean slate.</div>'}</div>`;
 }
 
@@ -4390,7 +4407,7 @@ function drawCalendar(){
     const extra = evs.length>3 ? `<div class="cal-pill" style="cursor:pointer;background:transparent;color:var(--muted)" onclick="openDayModal('${key}')">+${evs.length-3} more</div>` : '';
     html += `<div class="cal-cell ${key===tKey?'today':''}" style="cursor:pointer" onclick="openDayModal('${key}')">
       <div class="cal-daynum">${d}</div>
-      ${evs.slice(0,3).map(e=>`<div class="cal-pill" style="cursor:pointer" onclick="event.stopPropagation();openEventModal('${e.id}')" title="${esc(e.title)}${e.location?' · '+esc(e.location):''}">${e.time?esc(e.time)+' ':''}${esc(e.title)}</div>`).join('')}${extra}
+      ${evs.slice(0,3).map(e=>`<div class="cal-pill" style="cursor:pointer" onclick="event.stopPropagation();openEventModal('${jsAttr(e.id)}')" title="${esc(e.title)}${e.location?' · '+esc(e.location):''}">${e.time?esc(e.time)+' ':''}${esc(e.title)}</div>`).join('')}${extra}
     </div>`;
   }
   document.getElementById('calGrid').innerHTML = html;
@@ -4402,7 +4419,7 @@ function openDayModal(dateKey){
   const evs = (DATA.events||[]).filter(e=>e.date===dateKey);
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
     <div class="modal-head"><h3>${fmtDate(dateKey)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    ${evs.length ? evs.map(e=>`<div class="list-row" style="cursor:pointer" onclick="openEventModal('${e.id}')"><span><b>${e.time?esc(e.time)+' ':''}${esc(e.title)}</b>${e.location?` <span style="color:var(--muted);font-size:11px">· ${esc(e.location)}</span>`:''}</span><span style="color:var(--muted);font-size:11px">edit →</span></div>`).join('') : '<div class="empty">Nothing on this day yet.</div>'}
+    ${evs.length ? evs.map(e=>`<div class="list-row" style="cursor:pointer" onclick="openEventModal('${jsAttr(e.id)}')"><span><b>${e.time?esc(e.time)+' ':''}${esc(e.title)}</b>${e.location?` <span style="color:var(--muted);font-size:11px">· ${esc(e.location)}</span>`:''}</span><span style="color:var(--muted);font-size:11px">edit →</span></div>`).join('') : '<div class="empty">Nothing on this day yet.</div>'}
     <button class="btn btn-primary btn-full" style="margin-top:12px" onclick="openNewEventModal('${dateKey}')">＋ Add Event on This Day</button>
   </div></div>`;
 }
@@ -4431,14 +4448,14 @@ function openEventModal(id){
   const e = (DATA.events||[]).find(x=>x.id===id); if(!e) return;
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
     <div class="modal-head"><h3>Edit Event</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <label class="lbl">Title</label><input class="inp" value="${esc(e.title||'')}" onchange="updateEvent('${id}','title',this.value)">
-    <label class="lbl">Date</label><input class="inp" type="date" value="${esc(e.date||'')}" onchange="updateEvent('${id}','date',this.value)">
-    <label class="lbl">Time</label><input class="inp" type="time" value="${esc(e.time||'')}" onchange="updateEvent('${id}','time',this.value)">
-    <label class="lbl">Location</label><input class="inp" value="${esc(e.location||'')}" onchange="updateEvent('${id}','location',this.value)">
-    <label class="lbl">Phone number</label><input class="inp" value="${esc(e.phone||'')}" onchange="updateEvent('${id}','phone',this.value)">
-    <label class="lbl">Note</label><textarea class="inp" rows="3" onchange="updateEvent('${id}','note',this.value)">${esc(e.note||'')}</textarea>
+    <label class="lbl">Title</label><input class="inp" value="${esc(e.title||'')}" onchange="updateEvent('${jsAttr(id)}','title',this.value)">
+    <label class="lbl">Date</label><input class="inp" type="date" value="${esc(e.date||'')}" onchange="updateEvent('${jsAttr(id)}','date',this.value)">
+    <label class="lbl">Time</label><input class="inp" type="time" value="${esc(e.time||'')}" onchange="updateEvent('${jsAttr(id)}','time',this.value)">
+    <label class="lbl">Location</label><input class="inp" value="${esc(e.location||'')}" onchange="updateEvent('${jsAttr(id)}','location',this.value)">
+    <label class="lbl">Phone number</label><input class="inp" value="${esc(e.phone||'')}" onchange="updateEvent('${jsAttr(id)}','phone',this.value)">
+    <label class="lbl">Note</label><textarea class="inp" rows="3" onchange="updateEvent('${jsAttr(id)}','note',this.value)">${esc(e.note||'')}</textarea>
     ${e.phone?`<a class="btn btn-ghost btn-full" style="margin-top:8px;text-decoration:none;text-align:center;display:block" href="tel:${esc(e.phone)}">📞 Call</a>`:''}
-    <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--coral)" onclick="deleteEvent('${id}')">Delete Event</button>
+    <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--coral)" onclick="deleteEvent('${jsAttr(id)}')">Delete Event</button>
   </div></div>`;
 }
 async function updateEvent(id, field, val){
@@ -4584,7 +4601,7 @@ function drawCrmList(){
   const phoneCounts = {}; (DATA.contacts||[]).forEach(c=>{ const k=phoneKey(c.phone); if(k) phoneCounts[k]=(phoneCounts[k]||0)+1; });
   document.getElementById('crmList').innerHTML = list.length ? list.map(c=>{
     const temp = TEMPS.find(t=>t.key===c.temp);
-    return `<div class="list-row" style="cursor:pointer" onclick="openContactModal('${c.id}')">
+    return `<div class="list-row" style="cursor:pointer" onclick="openContactModal('${jsAttr(c.id)}')">
       <span><span class="temp-dot" style="background:${temp.color}"></span><b>${esc(c.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(c.phone)}</span>${(phoneKey(c.phone) && (phoneCounts[phoneKey(c.phone)]||0)>1)?' <span title="Another contact has this number" style="color:#8a6414;font-size:11px;font-weight:700">⚠ shared number</span>':''}</span>
       <span class="pill ${temp.pillClass}">${c.stage||temp.label}</span>
     </div>`;
@@ -4625,18 +4642,18 @@ function openContactModal(id){
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal">
     <div class="modal-head"><h3>${esc(c.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <label class="lbl">Temperature</label>
-    <select class="inp" onchange="updateContact('${id}','temp',this.value)">${TEMPS.map(t=>`<option value="${t.key}" ${t.key===c.temp?'selected':''}>${t.label}</option>`).join('')}</select>
+    <select class="inp" onchange="updateContact('${jsAttr(id)}','temp',this.value)">${TEMPS.map(t=>`<option value="${t.key}" ${t.key===c.temp?'selected':''}>${t.label}</option>`).join('')}</select>
     <label class="lbl">Stage <span class="sub">tap to move this deal, this is the same stage shown on the ${CUR_INDUSTRY_OBJ.pipelineNoun.toLowerCase()} board</span></label>
-    <div class="tab-row" style="margin-bottom:14px">${PIPE_STAGES.map(s=>`<button class="tab-pill ${s===curStage?'active':''}" onclick="updateContact('${id}','stage','${s}')">${s}</button>`).join('')}</div>
-    <label class="lbl">Phone</label><input class="inp" type="tel" inputmode="tel" value="${esc(c.phone||'')}" onchange="updateContact('${id}','phone',this.value)">
+    <div class="tab-row" style="margin-bottom:14px">${PIPE_STAGES.map(s=>`<button class="tab-pill ${s===curStage?'active':''}" onclick="updateContact('${jsAttr(id)}','stage','${s}')">${s}</button>`).join('')}</div>
+    <label class="lbl">Phone</label><input class="inp" type="tel" inputmode="tel" value="${esc(c.phone||'')}" onchange="updateContact('${jsAttr(id)}','phone',this.value)">
     ${findPhoneDupes(c.phone, c.id).length ? `<div style="background:#fff6e0;border:1px solid #e0b24a;color:#8a6414;border-radius:8px;padding:7px 10px;margin:-3px 0 10px;font-size:11.5px;font-weight:600">⚠ Same number as ${esc(dupNames(findPhoneDupes(c.phone, c.id)))}</div>` : ''}
-    <label class="lbl">Next follow-up</label><input class="inp" type="date" value="${esc(c.nextFollowUp||'')}" onchange="updateContact('${id}','nextFollowUp',this.value)">
-    <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateContact('${id}','notes',this.value)">${esc(c.notes||'')}</textarea>
+    <label class="lbl">Next follow-up</label><input class="inp" type="date" value="${esc(c.nextFollowUp||'')}" onchange="updateContact('${jsAttr(id)}','nextFollowUp',this.value)">
+    <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateContact('${jsAttr(id)}','notes',this.value)">${esc(c.notes||'')}</textarea>
     <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
-      ${waLink(c.phone)?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" rel="noopener noreferrer" href="${esc(waLink(c.phone))}" onclick="logOpenedChat('${esc(id)}','${jsAttr(c.name)}','${jsAttr(c.phone)}','follow_up','')">💬 WhatsApp</a>`:''}
-      ${CFG.modules.includes('invoicing')?`<button class="btn btn-ghost" style="flex:1" onclick="quickInvoiceFor('${id}')">🧾 Generate Invoice</button>`:''}
-      <button class="btn btn-ghost" style="flex:1" onclick="openJournalFor('${id}','${jsAttr(c.name)}')">📓 Journal Note</button>
-      <button class="btn btn-ghost" style="flex:1" onclick="archiveContact('${id}')">🗄️ Archive</button>
+      ${waLink(c.phone)?`<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center" target="_blank" rel="noopener noreferrer" href="${esc(waLink(c.phone))}" onclick="logOpenedChat('${jsAttr(id)}','${jsAttr(c.name)}','${jsAttr(c.phone)}','follow_up','')">💬 WhatsApp</a>`:''}
+      ${CFG.modules.includes('invoicing')?`<button class="btn btn-ghost" style="flex:1" onclick="quickInvoiceFor('${jsAttr(id)}')">🧾 Generate Invoice</button>`:''}
+      <button class="btn btn-ghost" style="flex:1" onclick="openJournalFor('${jsAttr(id)}','${jsAttr(c.name)}')">📓 Journal Note</button>
+      <button class="btn btn-ghost" style="flex:1" onclick="archiveContact('${jsAttr(id)}')">🗄️ Archive</button>
     </div>
   </div></div>`;
 }
@@ -5007,16 +5024,16 @@ function renderFollowups(){
        : (due.length ? `<div style="background:#e4f3ea;color:#3f8f5f;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:12.5px;font-weight:600">✓ Nothing overdue${todayN?` · ${todayN} due today`:''}</div>` : '')}
     ${due.length ? due.map(f=>{ const late = (f.due||'')<t; return `
       <div class="list-row" style="align-items:flex-start;${late?'background:#fdf3f1;border-left:4px solid var(--coral);padding-left:10px;border-radius:6px;':''}">
-        <div><b style="${f.contactId&&(DATA.contacts||[]).some(c=>c.id===f.contactId)?'cursor:pointer;text-decoration:underline;text-decoration-color:var(--teal)':''}" ${f.contactId&&(DATA.contacts||[]).some(c=>c.id===f.contactId)?`onclick="openContactModal('${esc(f.contactId)}')" role="button" tabindex="0"`:''}>${esc(f.contactName)}</b>${late?` <span class="pill" style="background:var(--coral);color:#fff;font-size:10px;padding:2px 8px">OVERDUE${daysLate(f.due)?' · '+daysLate(f.due):''}</span>`:''}<br><span style="font-size:11.5px;color:${late?'var(--coral)':'var(--ink-dim)'}">${esc(f.detail)} · due ${fmtDate(f.due)}</span></div>
+        <div><b style="${f.contactId&&(DATA.contacts||[]).some(c=>c.id===f.contactId)?'cursor:pointer;text-decoration:underline;text-decoration-color:var(--teal)':''}" ${f.contactId&&(DATA.contacts||[]).some(c=>c.id===f.contactId)?`onclick="openContactModal('${jsAttr(f.contactId)}')" role="button" tabindex="0"`:''}>${esc(f.contactName)}</b>${late?` <span class="pill" style="background:var(--coral);color:#fff;font-size:10px;padding:2px 8px">OVERDUE${daysLate(f.due)?' · '+daysLate(f.due):''}</span>`:''}<br><span style="font-size:11.5px;color:${late?'var(--coral)':'var(--ink-dim)'}">${esc(f.detail)} · due ${fmtDate(f.due)}</span></div>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost" style="padding:6px 10px" onclick="snoozeFollowup('${f.id}')">Snooze 3d</button>
-          <button class="btn btn-primary" style="padding:6px 10px" onclick="doneFollowup('${f.id}')">✓ Done</button>
+          <button class="btn btn-ghost" style="padding:6px 10px" onclick="snoozeFollowup('${jsAttr(f.id)}')">Snooze 3d</button>
+          <button class="btn btn-primary" style="padding:6px 10px" onclick="doneFollowup('${jsAttr(f.id)}')">✓ Done</button>
         </div>
       </div>`; }).join('') : '<div class="empty">Nothing outstanding, nice work.</div>'}
     </div>
     <div class="card"><div class="card-title">＋ Add a Follow-Up</div>
       <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
-      <select class="inp" id="fuContact"><option value="">, New name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+      <select class="inp" id="fuContact"><option value="">, New name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select>
       <label class="lbl">Or new name</label><input class="inp" id="fuNewName" placeholder="e.g. Kwame Enterprises">
       <label class="lbl">What's this about</label><input class="inp" id="fuDetail" placeholder="e.g. Check in on the quote">
       <label class="lbl">Due date</label><input class="inp" id="fuDue" type="date" value="${todayStr()}">
@@ -5054,6 +5071,7 @@ function renderPOS(){
     <div class="card">
       <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun} <span class="sub" style="cursor:pointer" onclick="navTo('inventory')">manage list →</span></div>
       <div class="qs-grid" id="qsGrid"></div>
+      <button class="btn btn-ghost btn-full" style="margin-top:10px" onclick="openCustomSaleModal()">＋ Custom item (not on the list)</button>
       ${hasItems?'':`<div class="empty" style="margin-top:10px">No ${CUR_INDUSTRY_OBJ.itemNoun.toLowerCase()} yet. <span style="cursor:pointer;color:var(--teal)" onclick="navTo('inventory')">Add your first one on the Inventory page →</span></div>`}
     </div>
     <div class="card">
@@ -5063,13 +5081,19 @@ function renderPOS(){
         <span>Total</span><span id="cartTotal" class="mono">${money(0)}</span>
       </div>
       <label class="lbl">Customer (optional)</label>
-      <select class="inp" id="posCustomer"><option value="">Walk-in</option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+      <select class="inp" id="posCustomer"><option value="">Walk-in</option>${(DATA.contacts||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select>
+      <label class="lbl">Amount paid now (optional)</label>
+      <input class="inp" id="posPaid" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Leave empty if paid in full">
+      <div class="sub" style="margin:-4px 0 8px">Customer paying only part? Type what they paid and pick their name above. The rest is added to Invoicing & Debtors.</div>
+      <label class="lbl">Balance due by (optional)</label>
+      <input class="inp" id="posDue" type="date">
       <button class="btn btn-primary btn-full" onclick="checkout()">✓ Complete Sale</button>
     </div>
   </div>
   <div id="lastSaleCard"></div>`;
   document.getElementById('qsGrid').innerHTML = (DATA.inventory||[]).map(it=>`
-    <button class="qs-item" onclick="addToCart('${it.id}')"><div class="qn">${esc(it.name)}</div><div class="qp">${money(it.price)}</div>${(tracksStock() && it.stock<=it.par)?'<div style="font-size:10px;color:var(--coral)">low stock</div>':''}</button>
+    <div class="qs-cell"><button class="qs-item" onclick="addToCart('${jsAttr(it.id)}')"><div class="qn">${esc(it.name)}</div><div class="qp">${money(it.price)}${it.unit?' / '+esc(it.unit):''}</div>${(tracksStock() && it.stock<=it.par)?'<div style="font-size:10px;color:var(--coral)">low stock</div>':''}</button>
+    ${tracksStock()?(it.packs||[]).map(pk=>`<button class="qs-pack" onclick="addToCart('${jsAttr(it.id)}','${jsAttr(pk.id)}')">＋ ${esc(pk.name)} · ${money(packPrice(it,pk))}</button>`).join(''):''}</div>
   `).join('');
   drawCart();
   drawLastSale();
@@ -5089,53 +5113,148 @@ function drawLastSale(){
     <div style="display:flex;justify-content:space-between;font-weight:700;padding:10px 4px 0;border-top:1px solid var(--line);margin-top:6px">
       <span>Total${lastSale.customer && lastSale.customer!=='Walk-in'?` · ${esc(lastSale.customer)}`:''}</span><span class="mono" style="color:var(--green)">${money(lastSale.total)}</span>
     </div>
+    ${lastSale.balance>0?`<div style="font-size:12px;color:var(--ink-dim);padding-top:6px">Paid now <b>${money(lastSale.paid)}</b> · <span style="color:var(--coral);font-weight:700">${money(lastSale.balance)} added to debtors</span></div>`:''}
   </div>`;
 }
-function addToCart(id){
+function packPrice(it, pk){ return (pk.price>0) ? pk.price : r2((pk.size||0)*(it.price||0)); }
+function addToCart(id, packId){
   const it = (DATA.inventory||[]).find(x=>x.id===id); if(!it) return;
-  cart[id] = cart[id] || {qty:0, price:it.price, name:it.name};
-  cart[id].qty++; drawCart();
+  const pk = packId ? (it.packs||[]).find(x=>x.id===packId) : null;
+  if(packId && !pk) return;
+  const key = pk ? id+'|'+pk.id : id;
+  cart[key] = cart[key] || {itemId:id, packId:pk?pk.id:'', name: pk?`${it.name} (${pk.name})`:it.name, base:it.name, qty:0, price: pk?packPrice(it,pk):(it.price||0), per: pk?pk.size:1};
+  cart[key].qty = Math.round((cart[key].qty+1)*1000)/1000; drawCart();
 }
-function setCartQty(id, q){ if(q<=0){ delete cart[id]; } else { cart[id].qty=q; } drawCart(); }
+function setCartQty(key, q){ if(!cart[key]) return; if(!(q>0)){ delete cart[key]; } else { cart[key].qty=Math.min(Math.round(q*1000)/1000, 10000000); } drawCart(); }
+function cartTotalNow(){ return r2(Object.values(cart).reduce((s,c)=>s+c.qty*c.price,0)); }
+function cartLineWarn(c){
+  if(!tracksStock() || !c.itemId) return '';
+  const it = (DATA.inventory||[]).find(x=>x.id===c.itemId); if(!it) return '';
+  return (c.qty*(c.per||1)) > (it.stock||0) ? `⚠ only ${fmtQty(it.stock||0)} in stock` : '';
+}
+function refreshCartLine(key){
+  const c = cart[key]; if(!c) return;
+  const row = Array.from(document.querySelectorAll('[data-line]')).find(r=>r.getAttribute('data-line')===key); if(!row) return;
+  const lt = row.querySelector('.lt'), lw = row.querySelector('.lw');
+  if(lt) lt.textContent = money(c.qty*c.price);
+  if(lw) lw.textContent = cartLineWarn(c);
+  const tot = document.getElementById('cartTotal'); if(tot) tot.textContent = money(cartTotalNow());
+}
+function cartQtyTyped(key, el){
+  const c = cart[key]; if(!c) return;
+  const v = parseFloat(el.value);
+  if(Number.isFinite(v) && v>0){ c.qty = Math.min(Math.round(v*1000)/1000, 10000000); refreshCartLine(key); }
+}
+function cartQtyCommit(key, el){
+  const c = cart[key]; if(!c) return;
+  const v = parseFloat(el.value);
+  if(Number.isFinite(v) && v<=0){ delete cart[key]; }
+  drawCart();
+}
+function cartPriceTyped(key, el){
+  const c = cart[key]; if(!c) return;
+  const v = parseFloat(el.value);
+  if(Number.isFinite(v) && v>=0){ c.price = Math.min(r2(v), 1000000000); refreshCartLine(key); }
+}
+function cartPriceCommit(key){ drawCart(); }
 function drawCart(){
-  const ids = Object.keys(cart);
+  const keys = Object.keys(cart);
   const area = document.getElementById('cartArea'); if(!area) return;
-  area.innerHTML = ids.length ? ids.map(id=>`
-    <div class="cart-row"><span class="cn">${esc(cart[id].name)}</span>
-      <div class="stepper"><button onclick="setCartQty('${id}',${cart[id].qty-1})">−</button><span class="mono">${cart[id].qty}</span><button onclick="setCartQty('${id}',${cart[id].qty+1})">+</button></div>
-      <span class="mono">${money(cart[id].qty*cart[id].price)}</span>
-    </div>`).join('') : '<div class="empty">Tap items to add them.</div>';
-  const total = ids.reduce((s,id)=>s+cart[id].qty*cart[id].price,0);
-  document.getElementById('cartTotal').textContent = money(total);
+  area.innerHTML = keys.length ? keys.map(k=>{ const c = cart[k]; const ek = esc(k), jk = jsAttr(k); return `
+    <div class="cart-row" data-line="${ek}" style="flex-wrap:wrap"><span class="cn">${esc(c.name)}</span>
+      <div class="stepper"><button onclick="setCartQty('${jk}',${Math.round((c.qty-1)*1000)/1000})">−</button><input class="cart-num" type="number" inputmode="decimal" min="0" step="any" value="${c.qty}" aria-label="Quantity" onfocus="this.select()" oninput="cartQtyTyped('${jk}',this)" onchange="cartQtyCommit('${jk}',this)"><button onclick="setCartQty('${jk}',${Math.round((c.qty+1)*1000)/1000})">+</button></div>
+      <span class="mono lt">${money(c.qty*c.price)}</span>
+      <div style="flex-basis:100%;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)">@ <input class="cart-num cart-price" type="number" inputmode="decimal" min="0" step="0.01" value="${c.price}" aria-label="Price each" onfocus="this.select()" oninput="cartPriceTyped('${jk}',this)" onchange="cartPriceCommit('${jk}')"> each<span class="lw" style="color:var(--coral);font-weight:700;margin-left:auto">${esc(cartLineWarn(c))}</span></div>
+    </div>`; }).join('') : '<div class="empty">Tap items to add them, then type the quantity.</div>';
+  const tot = document.getElementById('cartTotal'); if(tot) tot.textContent = money(cartTotalNow());
 }
+function openCustomSaleModal(){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:380px">
+    <div class="modal-head"><h3>Custom item</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="sub" style="margin-bottom:8px">For something sold once that is not on your list. It does not change your stock.</div>
+    <label class="lbl">What is it</label><input class="inp" id="cuName" maxlength="100" placeholder="e.g. Delivery, special order">
+    <label class="lbl">Quantity</label><input class="inp" id="cuQty" type="number" inputmode="decimal" min="0" step="any" value="1">
+    <label class="lbl">Price each</label><input class="inp" id="cuPrice" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00">
+    <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="addCustomToCart()">Add to cart</button>
+  </div></div>`;
+}
+function addCustomToCart(){
+  const name = (document.getElementById('cuName').value||'').trim().slice(0,100);
+  const qty = parseFloat(document.getElementById('cuQty').value);
+  const price = parseFloat(document.getElementById('cuPrice').value);
+  if(!name){ showToast('Give the item a name'); return; }
+  if(!Number.isFinite(qty) || qty<=0 || qty>10000000){ showToast('Enter a valid quantity'); return; }
+  if(!Number.isFinite(price) || price<0 || price>1000000000){ showToast('Enter a valid price'); return; }
+  cart[uid('CU')] = {itemId:'', packId:'', custom:true, name, base:name, qty:Math.round(qty*1000)/1000, price:r2(price), per:1};
+  closeModal(); drawCart();
+}
+let CHECKOUT_BUSY = false;
 async function checkout(){
-  const ids = Object.keys(cart);
-  if(!ids.length){ showToast('Cart is empty'); return; }
+  if(CHECKOUT_BUSY) return;
+  const keys = Object.keys(cart);
+  if(!keys.length){ showToast('Cart is empty'); return; }
   const custId = document.getElementById('posCustomer').value;
-  const custName = custId ? DATA.contacts.find(c=>c.id===custId)?.name : 'Walk-in';
+  const cust = custId ? (DATA.contacts||[]).find(c=>c.id===custId) : null;
+  const custName = cust ? cust.name : 'Walk-in';
+  const lines = keys.map(k=>cart[k]);
+  if(lines.some(c=>!(c.qty>0) || !Number.isFinite(c.price) || c.price<0)){ showToast('Check quantities and prices'); return; }
+  const total = r2(lines.reduce((s,c)=>s+c.qty*c.price,0));
+  const paidStr = (document.getElementById('posPaid')?.value||'').trim();
+  let paidNow = total;
+  if(paidStr!==''){
+    const pv = parseFloat(paidStr);
+    if(!Number.isFinite(pv) || pv<0){ showToast('Enter a valid amount paid'); return; }
+    if(pv>total){ showToast('Amount paid is more than the total'); return; }
+    paidNow = r2(pv);
+  }
+  const owing = r2(total-paidNow);
+  if(owing>0 && !cust){ showToast('Pick a customer so the balance can be added to their debts'); return; }
+  const dueRaw = document.getElementById('posDue')?.value||'';
+  const dueVal = /^\d{4}-\d{2}-\d{2}$/.test(dueRaw) ? dueRaw : '';
+  CHECKOUT_BUSY = true;
+  const snap = {
+    txLen: DATA.transactions.length,
+    stock: (DATA.inventory||[]).map(it=>[it, it.stock]),
+    cust: cust ? {c:cust, debts: JSON.stringify(ensureDebts(cust)), value: cust.value, dueDate: cust.dueDate} : null
+  };
+  try{
   const saleItems = [];
-  let saleTotal = 0;
-  ids.forEach(id=>{
-    const c = cart[id];
-    DATA.transactions.push({id:uid('T'), date:todayStr(), item:c.name, amount:c.qty*c.price, type:'sale', staff:CFG.ownerName, contact:custName});
+  let remaining = paidNow;
+  lines.forEach((c,i)=>{
+    const lt = r2(c.qty*c.price);
+    let amt = lt;
+    if(owing>0){ amt = (i===lines.length-1) ? remaining : r2(paidNow*lt/total); amt = Math.max(0, amt); remaining = r2(remaining-amt); }
+    if(amt>0 || owing===0) DATA.transactions.push({id:uid('T'), date:todayStr(), item:c.base||c.name, amount:amt, type:'sale', staff:CFG.ownerName, contact:custName, qty:Math.round(c.qty*(c.per||1)*1000)/1000});
     saleItems.push({name:c.name, qty:c.qty, price:c.price});
-    saleTotal += c.qty*c.price;
-    if(tracksStock()){
-      const it = (DATA.inventory||[]).find(x=>x.id===id);
-      if(it) it.stock = Math.max(0, (it.stock||0) - c.qty);
+    if(tracksStock() && c.itemId){
+      const it = (DATA.inventory||[]).find(x=>x.id===c.itemId);
+      if(it) it.stock = Math.max(0, Math.round(((it.stock||0) - c.qty*(c.per||1))*1000)/1000);
     }
   });
+  if(owing>0){
+    const desc = ('Till sale: '+lines.map(c=>`${fmtQty(c.qty)} x ${c.name}`).join(', ')).slice(0,120);
+    ensureDebts(cust).push({id:uid('D'), desc, amount:total, paid:paidNow, due:dueVal, created:todayStr(),
+      payments: paidNow>0 ? [{id:uid('P'), date:todayStr(), amount:paidNow, note:'Paid at the till'}] : []});
+    syncContactDebt(cust);
+  }
+  const savedCart = cart;
   cart = {};
-  // Confirmation shown at the bottom of the till after this, not just
-  // the toast, so completing a sale is visibly confirmed even if the
-  // toast is missed, this is what "make sure it went through" needs.
-  lastSale = { items: saleItems, total: saleTotal, customer: custName, date: todayStr(), time: new Date().toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}) };
+  lastSale = { items: saleItems, total, paid: paidNow, balance: owing, customer: custName, date: todayStr(), time: new Date().toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}) };
+  const okSave = await saveData();
+  if(!okSave){
+    // Nothing reached the database: undo the in-memory sale so the screen, stock and debtors match what is really saved, and give the cart back.
+    DATA.transactions.length = snap.txLen;
+    snap.stock.forEach(([it,st])=>{ it.stock = st; });
+    if(snap.cust){ snap.cust.c.debts = JSON.parse(snap.cust.debts); snap.cust.c.value = snap.cust.value; snap.cust.c.dueDate = snap.cust.dueDate; }
+    cart = savedCart; lastSale = null;
+    showToast('Sale NOT saved, check your connection and tap Complete Sale again');
+    renderPOS();
+    return;
+  }
   logAccountability('sales_made');
-  await saveData(); showToast('Sale completed'); renderPOS();
-  // Never block a sale, but once the plan's monthly transaction cap
-  // is crossed, let the business know so they can upgrade before it
-  // becomes a real limitation, instead of finding out the hard way.
+  showToast(owing>0 ? 'Sale completed, balance added to debtors' : 'Sale completed'); renderPOS();
   if(capHit('monthlyTransactions')) showUpgradeNudge('monthlyTransactions', 'transactions a month');
+  } finally { CHECKOUT_BUSY = false; }
 }
 
 /* ---------- BOOKINGS / ORDERS / JOBS (pipeline board) ---------- */
@@ -5150,13 +5269,20 @@ function renderBookings(){
     const items = (DATA.contacts||[]).filter(c=>(c.stage||'New')===stage || (stage==='New' && !['Confirmed','In Progress','Completed','Client'].includes(c.stage)));
     return `<div>
       <div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim);margin-bottom:8px">${stage} (${items.length})</div>
-      ${items.map(c=>`<div class="card" style="padding:11px 12px;margin-bottom:8px;cursor:pointer" onclick="openContactModal('${c.id}')"><div style="font-size:12.5px;font-weight:700">${esc(c.name)}</div><div style="font-size:11px;color:var(--muted)">${c.value?money(c.value):', '}</div></div>`).join('') || '<div class="empty" style="padding:14px 4px">Empty</div>'}
+      ${items.map(c=>`<div class="card" style="padding:11px 12px;margin-bottom:8px;cursor:pointer" onclick="openContactModal('${jsAttr(c.id)}')"><div style="font-size:12.5px;font-weight:700">${esc(c.name)}</div><div style="font-size:11px;color:var(--muted)">${c.value?money(c.value):', '}</div></div>`).join('') || '<div class="empty" style="padding:14px 4px">Empty</div>'}
     </div>`;
   }).join('');
   document.getElementById('pipeBoard').innerHTML = board;
 }
 
 /* ---------- INVENTORY ---------- */
+function stockBreakdown(it){
+  const ps = (it.packs||[]).filter(p=>p.size>1).sort((a,b)=>b.size-a.size);
+  if(!ps.length) return '';
+  const p = ps[0], stock = it.stock||0, full = Math.floor(stock/p.size), loose = Math.round((stock-full*p.size)*1000)/1000;
+  if(full<1) return '';
+  return `${fmtQty(full)} × ${p.name}${loose>0?` + ${fmtQty(loose)} loose`:''}`;
+}
 function renderInventory(){
   const stocked = tracksStock();
   const singular = CUR_INDUSTRY_OBJ.itemNoun.toLowerCase().endsWith('s') ? CUR_INDUSTRY_OBJ.itemNoun.slice(0,-1) : CUR_INDUSTRY_OBJ.itemNoun;
@@ -5165,17 +5291,25 @@ function renderInventory(){
     <div class="card">
       <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun}${stocked?', Stock':''} <span class="sub">click a row to edit</span></div>
       <div class="scroll-tbl"><table><thead><tr><th>${stocked?'Item':'Name'}</th>${stocked?'<th>Stock</th><th>Par</th>':''}<th>Cost</th><th>Price</th><th>Notes</th></tr></thead><tbody>
-        ${(DATA.inventory||[]).map(it=>`<tr style="cursor:pointer;${stocked && it.stock<=it.par?'color:var(--coral)':''}" onclick="openItemModal('${it.id}')"><td>${esc(it.name)}</td>${stocked?`<td class="mono">${it.stock}</td><td class="mono">${it.par}</td>`:''}<td class="mono">${money(it.cost)}</td><td class="mono">${money(it.price)}</td><td style="color:var(--muted);font-size:11.5px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.notes||'')}</td></tr>`).join('') || `<tr><td colspan="${stocked?6:4}" class="empty">No ${CUR_INDUSTRY_OBJ.itemNoun.toLowerCase()} yet</td></tr>`}
+        ${(DATA.inventory||[]).map(it=>`<tr style="cursor:pointer;${stocked && it.stock<=it.par?'color:var(--coral)':''}" onclick="openItemModal('${jsAttr(it.id)}')"><td>${esc(it.name)}${stocked && (it.packs||[]).length?`<div style="font-size:10.5px;color:var(--muted)">${(it.packs||[]).map(p=>esc(p.name)).join(' · ')}</div>`:''}</td>${stocked?`<td class="mono">${fmtQty(it.stock||0)}${it.unit?` <span style="color:var(--muted);font-size:10.5px">${esc(it.unit)}</span>`:''}${stockBreakdown(it)?`<div style="font-size:10.5px;color:var(--muted)">${esc(stockBreakdown(it))}</div>`:''}</td><td class="mono">${fmtQty(it.par||0)}</td>`:''}<td class="mono">${money(it.cost)}</td><td class="mono">${money(it.price)}</td><td style="color:var(--muted);font-size:11.5px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.notes||'')}</td></tr>`).join('') || `<tr><td colspan="${stocked?6:4}" class="empty">No ${CUR_INDUSTRY_OBJ.itemNoun.toLowerCase()} yet</td></tr>`}
       </tbody></table></div>
     </div>
     <div class="card">
       <div class="card-title">${stocked?'Restock / Add an Item':`Add a ${esc(singular)}`}</div>
-      <label class="lbl">${stocked?'Item name':'Name'}</label><input class="inp" id="rName" list="invList" placeholder="Must match exactly to update, or creates new">
+      <label class="lbl">${stocked?'Item name':'Name'}</label><input class="inp" id="rName" list="invList" placeholder="Must match exactly to update, or creates new" ${stocked?'oninput="refreshRestockIn()"':''}>
       <datalist id="invList">${(DATA.inventory||[]).map(it=>`<option value="${esc(it.name)}">`).join('')}</datalist>
-      ${stocked?`<label class="lbl">Qty to add</label><input class="inp" id="rQty" type="number" placeholder="e.g. 24">
+      ${stocked?`<label class="lbl">Qty to add</label><input class="inp" id="rQty" type="number" inputmode="decimal" step="any" placeholder="e.g. 24 or 5000">
+      <label class="lbl">Counted in</label><select class="inp" id="rIn"><option value="">Single units</option></select>
       <label class="lbl">Par level (optional)</label><input class="inp" id="rPar" type="number" placeholder="e.g. 10">`:''}
-      <label class="lbl">${stocked?'Cost per unit (optional)':'What it costs you to deliver (optional)'}</label><input class="inp" id="rCost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="what it costs you">
-      <label class="lbl">${stocked?'Sale price (optional)':'Price (optional)'}</label><input class="inp" id="rPrice" type="number" inputmode="decimal" step="0.01" min="0" placeholder="what you charge">
+      <label class="lbl">${stocked?'Cost per single unit (optional)':'What it costs you to deliver (optional)'}</label><input class="inp" id="rCost" type="number" inputmode="decimal" step="0.01" min="0" placeholder="what it costs you">
+      <label class="lbl">${stocked?'Sale price per single unit (optional)':'Price (optional)'}</label><input class="inp" id="rPrice" type="number" inputmode="decimal" step="0.01" min="0" placeholder="what you charge">
+      ${stocked?`<details style="margin:6px 0 10px"><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--navy);padding:4px 0">Units &amp; packs (optional)</summary>
+        <div class="sub" style="margin:4px 0 6px">Sell in cartons, bags or bundles? Say how many singles are inside. You can then restock and sell by the pack, and still sell singles.</div>
+        <label class="lbl">Unit name</label><input class="inp" id="rUnit" maxlength="20" placeholder="e.g. block, plank, bag">
+        <label class="lbl">Pack name</label><input class="inp" id="rPackName" maxlength="40" placeholder="e.g. Carton, Pack of 100" oninput="refreshRestockIn()">
+        <label class="lbl">Singles in one pack</label><input class="inp" id="rPackSize" type="number" inputmode="decimal" min="2" step="any" placeholder="e.g. 100" oninput="refreshRestockIn()">
+        <label class="lbl">Pack price (optional)</label><input class="inp" id="rPackPrice" type="number" inputmode="decimal" min="0" step="0.01" placeholder="blank = singles in pack × single price">
+      </details>`:''}
       <label class="lbl">Notes (optional)</label><textarea class="inp" id="rNotes" rows="2" placeholder="${stocked?'Supplier, variant, anything worth remembering':'What it includes, duration, anything worth remembering'}"></textarea>
       <button class="btn btn-primary btn-full" onclick="restock()">＋ ${stocked?'Add Stock':`Add ${esc(singular)}`}</button>
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
@@ -5186,84 +5320,228 @@ function renderInventory(){
     </div>
   </div>`;
 }
+function refreshRestockIn(){
+  const sel = document.getElementById('rIn'); if(!sel) return;
+  const prev = sel.value;
+  const nm = (document.getElementById('rName').value||'').trim().toLowerCase();
+  const it = (DATA.inventory||[]).find(x=>(x.name||'').toLowerCase()===nm);
+  const size = parseFloat(document.getElementById('rPackSize')?.value)||0;
+  const pn = (document.getElementById('rPackName')?.value||'').trim() || (size>1?`Pack of ${fmtQty(size)}`:'');
+  let h = '<option value="">Single units</option>';
+  if(it) h += (it.packs||[]).map(p=>`<option value="${esc(p.id)}">${esc(p.name)} (${esc(fmtQty(p.size))} each)</option>`).join('');
+  if(size>1) h += `<option value="__new__">${esc(pn)} (${esc(fmtQty(size))} each) - new</option>`;
+  sel.innerHTML = h;
+  if(Array.from(sel.options).some(o=>o.value===prev)) sel.value = prev;
+}
 async function restock(){
   const stocked = tracksStock();
-  const name = document.getElementById('rName').value.trim();
+  const name = document.getElementById('rName').value.trim().slice(0,150);
   if(!name){ showToast('Name required'); return; }
   const qty = stocked ? (parseFloat(document.getElementById('rQty').value)||0) : 0;
   if(stocked && !qty){ showToast('Item name and quantity required'); return; }
+  if(stocked && Math.abs(qty)>1000000000){ showToast('That quantity looks too large'); return; }
   let it = DATA.inventory.find(x=>x.name.toLowerCase()===name.toLowerCase());
   const par = stocked ? document.getElementById('rPar').value : '';
   const cost = document.getElementById('rCost').value;
   const price = document.getElementById('rPrice').value;
   const notes = document.getElementById('rNotes').value.trim().slice(0,400);
+  const unit = stocked ? (document.getElementById('rUnit').value||'').trim().slice(0,20) : '';
+  const packNameIn = stocked ? (document.getElementById('rPackName').value||'').trim().slice(0,40) : '';
+  const packSize = stocked ? (parseFloat(document.getElementById('rPackSize').value)||0) : 0;
+  const packPriceIn = stocked ? (parseFloat(document.getElementById('rPackPrice').value)||0) : 0;
+  if(stocked && (packNameIn||packPriceIn||packSize) && !(packSize>1 && packSize<=10000000)){ showToast('Enter how many singles come in the pack (2 or more)'); return; }
+  if(packPriceIn<0 || packPriceIn>1000000000){ showToast('Enter a valid pack price'); return; }
+  const inSel = stocked ? document.getElementById('rIn').value : '';
+  let per = 1;
+  if(inSel==='__new__' && packSize>1) per = packSize;
+  else if(inSel && it){ const pk0 = (it.packs||[]).find(x=>x.id===inSel); if(pk0) per = pk0.size; }
+  const addUnits = Math.round(qty*per*1000)/1000;
   if(it){
-    if(stocked) it.stock += qty;
+    if(stocked) it.stock = Math.round(((it.stock||0)+addUnits)*1000)/1000;
     if(par) it.par = parseFloat(par);
     if(cost) it.cost = parseFloat(cost);
     if(price) it.price = parseFloat(price);
     if(notes) it.notes = notes;
   } else {
-    DATA.inventory.push({id:uid('I'), name, stock: stocked?qty:1, par: stocked?(par?parseFloat(par):5):0, cost: cost?parseFloat(cost):0, price: price?parseFloat(price):0, notes});
+    it = {id:uid('I'), name, stock: stocked?addUnits:1, par: stocked?(par?parseFloat(par):5):0, cost: cost?parseFloat(cost):0, price: price?parseFloat(price):0, notes};
+    DATA.inventory.push(it);
+  }
+  if(unit) it.unit = unit;
+  if(packSize>1){
+    if(!Array.isArray(it.packs)) it.packs = [];
+    const pn = packNameIn || `Pack of ${fmtQty(packSize)}`;
+    const ex = it.packs.find(p=>(p.name||'').toLowerCase()===pn.toLowerCase());
+    if(ex){ ex.size = packSize; if(packPriceIn>0) ex.price = r2(packPriceIn); }
+    else it.packs.push({id:uid('PK'), name:pn, size:packSize, price: packPriceIn>0 ? r2(packPriceIn) : 0});
   }
   await saveData(); showToast(stocked?'Stock updated':'Added'); renderInventory();
 }
 function openItemModal(id){
   const it = (DATA.inventory||[]).find(x=>x.id===id); if(!it) return;
   const stocked = tracksStock();
-  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+  const uw = it.unit || 'unit';
+  const packsHtml = stocked ? `
+    <label class="lbl">Unit name</label><input class="inp" maxlength="20" value="${esc(it.unit||'')}" placeholder="e.g. block, plank, bag" onchange="updateItem('${jsAttr(id)}','unit',this.value)">
+    <div style="margin:14px 0 4px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim)">Packs &amp; cartons (optional)</div>
+    <div class="sub" style="margin-bottom:6px">Stock, cost and price above are per single ${esc(uw)}. A pack says how many singles it holds. Leave the pack price blank to use singles × single price.</div>
+    ${(it.packs||[]).length?`<div style="display:flex;gap:6px;font-size:10.5px;color:var(--muted);margin-bottom:2px"><span style="flex:2;min-width:100px">Name</span><span style="flex:1;min-width:70px">Singles</span><span style="flex:1;min-width:80px">Price</span><span style="width:34px"></span></div>`:''}
+    ${(it.packs||[]).map(p=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+      <input class="inp" style="flex:2;min-width:100px;margin:0" maxlength="40" value="${esc(p.name)}" aria-label="Pack name" onchange="updatePack('${jsAttr(id)}','${jsAttr(p.id)}','name',this.value)">
+      <input class="inp" style="flex:1;min-width:70px;margin:0" type="number" inputmode="decimal" min="2" step="any" value="${esc(p.size)}" aria-label="Singles in pack" onchange="updatePack('${jsAttr(id)}','${jsAttr(p.id)}','size',this.value)">
+      <input class="inp" style="flex:1;min-width:80px;margin:0" type="number" inputmode="decimal" min="0" step="0.01" value="${esc(p.price>0?p.price:'')}" placeholder="${esc(r2((p.size||0)*(it.price||0)))}" aria-label="Pack price" onchange="updatePack('${jsAttr(id)}','${jsAttr(p.id)}','price',this.value)">
+      <button class="btn btn-ghost" style="padding:4px 10px;color:var(--coral)" aria-label="Remove pack" onclick="removePack('${jsAttr(id)}','${jsAttr(p.id)}')">✕</button></div>`).join('')}
+    <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
+      <input class="inp" id="mpName" style="flex:2;min-width:100px;margin:0" maxlength="40" placeholder="New pack name">
+      <input class="inp" id="mpSize" style="flex:1;min-width:70px;margin:0" type="number" inputmode="decimal" min="2" step="any" placeholder="Singles">
+      <input class="inp" id="mpPrice" style="flex:1;min-width:80px;margin:0" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Price">
+      <button class="btn btn-ghost" style="padding:4px 10px" onclick="addPackFromModal('${jsAttr(id)}')">＋ Add</button></div>` : '';
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px">
     <div class="modal-head"><h3>${esc(it.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <label class="lbl">Name</label><input class="inp" value="${esc(it.name||'')}" onchange="updateItem('${id}','name',this.value)">
-    ${stocked?`<label class="lbl">Stock on hand</label><input class="inp" type="number" value="${esc(it.stock||0)}" onchange="updateItem('${id}','stock',parseFloat(this.value)||0)">
-    <label class="lbl">Par level</label><input class="inp" type="number" value="${esc(it.par||0)}" onchange="updateItem('${id}','par',parseFloat(this.value)||0)">`:''}
-    <label class="lbl">Cost per unit</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(it.cost||0)}" onchange="updateItem('${id}','cost',parseFloat(this.value)||0)">
-    <label class="lbl">Sale price</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(it.price||0)}" onchange="updateItem('${id}','price',parseFloat(this.value)||0)">
-    <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateItem('${id}','notes',this.value)">${esc(it.notes||'')}</textarea>
-    <button class="btn btn-ghost btn-full" style="margin-top:10px;color:var(--coral)" onclick="removeItem('${id}')">Remove Item</button>
+    <label class="lbl">Name</label><input class="inp" value="${esc(it.name||'')}" onchange="updateItem('${jsAttr(id)}','name',this.value)">
+    ${stocked?`<label class="lbl">Stock on hand${it.unit?` (${esc(it.unit)})`:''}</label><input class="inp" type="number" inputmode="decimal" step="any" value="${esc(it.stock||0)}" onchange="updateItem('${jsAttr(id)}','stock',parseFloat(this.value)||0)">
+    ${stockBreakdown(it)?`<div class="sub" style="margin:-6px 0 10px">${esc(stockBreakdown(it))}</div>`:''}
+    <label class="lbl">Par level</label><input class="inp" type="number" value="${esc(it.par||0)}" onchange="updateItem('${jsAttr(id)}','par',parseFloat(this.value)||0)">`:''}
+    <label class="lbl">Cost per ${stocked?`single ${esc(uw)}`:'unit'}</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(it.cost||0)}" onchange="updateItem('${jsAttr(id)}','cost',parseFloat(this.value)||0)">
+    <label class="lbl">Sale price${stocked?` per single ${esc(uw)}`:''}</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(it.price||0)}" onchange="updateItem('${jsAttr(id)}','price',parseFloat(this.value)||0)">
+    ${packsHtml}
+    <label class="lbl">Notes</label><textarea class="inp" rows="3" onchange="updateItem('${jsAttr(id)}','notes',this.value)">${esc(it.notes||'')}</textarea>
+    <button class="btn btn-ghost btn-full" style="margin-top:10px;color:var(--coral)" onclick="removeItem('${jsAttr(id)}')">Remove Item</button>
   </div></div>`;
 }
 async function updateItem(id, field, val){
   const it = (DATA.inventory||[]).find(x=>x.id===id); if(!it) return;
-  it[field] = (field==='name') ? String(val).trim().slice(0,150) : (field==='notes' ? String(val).trim().slice(0,400) : val);
+  if(['stock','par','cost','price'].includes(field)){
+    const v = Number(val);
+    if(!Number.isFinite(v) || v<0 || v>1000000000){ showToast('Enter a valid number'); openItemModal(id); return; }
+    it[field] = v;
+  } else {
+    it[field] = (field==='name') ? String(val).trim().slice(0,150) : (field==='notes' ? String(val).trim().slice(0,400) : (field==='unit' ? String(val).trim().slice(0,20) : val));
+  }
   await saveData(); renderInventory(); showToast('Updated');
+}
+async function updatePack(id, pid, field, val){
+  const it = (DATA.inventory||[]).find(x=>x.id===id); if(!it) return;
+  const pk = (it.packs||[]).find(x=>x.id===pid); if(!pk) return;
+  if(field==='name'){ const v = String(val).trim().slice(0,40); if(!v){ showToast('Pack name required'); openItemModal(id); return; } pk.name = v; }
+  else if(field==='size'){ const v = parseFloat(val); if(!Number.isFinite(v) || v<=1 || v>10000000){ showToast('Singles in a pack must be 2 or more'); openItemModal(id); return; } pk.size = v; }
+  else if(field==='price'){ const v = parseFloat(val); pk.price = (Number.isFinite(v) && v>0 && v<=1000000000) ? r2(v) : 0; }
+  else return;
+  await saveData(); renderInventory(); showToast('Updated');
+}
+async function removePack(id, pid){
+  const it = (DATA.inventory||[]).find(x=>x.id===id); if(!it) return;
+  it.packs = (it.packs||[]).filter(x=>x.id!==pid);
+  await saveData(); renderInventory(); openItemModal(id); showToast('Pack removed');
+}
+async function addPackFromModal(id){
+  const it = (DATA.inventory||[]).find(x=>x.id===id); if(!it) return;
+  const size = parseFloat(document.getElementById('mpSize').value);
+  const pr = parseFloat(document.getElementById('mpPrice').value)||0;
+  if(!Number.isFinite(size) || size<=1 || size>10000000){ showToast('Singles in a pack must be 2 or more'); return; }
+  if(pr<0 || pr>1000000000){ showToast('Enter a valid pack price'); return; }
+  const nm = (document.getElementById('mpName').value||'').trim().slice(0,40) || `Pack of ${fmtQty(size)}`;
+  if(!Array.isArray(it.packs)) it.packs = [];
+  if(it.packs.some(p=>(p.name||'').toLowerCase()===nm.toLowerCase())){ showToast('A pack with that name already exists'); return; }
+  it.packs.push({id:uid('PK'), name:nm, size, price: pr>0 ? r2(pr) : 0});
+  await saveData(); renderInventory(); openItemModal(id); showToast('Pack added');
 }
 async function removeItem(id){
   DATA.inventory = (DATA.inventory||[]).filter(x=>x.id!==id);
   await saveData(); closeModal(); showToast('Item removed'); renderInventory();
 }
 
+/* ---------- DEBT LEDGER ----------
+   Every amount a client owes is its own record (contact.debts[]), so one
+   client can owe for several jobs and settle them separately. contact.value
+   and contact.dueDate are kept as derived totals so other screens stay correct. */
+function r2(n){ n = Number(n); if(!Number.isFinite(n)) return 0; return Math.round((n + Number.EPSILON)*100)/100; }
+function fmtQty(n){ n = Number(n); if(!Number.isFinite(n)) return '0'; return (Math.round(n*1000)/1000).toLocaleString(undefined,{maximumFractionDigits:3}); }
+function debtBal(d){ return Math.max(0, r2((Number(d && d.amount)||0) - (Number(d && d.paid)||0))); }
+function debtLabel(d){ return String((d && d.desc) || '').slice(0,80); }
+function ensureDebts(c){
+  if(!c || typeof c!=='object') return [];
+  if(!Array.isArray(c.debts)){
+    c.debts = [];
+    const legacy = r2(c.value);
+    if(legacy>0){
+      c.debts.push({id:uid('D'), desc:'Previous balance', amount:legacy, paid:0, due:(typeof c.dueDate==='string' && /^\d{4}-\d{2}-\d{2}$/.test(c.dueDate))?c.dueDate:'', created:todayStr(), payments:[]});
+    }
+  }
+  c.debts = c.debts.filter(d=>d && typeof d==='object');
+  c.debts.forEach(d=>{
+    if(!d.id) d.id = uid('D');
+    d.amount = r2(d.amount);
+    d.paid = r2(d.paid);
+    if(!Array.isArray(d.payments)) d.payments = [];
+    if(typeof d.due!=='string') d.due = '';
+  });
+  return c.debts;
+}
+function syncContactDebt(c){
+  const debts = ensureDebts(c);
+  const open = debts.filter(d=>debtBal(d)>0);
+  c.value = r2(open.reduce((x,d)=>x+debtBal(d),0));
+  const dues = open.map(d=>d.due).filter(Boolean).sort();
+  c.dueDate = dues.length ? dues[0] : '';
+}
+function openDebtList(){
+  const out = [];
+  (DATA.contacts||[]).forEach(c=>{ ensureDebts(c).forEach(d=>{ const bal = debtBal(d); if(bal>0) out.push({c, d, bal}); }); });
+  return out;
+}
+function findDebt(cid, did){
+  const c = (DATA.contacts||[]).find(x=>x.id===cid); if(!c) return {};
+  const d = ensureDebts(c).find(x=>x.id===did); return {c, d};
+}
+function refreshAfterDebtChange(){
+  try{ if(CUR_PAGE==='invoicing') renderInvoicing(); else navTo(CUR_PAGE); renderSidebar(); }catch(e){ console.error('refresh failed', e); }
+}
+let DEBT_BUSY = false;
+
 /* ---------- INVOICING / DEBTORS ---------- */
 function renderInvoicing(){
-  const owed = (DATA.contacts||[]).filter(c=>c.value>0);
-  const total = owed.reduce((s,c)=>s+c.value,0);
+  const t = todayStr();
+  const owed = openDebtList().sort((a,b)=>{
+    const ao = a.d.due && a.d.due<t ? 0 : 1, bo = b.d.due && b.d.due<t ? 0 : 1;
+    if(ao!==bo) return ao-bo;
+    return (a.d.due||'9999').localeCompare(b.d.due||'9999') || (a.c.name||'').localeCompare(b.c.name||'');
+  });
+  const total = r2(owed.reduce((x,o)=>x+o.bal,0));
+  const cleared = [];
+  (DATA.contacts||[]).forEach(c=>ensureDebts(c).forEach(d=>{ if(debtBal(d)<=0 && d.amount>0) cleared.push({c,d}); }));
+  cleared.sort((a,b)=>String((b.d.payments[b.d.payments.length-1]||{}).date||b.d.created||'').localeCompare(String((a.d.payments[a.d.payments.length-1]||{}).date||a.d.created||'')));
   const ci = getCountryInfo();
+  const crmOne = CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1);
   document.getElementById('pageContent').innerHTML = `
-  <div class="grid-metrics"><div class="metric coral" style="cursor:pointer" onclick="openDebtorSummaryModal()"><div class="ml">Total Outstanding</div><div class="mv">${money(total)}</div><div class="ms">${owed.length} open balances</div></div></div>
+  <div class="grid-metrics"><div class="metric coral" style="cursor:pointer" onclick="openDebtorSummaryModal()"><div class="ml">Total Outstanding</div><div class="mv">${money(total)}</div><div class="ms">${owed.length} open balance${owed.length===1?'':'s'}</div></div></div>
   <div class="card" style="border-color:var(--teal-tint)"><div class="card-title">Your Tax Setting <span class="sub" onclick="navTo('settings')" style="cursor:pointer">change country →</span></div>
     <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7"><b style="color:var(--navy)">${esc(ci.tax)}.</b> ${esc(ci.taxNote)}</div>
   </div>
   <div class="two-col">
-    <div class="card"><div class="card-title">Debtors, Who Owes What <span class="sub">click anyone to edit</span></div>
-    ${owed.length ? owed.map(c=>`<div class="list-row" style="cursor:pointer" onclick="openDebtorModal('${c.id}')"><span><b>${esc(c.name)}</b>${c.dueDate?` <span style="color:var(--muted);font-size:11px">· due ${fmtDate(c.dueDate)}</span>`:''}</span><span style="display:flex;align-items:center;gap:10px"><span class="mono" style="color:var(--coral)">${money(c.value)}</span><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="event.stopPropagation();markDebtPaid('${c.id}')">Mark Paid</button></span></div>`).join('') : '<div class="empty">Nothing outstanding.</div>'}
+    <div class="card"><div class="card-title">Debtors, Who Owes What <span class="sub">each job is listed on its own</span></div>
+    ${owed.length ? owed.map(o=>`<div class="list-row" style="cursor:pointer;align-items:flex-start;gap:8px" onclick="openDebtModal('${jsAttr(o.c.id)}','${jsAttr(o.d.id)}')"><span style="min-width:0"><b>${esc(o.c.name)}</b>${debtLabel(o.d)?` <span style="color:var(--ink-dim);font-size:12px">· ${esc(debtLabel(o.d))}</span>`:''}<br><span style="color:var(--muted);font-size:11px">${o.d.due?(o.d.due<t?'overdue since ':'due ')+esc(fmtDate(o.d.due)):'no due date'}${o.d.paid>0?` · paid ${esc(money(o.d.paid))} of ${esc(money(o.d.amount))}`:''}</span></span><span style="display:flex;align-items:center;gap:10px;flex-shrink:0"><span class="mono" style="color:var(--coral)">${money(o.bal)}</span><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="event.stopPropagation();openDebtModal('${jsAttr(o.c.id)}','${jsAttr(o.d.id)}')">Record payment</button></span></div>`).join('') : '<div class="empty">Nothing outstanding.</div>'}
     </div>
     <div class="card"><div class="card-title">Add Invoice / Debt</div>
-      <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
-      <select class="inp" id="invContact"><option value="">, New name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
-      <label class="lbl">Or new name</label><input class="inp" id="invNewName" placeholder="e.g. Kwame Enterprises">
-      <label class="lbl">Amount owed</label><input class="inp" id="invAmt" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+      <label class="lbl">Existing ${esc(crmOne)} (optional)</label>
+      <select class="inp" id="invContact"><option value="">, New name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select>
+      <label class="lbl">Or new name</label><input class="inp" id="invNewName" maxlength="120" placeholder="e.g. Kwame Enterprises">
+      <label class="lbl">What is it for (optional)</label><input class="inp" id="invDesc" maxlength="120" placeholder="e.g. 500 blocks, kitchen job">
+      <label class="lbl">Full amount</label><input class="inp" id="invAmt" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+      <label class="lbl">Already paid (optional)</label><input class="inp" id="invPaid" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
       <label class="lbl">Due date (optional)</label><input class="inp" id="invDue" type="date">
       <button class="btn btn-primary btn-full" onclick="addDebtor()">＋ Add Invoice</button>
     </div>
   </div>
+  ${cleared.length?`<div class="card" style="margin-top:16px"><div class="card-title">Recently Cleared <span class="sub">fully paid, tap to see payments</span></div>${cleared.slice(0,8).map(o=>`<div class="list-row" style="cursor:pointer" onclick="openDebtModal('${jsAttr(o.c.id)}','${jsAttr(o.d.id)}')"><span><b>${esc(o.c.name)}</b>${debtLabel(o.d)?` <span style="color:var(--ink-dim);font-size:12px">· ${esc(debtLabel(o.d))}</span>`:''}</span><span class="mono" style="color:var(--green)">${money(o.d.amount)} · paid</span></div>`).join('')}</div>`:''}
   <div class="card" style="margin-top:16px"><div class="card-title">Send an Invoice <span class="sub">get a shareable link and a ready WhatsApp message</span></div>
     <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
-    <select class="inp" id="sendInvContact" onchange="applyInvoiceContact()"><option value="">, New name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+    <select class="inp" id="sendInvContact" onchange="applyInvoiceContact()"><option value="">, New name below instead, </option>${(DATA.contacts||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select>
     <label class="lbl">Or client name</label><input class="inp" id="sendInvName" placeholder="e.g. Kwame Enterprises">
     <label class="lbl">Client phone (optional, for WhatsApp)</label><input class="inp" id="sendInvPhone" placeholder="e.g. 0241234567">
     <label class="lbl">What's this for</label>
     <select class="inp" id="sendInvDescPick" onchange="applyInvoiceService()">
       <option value="">Pick from your ${CUR_INDUSTRY_OBJ.itemNoun.toLowerCase()}…</option>
-      ${(DATA.inventory||[]).map(it=>`<option value="${esc(it.id)}" data-price="${it.price||0}">${esc(it.name)}${it.price?` · ${money(it.price)}`:''}</option>`).join('')}
+      ${(DATA.inventory||[]).map(it=>`<option value="${esc(it.id)}" data-price="${esc(it.price||0)}">${esc(it.name)}${it.price?` · ${money(it.price)}`:''}</option>`).join('')}
       <option value="__other__">Other, type it in below</option>
     </select>
     <input class="inp" id="sendInvDesc" placeholder="e.g. Logo design + business card set" style="${(DATA.inventory||[]).length?'display:none':''}">
@@ -5308,7 +5586,9 @@ function applyInvoiceService(){
   descInput.value = it ? it.name : '';
   if(it && it.price && !amtInput.value) amtInput.value = it.price;
 }
+let INVOICE_BUSY = false;
 async function generateInvoice(){
+  if(INVOICE_BUSY) return;
   const existingId = document.getElementById('sendInvContact').value;
   const existing = existingId ? DATA.contacts.find(x=>x.id===existingId) : null;
   const name = (existing ? existing.name : document.getElementById('sendInvName').value.trim());
@@ -5321,13 +5601,16 @@ async function generateInvoice(){
   const due = document.getElementById('sendInvDue').value || null;
   if(!name){ showToast('Enter a client name'); return; }
   if(!Number.isFinite(amt) || amt<=0){ showToast('Enter a valid amount'); return; }
-  const items = [{desc, qty:1, price:amt}];
-  const { data, error } = await sb.rpc('create_invoice', {
+  if(amt>1000000000){ showToast('That amount looks too large'); return; }
+  const items = [{desc:String(desc).slice(0,200), qty:1, price:amt}];
+  INVOICE_BUSY = true;
+  let data, error;
+  try{ ({ data, error } = await sb.rpc('create_invoice', {
     p_contact_name: name, p_contact_phone: phone, p_items: items, p_amount: amt,
     p_currency: CFG.currency, p_due_date: due, p_business_name: CFG.bizName,
     p_business_phone: CFG.ownerPhone||'', p_business_address: CFG.invoiceAddress||'',
     p_business_reg_no: CFG.invoiceRegNo||'', p_business_email: CFG.invoiceEmail||'', p_notes: ''
-  });
+  })); } catch(e){ error = e; } finally { INVOICE_BUSY = false; }
   if(error){ showToast('Could not create invoice: ' + (error.message||error)); return; }
   const row = Array.isArray(data) ? data[0] : data;
   const link = `${window.location.origin}/invoice.html?id=${row.id}`;
@@ -5338,7 +5621,7 @@ async function generateInvoice(){
       <div style="font-size:12.5px;color:var(--ink-dim);margin-bottom:8px">Invoice <b style="color:var(--navy)">${esc(row.invoice_number)}</b> created.</div>
       <input class="inp" readonly value="${esc(link)}" onclick="this.select()">
       <div style="display:flex;gap:8px;margin-top:6px">
-        <button class="btn btn-ghost" style="flex:1" onclick="copyInvoiceLink('${esc(link)}')">Copy Link</button>
+        <button class="btn btn-ghost" style="flex:1" onclick="copyInvoiceLink('${jsAttr(link)}')">Copy Link</button>
         <a class="btn btn-primary" style="flex:1;text-align:center;text-decoration:none" href="${esc(waHref)}" target="_blank" rel="noopener noreferrer" onclick="logOpenedChat('','${jsAttr(name)}','${jsAttr(phone)}','invoice','${jsAttr(decodeURIComponent(waText))}')">Share on WhatsApp</a>
       </div>
     </div>`;
@@ -5361,7 +5644,7 @@ async function loadRecentInvoices(){
   if(!data || !data.length){ wrap.innerHTML = '<div class="empty">No invoices sent yet.</div>'; return; }
   wrap.innerHTML = data.slice(0,15).map(inv=>{
     const link = `${window.location.origin}/invoice.html?id=${inv.id}`;
-    return `<div class="list-row"><span><b>${esc(inv.invoice_number)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(inv.contact_name)} · ${fmtDate(inv.created_at)}</span></span><span style="display:flex;align-items:center;gap:8px"><span class="mono" style="color:${inv.status==='paid'?'var(--teal-dim)':'var(--coral)'}">${money(inv.amount)} ${inv.status==='paid'?'· paid':''}</span><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="copyInvoiceLink('${esc(link)}')">Copy Link</button>${inv.status!=='paid'?`<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="markInvoicePaidUI('${inv.id}')">Mark Paid</button>`:''}</span></div>`;
+    return `<div class="list-row"><span><b>${esc(inv.invoice_number)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(inv.contact_name)} · ${fmtDate(inv.created_at)}</span></span><span style="display:flex;align-items:center;gap:8px"><span class="mono" style="color:${inv.status==='paid'?'var(--teal-dim)':'var(--coral)'}">${money(inv.amount)} ${inv.status==='paid'?'· paid':''}</span><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="copyInvoiceLink('${jsAttr(link)}')">Copy Link</button>${inv.status!=='paid'?`<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="markInvoicePaidUI('${jsAttr(inv.id)}')">Mark Paid</button>`:''}</span></div>`;
   }).join('');
 }
 async function markInvoicePaidUI(id){
@@ -5370,63 +5653,164 @@ async function markInvoicePaidUI(id){
   showToast('Marked paid'); loadRecentInvoices();
 }
 async function addDebtor(){
-  const amt = parseFloat(document.getElementById('invAmt').value);
+  if(DEBT_BUSY) return;
+  const amt = r2(parseFloat(document.getElementById('invAmt').value));
   if(!Number.isFinite(amt) || amt<=0){ showToast('Enter a valid amount'); return; }
+  if(amt>1000000000){ showToast('That amount looks too large'); return; }
+  const paidRaw = (document.getElementById('invPaid').value||'').trim();
+  const paid = paidRaw==='' ? 0 : r2(parseFloat(paidRaw));
+  if(!Number.isFinite(paid) || paid<0){ showToast('Enter a valid amount paid'); return; }
+  if(paid>amt){ showToast('Amount paid is more than the full amount'); return; }
   const existingId = document.getElementById('invContact').value;
   const newName = document.getElementById('invNewName').value.trim().slice(0,120);
-  let c;
-  if(existingId){ c = DATA.contacts.find(x=>x.id===existingId); }
-  else if(newName){
-    c = { id:uid('C'), name:newName, phone:'', temp:'active', value:0, notes:'', lastContact: todayStr() };
-    DATA.contacts.push(c);
+  const desc = (document.getElementById('invDesc').value||'').trim().slice(0,120);
+  const dueRaw = document.getElementById('invDue').value||'';
+  const due = /^\d{4}-\d{2}-\d{2}$/.test(dueRaw) ? dueRaw : '';
+  let c = existingId ? (DATA.contacts||[]).find(x=>x.id===existingId) : null, isNew = false;
+  if(!c && newName){
+    c = { id:uid('C'), name:newName, phone:'', temp:'active', value:0, notes:'', lastContact: todayStr(), debts:[] };
+    isNew = true;
   }
   if(!c){ showToast('Pick an existing contact or type a new name'); return; }
-  c.value = (c.value||0) + amt;
-  if(document.getElementById('invDue').value) c.dueDate = document.getElementById('invDue').value;
-  await saveData(); showToast('Invoice added'); renderInvoicing();
+  DEBT_BUSY = true;
+  const d = {id:uid('D'), desc, amount:amt, paid:0, due, created:todayStr(), payments:[]};
+  let tx = null;
+  try{
+    if(isNew) DATA.contacts.push(c);
+    ensureDebts(c).push(d);
+    if(paid>0){
+      d.paid = paid; d.payments.push({id:uid('P'), date:todayStr(), amount:paid, note:'Paid when added'});
+      tx = {id:uid('T'), date:todayStr(), item:'Invoice payment', amount:paid, type:'invoice', staff:CFG.ownerName, contact:c.name, debtId:d.id};
+      DATA.transactions.push(tx);
+    }
+    syncContactDebt(c);
+    const ok = await saveData();
+    if(!ok){
+      c.debts = c.debts.filter(x=>x!==d);
+      if(tx) DATA.transactions = DATA.transactions.filter(x=>x!==tx);
+      if(isNew) DATA.contacts = DATA.contacts.filter(x=>x!==c);
+      syncContactDebt(c);
+      return;
+    }
+    showToast(paid>0 ? `Invoice added, ${money(amt-paid)} still owing` : 'Invoice added');
+    renderInvoicing(); renderSidebar();
+  } finally { DEBT_BUSY = false; }
 }
-function openDebtorModal(id){
-  const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
-  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+function openDebtModal(cid, did){
+  const {c, d} = findDebt(cid, did); if(!c || !d) return;
+  const bal = debtBal(d), t = todayStr();
+  const pays = (d.payments||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+  const jc = jsAttr(cid), jd = jsAttr(did);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:440px">
     <div class="modal-head"><h3>${esc(c.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <label class="lbl">Amount owed</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(c.value||0)}" onchange="updateDebtor('${id}','value',parseFloat(this.value)||0)">
-    <label class="lbl">Due date</label><input class="inp" type="date" value="${esc(c.dueDate||'')}" onchange="updateDebtor('${id}','dueDate',this.value)">
-    <button class="btn btn-ghost btn-full" style="margin-top:10px" onclick="sendPaymentReminder('${esc(id)}')">💬 Send Payment Reminder (WhatsApp)</button>
-    <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="confirmMarkDebtPaid('${id}')">Mark Fully Paid</button>
+    <label class="lbl">What it is for</label><input class="inp" maxlength="120" value="${esc(d.desc||'')}" placeholder="e.g. 500 blocks" onchange="updateDebtField('${jc}','${jd}','desc',this.value)">
+    <div style="display:flex;gap:8px;margin:6px 0 10px">
+      <div style="flex:1;background:var(--cream);border:1px solid var(--line);border-radius:9px;padding:8px 10px"><div style="font-size:10.5px;color:var(--muted)">Full amount</div><div class="mono" id="dmTotal">${money(d.amount)}</div></div>
+      <div style="flex:1;background:var(--cream);border:1px solid var(--line);border-radius:9px;padding:8px 10px"><div style="font-size:10.5px;color:var(--muted)">Paid so far</div><div class="mono" id="dmPaid" style="color:var(--green)">${money(d.paid)}</div></div>
+      <div style="flex:1;background:var(--cream);border:1px solid var(--line);border-radius:9px;padding:8px 10px"><div style="font-size:10.5px;color:var(--muted)">Left to pay</div><div class="mono" id="dmBal" style="color:${bal>0?'var(--coral)':'var(--green)'}">${money(bal)}</div></div>
+    </div>
+    <label class="lbl">Full amount of this invoice</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(d.amount)}" onchange="updateDebtField('${jc}','${jd}','amount',this.value)">
+    <label class="lbl">Due date</label><input class="inp" type="date" value="${esc(d.due||'')}" onchange="updateDebtField('${jc}','${jd}','due',this.value)">
+    ${bal>0?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+      <div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px">Record a payment</div>
+      <label class="lbl">Amount received</label><input class="inp" id="dpAmt" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(bal)}">
+      <label class="lbl">Date received</label><input class="inp" id="dpDate" type="date" value="${esc(t)}" max="${esc(t)}">
+      <label class="lbl">Note (optional)</label><input class="inp" id="dpNote" maxlength="100" placeholder="e.g. mobile money, cash">
+      <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="recordDebtPayment('${jc}','${jd}')">Record payment</button>
+      <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="sendPaymentReminder('${jc}','${jd}')">💬 Send Payment Reminder (WhatsApp)</button>
+    </div>`:`<div style="margin-top:12px;padding:10px;border-radius:9px;background:#e4f3ea;color:var(--green);font-weight:700;font-size:12.5px;text-align:center">✓ Fully paid</div>`}
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+      <div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px">Payments received</div>
+      ${pays.length ? pays.map(pm=>`<div class="list-row"><span>${esc(fmtDate(pm.date))}${pm.note?` <span style="color:var(--muted);font-size:11px">· ${esc(pm.note)}</span>`:''}</span><span class="mono">${money(pm.amount)}</span></div>`).join('') : '<div class="empty" style="padding:10px 0">No payments yet</div>'}
+    </div>
+    <button class="btn btn-ghost btn-full" style="margin-top:12px;color:var(--coral)" onclick="confirmRemoveDebt('${jc}','${jd}')">Remove this invoice (entered by mistake)</button>
   </div></div>`;
 }
-async function sendPaymentReminder(id){
-  const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
+function refreshDebtModalSummary(d){
+  const set = (id, txt, col)=>{ const el = document.getElementById(id); if(el){ el.textContent = txt; if(col) el.style.color = col; } };
+  set('dmTotal', money(d.amount)); set('dmPaid', money(d.paid)); set('dmBal', money(debtBal(d)), debtBal(d)>0?'var(--coral)':'var(--green)');
+}
+async function updateDebtField(cid, did, field, val){
+  const {c, d} = findDebt(cid, did); if(!c || !d || DEBT_BUSY) return;
+  const old = {desc:d.desc, amount:d.amount, due:d.due};
+  if(field==='desc'){ d.desc = String(val||'').trim().slice(0,120); }
+  else if(field==='due'){ d.due = /^\d{4}-\d{2}-\d{2}$/.test(val||'') ? val : ''; }
+  else if(field==='amount'){
+    const v = r2(parseFloat(val));
+    if(!Number.isFinite(v) || v<=0 || v>1000000000){ showToast('Enter a valid amount'); openDebtModal(cid, did); return; }
+    if(v < d.paid){ showToast(`Already paid ${money(d.paid)}, the full amount cannot be less than that`); openDebtModal(cid, did); return; }
+    d.amount = v;
+  } else return;
+  DEBT_BUSY = true;
+  try{
+    syncContactDebt(c);
+    const ok = await saveData();
+    if(!ok){ Object.assign(d, old); syncContactDebt(c); openDebtModal(cid, did); return; }
+    showToast('Updated'); refreshDebtModalSummary(d); refreshAfterDebtChange();
+  } finally { DEBT_BUSY = false; }
+}
+async function recordDebtPayment(cid, did){
+  if(DEBT_BUSY) return;
+  const {c, d} = findDebt(cid, did); if(!c || !d) return;
+  const bal = debtBal(d);
+  if(bal<=0){ showToast('This invoice is already fully paid'); return; }
+  const amt = r2(parseFloat(document.getElementById('dpAmt').value));
+  if(!Number.isFinite(amt) || amt<=0){ showToast('Enter the amount received'); return; }
+  if(amt>bal){ showToast(`That is more than the ${money(bal)} still owed`); return; }
+  const dateRaw = document.getElementById('dpDate').value||'';
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw) || dateRaw>todayStr()){ showToast('Pick a valid date, not in the future'); return; }
+  const note = (document.getElementById('dpNote').value||'').trim().slice(0,100);
+  DEBT_BUSY = true;
+  const pm = {id:uid('P'), date:dateRaw, amount:amt, note};
+  const tx = {id:uid('T'), date:dateRaw, item:'Invoice payment', amount:amt, type:'invoice', staff:CFG.ownerName, contact:c.name, debtId:d.id};
+  try{
+    d.payments.push(pm); d.paid = r2(d.paid + amt); DATA.transactions.push(tx);
+    syncContactDebt(c);
+    const ok = await saveData();
+    if(!ok){
+      d.payments = d.payments.filter(x=>x!==pm); d.paid = r2(d.paid - amt);
+      DATA.transactions = DATA.transactions.filter(x=>x!==tx); syncContactDebt(c);
+      openDebtModal(cid, did); return;
+    }
+    const left = debtBal(d);
+    showToast(left>0 ? `Payment recorded, ${money(left)} still owing` : 'Fully paid and logged as revenue');
+    openDebtModal(cid, did); refreshAfterDebtChange();
+  } finally { DEBT_BUSY = false; }
+}
+function confirmRemoveDebt(cid, did){
+  const {c, d} = findDebt(cid, did); if(!c || !d) return;
+  const jc = jsAttr(cid), jd = jsAttr(did);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:380px">
+    <div class="modal-head"><h3>Remove invoice?</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div style="font-size:13px;color:var(--ink-dim);line-height:1.6">Remove this ${money(d.amount)} invoice for <b style="color:var(--navy)">${esc(c.name)}</b>? Use this only for something entered by mistake.${d.paid>0?` Payments already recorded (${money(d.paid)}) stay in your revenue.`:''}</div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-ghost" style="flex:1" onclick="openDebtModal('${jc}','${jd}')">Cancel</button>
+      <button class="btn btn-primary" style="flex:1;background:var(--coral)" onclick="removeDebt('${jc}','${jd}')">Yes, Remove</button>
+    </div>
+  </div></div>`;
+}
+async function removeDebt(cid, did){
+  if(DEBT_BUSY) return;
+  const {c, d} = findDebt(cid, did); if(!c || !d) return;
+  DEBT_BUSY = true;
+  const idx = c.debts.indexOf(d);
+  try{
+    c.debts.splice(idx,1); syncContactDebt(c);
+    const ok = await saveData();
+    if(!ok){ c.debts.splice(idx,0,d); syncContactDebt(c); openDebtModal(cid, did); return; }
+    closeModal(); showToast('Invoice removed'); refreshAfterDebtChange();
+  } finally { DEBT_BUSY = false; }
+}
+async function sendPaymentReminder(cid, did){
+  const {c, d} = findDebt(cid, did); if(!c || !d) return;
   if(!c.phone){ showToast('Add a phone number to this contact first'); return; }
-  const text = `Hi ${c.name}, a friendly reminder from ${CFG.bizName}: ${money(c.value||0)} is outstanding${c.dueDate?`, due ${fmtDate(c.dueDate)}`:''}. Thank you.`;
+  const bal = debtBal(d); if(bal<=0){ showToast('Nothing owing on this invoice'); return; }
+  const text = `Hi ${c.name}, a friendly reminder from ${CFG.bizName}: ${money(bal)} is outstanding${d.desc?` for ${d.desc}`:''}${d.due?`, due ${fmtDate(d.due)}`:''}. Thank you.`;
   const link = waLink(c.phone, text);
   if(!link){ showToast('That phone number does not look valid'); return; }
   window.open(link, '_blank', 'noopener,noreferrer');
   await logMessage({contactId:c.id, contactName:c.name, phone:c.phone, channel:'whatsapp', kind:'payment_reminder', text});
   showToast('Reminder opened and logged in Messages');
-}
-async function updateDebtor(id, field, val){
-  const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
-  c[field] = val;
-  await saveData(); renderInvoicing(); showToast('Updated');
-}
-function confirmMarkDebtPaid(id){
-  const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
-  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:380px">
-    <div class="modal-head"><h3>Confirm</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div style="font-size:13px;color:var(--ink-dim);line-height:1.6">Mark <b style="color:var(--navy)">${money(c.value)}</b> from <b style="color:var(--navy)">${esc(c.name)}</b> as fully paid? This logs it as revenue and clears their outstanding balance. This can't be undone.</div>
-    <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-ghost" style="flex:1" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" style="flex:1" onclick="markDebtPaid('${id}')">Yes, Mark Paid</button>
-    </div>
-  </div></div>`;
-}
-async function markDebtPaid(id){
-  const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
-  const paidAmt = c.value||0;
-  DATA.transactions.push({id:uid('T'), date:todayStr(), item:'Invoice payment', amount:paidAmt, type:'invoice', staff:CFG.ownerName, contact:c.name});
-  c.value = 0;
-  await saveData(); closeModal(); showToast('Marked paid and logged as revenue'); renderInvoicing();
 }
 
 /* ---------- EXPENSES ---------- */
@@ -5485,7 +5869,7 @@ function openExpensePeriodModal(period){
     ${catRows}
     <div class="card-title" style="padding:0;margin:14px 0 6px;font-size:12px">Line Items <span class="sub">tap to edit</span></div>
     <div class="scroll-tbl" style="max-height:220px"><table><thead><tr><th>Date</th><th>Item</th><th>Category</th><th>Amount</th></tr></thead><tbody>
-    ${items.map(e=>`<tr style="cursor:pointer" onclick="closeModal();openExpenseModal('${e.id}')"><td>${fmtDate(e.date)}</td><td>${esc(e.item)}</td><td style="color:var(--ink-dim)">${esc(e.category)}</td><td class="mono">${money(e.amount)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">None</td></tr>'}
+    ${items.map(e=>`<tr style="cursor:pointer" onclick="closeModal();openExpenseModal('${jsAttr(e.id)}')"><td>${fmtDate(e.date)}</td><td>${esc(e.item)}</td><td style="color:var(--ink-dim)">${esc(e.category)}</td><td class="mono">${money(e.amount)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">None</td></tr>'}
     </tbody></table></div>
   </div></div>`;
 }
@@ -5521,11 +5905,11 @@ function renderExpenses(){
            etc.), switching this table to the same pattern means every field
            is always on-screen, nothing to scroll sideways to find. -->
       <div style="max-height:440px;overflow-y:auto;-webkit-overflow-scrolling:touch">
-      ${(DATA.expenses||[]).slice().reverse().map(e=>`<div class="list-row" style="cursor:pointer" onclick="openExpenseModal('${e.id}')">
+      ${(DATA.expenses||[]).slice().reverse().map(e=>`<div class="list-row" style="cursor:pointer" onclick="openExpenseModal('${jsAttr(e.id)}')">
         <span style="min-width:0"><b>${esc(e.item)}</b><br><span style="color:var(--muted);font-size:11px">${fmtDate(e.date)} · ${esc(e.category)}</span></span>
         <span style="display:flex;align-items:center;gap:12px;white-space:nowrap">
           <span class="mono">${money(e.amount)}</span>
-          <span style="cursor:pointer;color:var(--muted);font-size:11px" onclick="event.stopPropagation();archiveExpense('${e.id}')">archive</span>
+          <span style="cursor:pointer;color:var(--muted);font-size:11px" onclick="event.stopPropagation();archiveExpense('${jsAttr(e.id)}')">archive</span>
         </span>
       </div>`).join('') || '<div class="empty">None yet</div>'}
       </div>
@@ -5554,8 +5938,8 @@ function openExpenseModal(id){
     <label class="lbl">Category</label><select class="inp" id="eeCat">${['Cost of Goods','Overheads','Marketing','Payroll','Other'].map(c=>`<option ${c===e.category?'selected':''}>${c}</option>`).join('')}</select>
     <label class="lbl">Amount</label><input class="inp" id="eeAmt" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(e.amount||0)}">
     <label class="lbl">Date</label><input class="inp" id="eeDate" type="date" value="${esc(e.date||todayStr())}">
-    <button class="btn btn-primary btn-full" style="margin-top:8px" id="eeSaveBtn" onclick="saveExpenseEdit('${id}')">Save Changes</button>
-    <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--coral)" onclick="archiveExpense('${id}');closeModal()">Archive This Expense</button>
+    <button class="btn btn-primary btn-full" style="margin-top:8px" id="eeSaveBtn" onclick="saveExpenseEdit('${jsAttr(id)}')">Save Changes</button>
+    <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--coral)" onclick="archiveExpense('${jsAttr(id)}');closeModal()">Archive This Expense</button>
   </div></div>`;
 }
 /* FIX (Sep 2026, "Save button not working" on Edit Expense): this used to be
@@ -5665,8 +6049,8 @@ function renderStaff(){
   document.getElementById('pageContent').innerHTML = `
   <div class="two-col">
     <div class="card"><div class="card-title">Team <span class="sub">click anyone to edit, see their shift folder</span></div>
-      ${(DATA.staff||[]).map(s=>`<div class="list-row" style="cursor:pointer;align-items:flex-start" onclick="openStaffModal('${s.id}')"><span><b>${esc(s.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(s.role)} · ${esc(s.dept)}</span>${s.onDuty && s.shiftStart ? `<br><span style="color:var(--teal-dim);font-size:10.5px">On duty since ${fmtTime(s.shiftStart)} · ${hoursSince(s.shiftStart)}</span>` : `<br><span style="color:var(--muted);font-size:10.5px">${lastWorkedLabel(s.id)}</span>`}</span>
-        <button class="btn ${s.onDuty?'btn-primary':'btn-ghost'}" style="padding:6px 12px" onclick="event.stopPropagation();toggleDuty('${s.id}')">${s.onDuty?'⏱ Check Out':'Check In'}</button></div>`).join('') || '<div class="empty">No staff yet</div>'}
+      ${(DATA.staff||[]).map(s=>`<div class="list-row" style="cursor:pointer;align-items:flex-start" onclick="openStaffModal('${jsAttr(s.id)}')"><span><b>${esc(s.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(s.role)} · ${esc(s.dept)}</span>${s.onDuty && s.shiftStart ? `<br><span style="color:var(--teal-dim);font-size:10.5px">On duty since ${fmtTime(s.shiftStart)} · ${hoursSince(s.shiftStart)}</span>` : `<br><span style="color:var(--muted);font-size:10.5px">${lastWorkedLabel(s.id)}</span>`}</span>
+        <button class="btn ${s.onDuty?'btn-primary':'btn-ghost'}" style="padding:6px 12px" onclick="event.stopPropagation();toggleDuty('${jsAttr(s.id)}')">${s.onDuty?'⏱ Check Out':'Check In'}</button></div>`).join('') || '<div class="empty">No staff yet</div>'}
     </div>
     <div class="card"><div class="card-title">Add Staff</div>
       <label class="lbl">Name</label><input class="inp" id="stName">
@@ -5751,16 +6135,16 @@ function openStaffModal(id){
   const s = (DATA.staff||[]).find(x=>x.id===id); if(!s) return;
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:460px">
     <div class="modal-head"><h3>Edit Staff</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <label class="lbl">Name</label><input class="inp" value="${esc(s.name||'')}" onchange="updateStaff('${id}','name',this.value)">
-    <label class="lbl">Role</label><input class="inp" value="${esc(s.role||'')}" onchange="updateStaff('${id}','role',this.value)">
-    <label class="lbl">Department</label><input class="inp" value="${esc(s.dept||'')}" onchange="updateStaff('${id}','dept',this.value)">
-    <label class="lbl">Pay type</label><select class="inp" onchange="updateStaff('${id}','payType',this.value)">${['Monthly','Daily','Weekly','Commission','Owner'].map(p=>`<option ${p===s.payType?'selected':''}>${p}</option>`).join('')}</select>
-    <label class="lbl">Pay rate</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(s.payRate||0)}" onchange="updateStaff('${id}','payRate',parseFloat(this.value)||0)">
+    <label class="lbl">Name</label><input class="inp" value="${esc(s.name||'')}" onchange="updateStaff('${jsAttr(id)}','name',this.value)">
+    <label class="lbl">Role</label><input class="inp" value="${esc(s.role||'')}" onchange="updateStaff('${jsAttr(id)}','role',this.value)">
+    <label class="lbl">Department</label><input class="inp" value="${esc(s.dept||'')}" onchange="updateStaff('${jsAttr(id)}','dept',this.value)">
+    <label class="lbl">Pay type</label><select class="inp" onchange="updateStaff('${jsAttr(id)}','payType',this.value)">${['Monthly','Daily','Weekly','Commission','Owner'].map(p=>`<option ${p===s.payType?'selected':''}>${p}</option>`).join('')}</select>
+    <label class="lbl">Pay rate</label><input class="inp" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(s.payRate||0)}" onchange="updateStaff('${jsAttr(id)}','payRate',parseFloat(this.value)||0)">
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
       <div class="card-title" style="margin-bottom:8px">Shift Folder <span class="sub">${lastWorkedLabel(id)}, nothing ever deleted</span></div>
       <div id="staffShiftFolder-${id}"></div>
     </div>
-    <button class="btn btn-ghost btn-full" style="margin-top:14px;color:var(--coral)" onclick="removeStaff('${id}')">Remove Staff Member</button>
+    <button class="btn btn-ghost btn-full" style="margin-top:14px;color:var(--coral)" onclick="removeStaff('${jsAttr(id)}')">Remove Staff Member</button>
   </div></div>`;
   renderStaffShiftFolder(id);
 }
@@ -5770,7 +6154,7 @@ function renderStaffShiftFolder(id){
   if(!folders.length){ el.innerHTML = '<div class="empty">No shifts logged yet.</div>'; return; }
   el.innerHTML = folders.map((f,i)=>`
     <div style="margin-bottom:8px">
-      <div style="cursor:pointer;display:flex;justify-content:space-between;padding:8px 0;font-size:12.5px;font-weight:700;color:var(--navy)" onclick="toggleShiftMonth('${id}','${f.key}')">
+      <div style="cursor:pointer;display:flex;justify-content:space-between;padding:8px 0;font-size:12.5px;font-weight:700;color:var(--navy)" onclick="toggleShiftMonth('${jsAttr(id)}','${f.key}')">
         <span>📁 ${f.label} <span style="color:var(--muted);font-weight:400">(${f.shifts.length} shift${f.shifts.length===1?'':'s'}, ${f.totalHours}h)</span></span>
         <span id="shiftMonthArrow-${id}-${f.key}">${i===0?'▾':'▸'}</span>
       </div>
@@ -5825,7 +6209,7 @@ function openRevenueDayModal(dateKey){
     </tbody></table></div>
     <div class="card-title" style="padding:0;margin:14px 0 6px;font-size:12px">Expenses <span class="sub">tap to edit</span></div>
     <div class="scroll-tbl" style="max-height:160px"><table><thead><tr><th>Item</th><th>Category</th><th>Amount</th></tr></thead><tbody>
-    ${exps.map(e=>`<tr style="cursor:pointer" onclick="closeModal();openExpenseModal('${e.id}')"><td>${esc(e.item)}</td><td style="color:var(--ink-dim)">${esc(e.category)}</td><td class="mono">${money(e.amount)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">None</td></tr>'}
+    ${exps.map(e=>`<tr style="cursor:pointer" onclick="closeModal();openExpenseModal('${jsAttr(e.id)}')"><td>${esc(e.item)}</td><td style="color:var(--ink-dim)">${esc(e.category)}</td><td class="mono">${money(e.amount)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">None</td></tr>'}
     </tbody></table></div>
   </div></div>`;
 }
@@ -5993,10 +6377,10 @@ function openAvgTicketModal(){
   metricModal('Avg Ticket','navy', money(n?total/n:0), `${n} payment${n===1?'':'s'} logged`, body, 'Average ticket = total income divided by the number of payments logged, till sales and invoice payments together.');
 }
 function openDebtorSummaryModal(){
-  const t = todayStr(), owed = (DATA.contacts||[]).filter(c=>c.value>0).sort((a,b)=>b.value-a.value);
-  const total = owed.reduce((s,c)=>s+c.value,0), over = owed.filter(c=>c.dueDate && c.dueDate<t);
-  const body = owed.length ? owed.slice(0,25).map(c=>`<div class="list-row" style="cursor:pointer;align-items:flex-start" onclick="openDebtorModal('${esc(c.id)}')"><span>${esc(c.name)}<br><span style="font-size:11px;color:var(--muted)">${c.dueDate?(c.dueDate<t?'overdue since ':'due ')+esc(fmtDate(c.dueDate)):'no due date'}</span></span><span class="mono">${money(c.value)}</span></div>`).join('') : '<div class="empty">Nobody owes you anything</div>';
-  metricModal('Debtor Exposure','coral', money(total), `${owed.length} open balance${owed.length===1?'':'s'}, ${over.length} overdue`, body+`<button class="btn btn-ghost btn-full" style="margin-top:10px" onclick="closeModal();navTo('invoicing')">Open Invoicing & Debtors</button>`, 'Tap a name to see their balance and send a payment reminder.');
+  const t = todayStr(), owed = openDebtList().sort((a,b)=>b.bal-a.bal);
+  const total = r2(owed.reduce((x,o)=>x+o.bal,0)), over = owed.filter(o=>o.d.due && o.d.due<t);
+  const body = owed.length ? owed.slice(0,25).map(o=>`<div class="list-row" style="cursor:pointer;align-items:flex-start" onclick="openDebtModal('${jsAttr(o.c.id)}','${jsAttr(o.d.id)}')"><span>${esc(o.c.name)}${debtLabel(o.d)?' · '+esc(debtLabel(o.d)):''}<br><span style="font-size:11px;color:var(--muted)">${o.d.due?(o.d.due<t?'overdue since ':'due ')+esc(fmtDate(o.d.due)):'no due date'}${(o.d.paid||0)>0?' · paid '+esc(money(o.d.paid))+' of '+esc(money(o.d.amount)):''}</span></span><span class="mono">${money(o.bal)}</span></div>`).join('') : '<div class="empty">Nobody owes you anything</div>';
+  metricModal('Debtor Exposure','coral', money(total), `${owed.length} open balance${owed.length===1?'':'s'}, ${over.length} overdue`, body+`<button class="btn btn-ghost btn-full" style="margin-top:10px" onclick="closeModal();navTo('invoicing')">Open Invoicing & Debtors</button>`, 'Tap a line to see what is left, record a part payment or send a reminder.');
 }
 
 
@@ -6132,7 +6516,7 @@ function renderRevenue(){
   // Average transaction value + debtor exposure
   const saleCount = (DATA.transactions||[]).length;
   const avgTicket = saleCount ? totalRev/saleCount : 0;
-  const debtorExposure = (DATA.contacts||[]).filter(c=>c.value>0).reduce((s,c)=>s+c.value,0);
+  const debtorExposure = r2(openDebtList().reduce((x,o)=>x+o.bal,0));
 
   const overviewHtml = `
   <div class="card"><div class="card-title">Revenue vs Expenses by Period <span class="sub">tap a number for the breakdown</span></div>
@@ -6375,7 +6759,7 @@ function drawInvestorBody(snap){
     <button class="btn btn-primary btn-full" style="margin-top:6px" onclick="saveInvestorAsk()">Save Ask</button>
   </div>
   <div class="card"><div class="card-title">Risk Register <span class="sub">what you'd rather they ask than assume</span></div>
-    ${risks.length ? risks.map(r=>`<div class="list-row" style="align-items:flex-start"><div><b>${esc(r.risk)}</b>${r.mitigation?`<br><span style="font-size:11.5px;color:var(--ink-dim)">Mitigation: ${esc(r.mitigation)}</span>`:''}</div><span style="color:var(--muted);font-size:11px;cursor:pointer" onclick="removeInvestorRisk('${r.id}')">remove</span></div>`).join('') : '<div class="empty" style="margin-bottom:10px">None logged. Investors trust founders who name their own risks first.</div>'}
+    ${risks.length ? risks.map(r=>`<div class="list-row" style="align-items:flex-start"><div><b>${esc(r.risk)}</b>${r.mitigation?`<br><span style="font-size:11.5px;color:var(--ink-dim)">Mitigation: ${esc(r.mitigation)}</span>`:''}</div><span style="color:var(--muted);font-size:11px;cursor:pointer" onclick="removeInvestorRisk('${jsAttr(r.id)}')">remove</span></div>`).join('') : '<div class="empty" style="margin-bottom:10px">None logged. Investors trust founders who name their own risks first.</div>'}
     <label class="lbl" style="margin-top:10px">Risk</label><input class="inp" id="invRiskText" placeholder="e.g. Single supplier for main product line">
     <label class="lbl">Mitigation (optional)</label><input class="inp" id="invMitigationText" placeholder="e.g. Second supplier being onboarded this quarter">
     <button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="addInvestorRisk()">＋ Add to Risk Register</button>
@@ -6495,7 +6879,7 @@ function renderMessageInbox(){
   const teamRow = m=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
       <div style="display:flex;justify-content:space-between;width:100%;gap:8px"><b>${esc(m.subject)}</b><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${esc(fmtDate((m.created_at||'').slice(0,10)))}</span></div>
       <div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-line">${esc(m.body)}</div>
-      <div style="display:flex;gap:6px"><button class="btn btn-ghost" style="padding:4px 10px" onclick="archiveTeamMessage('${esc(m.id)}',${m.archived_at?'false':'true'})">${m.archived_at?'Restore':'Archive'}</button><button class="btn btn-ghost" style="padding:4px 10px;color:var(--coral)" onclick="deleteTeamMessage('${esc(m.id)}')">Delete</button></div></div>`;
+      <div style="display:flex;gap:6px"><button class="btn btn-ghost" style="padding:4px 10px" onclick="archiveTeamMessage('${jsAttr(m.id)}',${m.archived_at?'false':'true'})">${m.archived_at?'Restore':'Archive'}</button><button class="btn btn-ghost" style="padding:4px 10px;color:var(--coral)" onclick="deleteTeamMessage('${jsAttr(m.id)}')">Delete</button></div></div>`;
   const teamCard = teamMsgs.length ? `<div class="card" style="margin-bottom:14px"><div class="card-title" style="cursor:pointer" onclick="toggleTeamMessages()">✉ From the BYINFORGH team <span class="sub">${teamLive.length} message${teamLive.length===1?'':'s'}${teamArch.length?`, ${teamArch.length} archived`:''} · <span id="teamMsgToggle">${TEAM_MSGS_OPEN?'hide ▴':'show ▾'}</span></span></div>
     <div id="teamMsgBody" style="display:${TEAM_MSGS_OPEN?'block':'none'}">
     ${infiniteList('teammsgs', (TEAM_MSGS_ARCHIVED?teamArch:teamLive), teamRow, `<div class="empty">${TEAM_MSGS_ARCHIVED?'Nothing archived.':'No messages. Archived ones are under the toggle below.'}</div>`, 320)}
@@ -6514,7 +6898,7 @@ function renderMessageInbox(){
         <div style="display:flex;justify-content:space-between;width:100%;gap:8px"><b>${esc(m.contactName)}</b><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${fmtDate(m.date)}</span></div>
         <div style="font-size:11px;color:var(--muted)">${esc(MSG_CHANNELS[m.channel]||'Other')} · ${esc(MSG_KINDS[m.kind]||'General message')}${m.status==='opened'?' · chat opened':''}</div>
         ${m.text?`<div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-wrap">${esc(m.text)}</div>`:''}
-        <div style="display:flex;gap:6px">${m.phone&&waLink(m.phone)?`<a class="btn btn-ghost" style="padding:4px 10px;text-decoration:none" target="_blank" rel="noopener noreferrer" href="${esc(waLink(m.phone))}">Reply on WhatsApp</a>`:''}<button class="btn btn-ghost" style="padding:4px 10px" onclick="deleteLoggedMessage('${esc(m.id)}')">Delete</button></div>
+        <div style="display:flex;gap:6px">${m.phone&&waLink(m.phone)?`<a class="btn btn-ghost" style="padding:4px 10px;text-decoration:none" target="_blank" rel="noopener noreferrer" href="${esc(waLink(m.phone))}">Reply on WhatsApp</a>`:''}<button class="btn btn-ghost" style="padding:4px 10px" onclick="deleteLoggedMessage('${jsAttr(m.id)}')">Delete</button></div>
       </div>`).join('') : `<div class="empty">${log.length?'Nothing in this filter yet.':'No messages logged yet. Send or log one on the right and it will show here.'}</div>`}</div>
     </div>
     <div class="card"><div class="card-title">＋ Send or Log a Message <span class="sub">texts sent from your phone can be logged too</span></div>
@@ -6642,7 +7026,7 @@ function drawRefBody(){
       ${LOYALTY_TIERS.map(t=>`<div class="list-row"><span><b>${t.label}</b><br><span style="font-size:11px;color:var(--muted)">${t.desc}</span></span><span class="pill pill-client">${counts[t.key]||0}</span></div>`).join('')}
     </div>
     <div class="card"><div class="card-title">Assign a Tier</div>
-      <select class="inp" id="tierContact">${(DATA.contacts||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+      <select class="inp" id="tierContact">${(DATA.contacts||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select>
       <select class="inp" id="tierValue">${LOYALTY_TIERS.map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}</select>
       <button class="btn btn-primary btn-full" onclick="assignTier()">Set Tier</button>
     </div>`;
@@ -7072,8 +7456,8 @@ function renderReminders(){
       <div><b>${esc(r.title)}</b><br><span style="font-size:11.5px;color:var(--ink-dim)">${typeLabel} · ${overdueTag}${r.recurring&&r.recurring!=='none'?' · repeats '+r.recurring:''}</span>
       ${r.notes?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(r.notes)}</div>`:''}</div>
       <div style="display:flex;gap:6px">
-        <button class="btn btn-ghost" style="padding:6px 10px" onclick="snoozeReminder('${r.id}')">Snooze 7d</button>
-        <button class="btn btn-primary" style="padding:6px 10px" onclick="doneReminder('${r.id}')">✓ Done</button>
+        <button class="btn btn-ghost" style="padding:6px 10px" onclick="snoozeReminder('${jsAttr(r.id)}')">Snooze 7d</button>
+        <button class="btn btn-primary" style="padding:6px 10px" onclick="doneReminder('${jsAttr(r.id)}')">✓ Done</button>
       </div>
     </div>`;
   }
@@ -7347,7 +7731,7 @@ function businessQAPanel(){
       ${BUSINESS_QA_PROMPTS.map(p=>`<div>
         <label class="lbl" style="min-height:32px;display:block">${esc(p.q)}</label>
         <textarea class="inp" id="${p.id}" rows="2" placeholder="Type your answer…"></textarea>
-        <button class="btn btn-ghost" style="margin-top:6px;padding:5px 12px;font-size:11.5px" onclick="submitBusinessQA('${p.id}')">Add to Brain</button>
+        <button class="btn btn-ghost" style="margin-top:6px;padding:5px 12px;font-size:11.5px" onclick="submitBusinessQA('${jsAttr(p.id)}')">Add to Brain</button>
       </div>`).join('')}
     </div>
   </div>`;
@@ -8283,10 +8667,10 @@ function drawSettingsBody(){
       <button class="btn btn-primary btn-full" style="margin-top:2px" onclick="addBusinessGoal(document.getElementById('brainGoal').value); document.getElementById('brainGoal').value='';">＋ Add Goal</button>
       <div style="margin-top:14px">
         ${infiniteList('goals', goals, g=>`<div class="list-row" style="align-items:flex-start;${g.done?'opacity:.55':''}">
-          <span style="font-size:12.5px;line-height:1.6"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${g.done?'checked':''} onchange="toggleGoalDone('${esc(g.id)}')"></label> ${g.done?'<s>':''}${esc(g.text)}${g.done?'</s>':''}<br><span style="color:var(--muted);font-size:10.5px">${g.done?'achieved':'added'} ${fmtDate(g.doneAt||g.createdAt)}</span></span>
+          <span style="font-size:12.5px;line-height:1.6"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${g.done?'checked':''} onchange="toggleGoalDone('${jsAttr(g.id)}')"></label> ${g.done?'<s>':''}${esc(g.text)}${g.done?'</s>':''}<br><span style="color:var(--muted);font-size:10.5px">${g.done?'achieved':'added'} ${fmtDate(g.doneAt||g.createdAt)}</span></span>
           <span style="display:flex;gap:10px;white-space:nowrap">
-            <span style="cursor:pointer;color:var(--teal-dim);font-size:11px" onclick="editBusinessGoal('${esc(g.id)}')">edit</span>
-            <span style="cursor:pointer;color:var(--muted);font-size:11px" onclick="removeBusinessGoal('${esc(g.id)}')">remove</span>
+            <span style="cursor:pointer;color:var(--teal-dim);font-size:11px" onclick="editBusinessGoal('${jsAttr(g.id)}')">edit</span>
+            <span style="cursor:pointer;color:var(--muted);font-size:11px" onclick="removeBusinessGoal('${jsAttr(g.id)}')">remove</span>
           </span>
         </div>`, '<div class="empty">No goals set yet, add your first one above, the Brain uses this to shape your daily check-ins.</div>', 300)}
       </div>
@@ -8298,7 +8682,7 @@ function drawSettingsBody(){
     </div>
     <div class="card">
       <div class="card-title">What You've Told It <span class="sub">${ownerNotes.length} note${ownerNotes.length===1?'':'s'}</span></div>
-      ${infiniteList('notes', ownerNotes, f=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:12.5px;line-height:1.6">${esc(f.text)}<br><span style="color:var(--muted);font-size:10.5px">${fmtDate(f.date)}</span></span><span style="cursor:pointer;color:var(--muted);font-size:11px;white-space:nowrap" onclick="removeBrainNote('${esc(f.id)}')">remove</span></div>`, '<div class="empty">Nothing added yet, use the box above.</div>', 320)}
+      ${infiniteList('notes', ownerNotes, f=>`<div class="list-row" style="align-items:flex-start"><span style="font-size:12.5px;line-height:1.6">${esc(f.text)}<br><span style="color:var(--muted);font-size:10.5px">${fmtDate(f.date)}</span></span><span style="cursor:pointer;color:var(--muted);font-size:11px;white-space:nowrap" onclick="removeBrainNote('${jsAttr(f.id)}')">remove</span></div>`, '<div class="empty">Nothing added yet, use the box above.</div>', 320)}
     </div>
     <div class="card">
       <div class="card-title">What It's Learned On Its Own <span class="sub">${systemNotes.length} observation${systemNotes.length===1?'':'s'}, from your audit, activity and patterns</span></div>
