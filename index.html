@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>TecXFRA, Complete Total Control</title>
 <meta name="description" content="TecXFRA is the complete Business OS for SME owners, Today, Expenses, CRM, Execution, Follow-Ups, Revenue, Accountability. Built in Ghana, for Ghana, run your entire business from your phone.">
 <link rel="canonical" href="https://www.tecxfra.com/">
@@ -462,6 +462,14 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 @media(max-width:480px){
   .pipe-board{grid-template-columns:1fr !important;}
 }
+
+/* FIX (Oct 2026, screen "out of sync", needing a pinch to fix): iOS Safari ignores user-scalable=no,
+   so a stray two finger touch zoomed the app and left the layout wider than the screen. touch-action
+   on the scrollers allows only panning, and the JS below undoes any zoom that still slips through. */
+.content, .topbar, .sidebar, .modal, #app{touch-action:pan-x pan-y;}
+.leaflet-container{touch-action:none;}
+.inv-hd:focus-visible{outline:2px solid var(--teal); outline-offset:-2px;}
+@media print{ .inv-bd{display:block !important;} .inv-nav{display:none !important;} .inv-chev{display:none !important;} }
 </style>
 </head>
 <body>
@@ -3446,54 +3454,220 @@ async function sendNetworkMessage(){
   }catch(e){ console.error('send message failed', e); showToast('Message failed to send'); }
 }
 
-/* ---------- INDUSTRY CHANNELS ---------- */
+/* ---------- INDUSTRY CHANNELS ----------
+   Rooms are shown as clear, high contrast cards. Tapping one opens that room on its
+   own (the list steps aside, with a Back button), and every room explains why it
+   exists, who it is for and what it gives you before the conversation starts. */
+const NETWORK_ROOM_RULES = ['Say exactly what you offer or need, with place and numbers','No spam, no repeated promotions','Never post a customer\'s private details','Verify any business before you pay it anything','Take serious deals to a private Connect chat and put the terms in writing'];
+const NETWORK_CHANNEL_INFO = {
+  collaboration:{tag:'Swap customers, share projects and send each other work',
+    why:'Most small businesses grow fastest by borrowing the trust another business has already earned. This room exists so you can find businesses whose customers need what you sell, and who sell to customers that need you.',
+    who:'Any owner whose product or service fits alongside someone else\'s, such as a caterer and an event planner, or a tailor and a fabric seller.',
+    gets:['Warm introductions instead of cold selling','Joint offers that put you in front of a new audience for free','A referral habit: you send work out, work comes back','Peers who can cover you when a job is bigger than your capacity'],
+    tips:['Offer a referral first before you ask for one','Agree the referral thank you, a commission or a favour, before the job starts'],
+    starters:['I run [your business] in [your town]. My best customers also need [related service]. Who here serves them?','Looking for one business to run a joint offer with this month. I bring [what you bring].','Who has sent you a customer recently, and what made you trust them?']},
+  services:{tag:'Agencies, consultants and freelancers trading leads and skills',
+    why:'Service businesses sell time and trust. This room lets consultants, agencies and freelancers refer overflow work, team up on bigger contracts and compare how they price.',
+    who:'Consultants, accountants, designers, developers, marketers, trainers and any business that sells expertise.',
+    gets:['Overflow and subcontract work','Teams for contracts too big for one person','Honest talk on pricing, proposals and late payers','Specialists to refer clients to when a job is outside your skill'],
+    tips:['State your specialty in one line','Share what you learned, not only what you sell'],
+    starters:['I have capacity for two more clients in [field]. What are you short of?','How do you price a monthly retainer versus a one-off project?','Looking for a [designer, developer or accountant] to subcontract. Who is reliable?']},
+  distribution:{tag:'Get your product onto more shelves and into more towns',
+    why:'Making a good product is half the job. Getting it into shops, markets and homes in other towns is the other half. This room connects producers with distributors, wholesalers, agents and delivery operators.',
+    who:'Producers looking for reach, and distributors, wholesalers and agents looking for products to carry.',
+    gets:['Distributors who already serve the area you want to enter','Agents who can sell on commission','Reliable delivery and fleet partners','Honest terms from people who have done it: margins, credit periods, returns'],
+    tips:['Share your product, price per unit and minimum order','Ask what credit terms are normal before agreeing to any','Start with one town, prove it, then expand'],
+    starters:['I produce [product]. Looking for a distributor in [region]. Minimum order [quantity].','Who delivers to [town] reliably, and what do they charge per drop?','What margin do shops expect when they stock a new product?']},
+  healthcare:{tag:'Clinics, pharmacies and suppliers sharing what works',
+    why:'Health businesses carry strict standards and thin margins. This room helps clinics, pharmacies, labs and suppliers find trusted suppliers, share operating practice and refer patients responsibly.',
+    who:'Clinics, pharmacies, diagnostic labs, medical suppliers and wellness practitioners.',
+    gets:['Verified suppliers for consumables and equipment','Referral partners between clinics, labs and pharmacies','Ideas for stock control, expiry tracking and patient follow-up','Staff and locum leads'],
+    tips:['Never post patient names or private details','Check a supplier\'s registration before ordering'],
+    starters:['Who supplies [consumable] reliably in [region], and how do they handle expiry?','How do you track near-expiry stock without a big system?','Looking for a lab to refer samples to. Who turns results around fast?']},
+  hospitality:{tag:'Bars, hotels and restaurants meet the people who supply them',
+    why:'A bar or kitchen lives or dies on supply: drinks, food, linen, gas, equipment and repairs. This room links hospitality businesses with suppliers who deliver on time and at fair prices.',
+    who:'Bars, restaurants, hotels, event venues, caterers and the suppliers who serve them.',
+    gets:['Compare supplier prices and reliability','Emergency supply when stock runs out','Equipment sellers and repair technicians','Event, DJ and entertainment partners'],
+    tips:['Post what you need, the quantity and the delivery date','Praise good suppliers publicly'],
+    starters:['Need [item] weekly in [town]. Who delivers, and what is your price per unit?','Who repairs cold room or bar equipment quickly?','What do you do to cut spillage and wastage?']},
+  logistics:{tag:'Move goods in and out without costly surprises',
+    why:'Import and export mistakes are expensive: wrong documents, delayed clearance, damaged goods. This room puts importers, exporters, clearing agents and transporters together so you learn from each other\'s mistakes.',
+    who:'Importers, exporters, clearing and forwarding agents, transporters, and sellers shipping to or from other countries.',
+    gets:['Trusted clearing agents and freight partners','Shared routes to split cost','Straight answers on documents, duties and timelines','Early warning on delays and scams'],
+    tips:['Ask for an agent\'s registration and references before paying','Check rules and duties with the authority, they change','Never send money to someone you cannot verify'],
+    starters:['Shipping [goods] from [place] to [place]. Who has done this route, and what did it cost?','Looking for a clearing agent at [port or border]. Who is reliable?','Anyone want to share a container to split the cost?']},
+  investment:{tag:'Meet people who fund businesses, and businesses ready to be funded',
+    why:'Capital is easier to find when you are visible to the right people and your numbers are clear. This room connects businesses seeking funding with investors, lenders and advisers, and works hand in hand with your Investor Data Room.',
+    who:'Owners raising money, investors, lenders, grant seekers and funding advisers.',
+    gets:['Direct access to people who actually fund small businesses','Feedback on your pitch before a real investor sees it','Clear thinking on loans versus equity versus grants','A place to show you are investor ready'],
+    tips:['Lead with numbers and what the money will do, not a long story','Be honest about risks, investors respect it','Never pay anyone upfront to release funding, it is a common scam'],
+    starters:['Raising [amount] for [purpose]. Trading for [months], average monthly revenue [amount]. Who should I speak to?','What do you look for first when a business asks for funding?','Loan, investor or grant for a business my size? How did you decide?']},
+  manufacturing:{tag:'Producers sharing suppliers, machines and know-how',
+    why:'Production is full of problems nobody solves alone: where to get raw material, who repairs the machine, how to cut waste, how to meet a large order. This room is for people who make things.',
+    who:'Block makers, food processors, furniture makers, tailors, bakers, soap makers and any business that produces goods.',
+    gets:['Raw material suppliers and price comparison','Machine sellers and technicians','Ways to cut waste and cost per unit','Partners to share large orders'],
+    tips:['Ask before buying expensive machines, someone here has made that mistake','Keep supplier recommendations honest, including the bad ones'],
+    starters:['Where do you buy [raw material] in bulk, and what do you pay?','I got an order for [quantity]. Who wants to share capacity?','Which machine repairer in [region] do you trust?']},
+  marketing:{tag:'Designers, photographers, video makers and marketers',
+    why:'Good marketing is hard to do alone and expensive to outsource blindly. This room lets businesses find creative partners they can trust, and lets creatives find businesses that value their work.',
+    who:'Designers, photographers, videographers, social media managers, printers, and any business needing marketing help.',
+    gets:['Creative partners with real examples to show','Fair pricing from people who have done similar work','Content swaps and cross promotion','Feedback on your branding and campaigns'],
+    tips:['Ask to see past work and speak to a past client','Agree scope, price and delivery date in writing'],
+    starters:['Need a [logo, video or photoshoot]. Budget [amount]. Who can show me similar work?','Offering [service] to businesses in [industry]. Here is a result I got for a client.','What marketing channel gave you your best return this year?']},
+  mentorship:{tag:'Learn from owners who are further ahead, and help those behind you',
+    why:'Most costly mistakes have already been made by someone else. This room matches owners who want guidance with experienced owners willing to give it, so decisions are made with more than guesswork.',
+    who:'Newer owners wanting guidance, and experienced owners willing to give an hour a month.',
+    gets:['A mentor who has solved the problem you face now','A sounding board before big decisions','Accountability to actually follow through','The chance to teach, which sharpens your own thinking'],
+    tips:['Bring a specific question, not "how do I succeed"','Be on time and prepared, and report back on what you did with the advice'],
+    starters:['I need guidance on [specific problem]. Has anyone faced this?','Happy to give one hour a month to a newer business in [industry].','What is the one decision you wish you had asked for advice on?']},
+  partnership:{tag:'Find a co-founder, a partner or a joint venture',
+    why:'A partnership can double what a business can do, or end it. This room is for owners seriously considering a formal partnership, joint venture or co-ownership, and for learning how to structure one properly.',
+    who:'Owners looking for a business partner, a joint venture, or someone to take a stake.',
+    gets:['Partners with complementary skills, money or contacts','Real experience on splits, roles and exits','Introductions to advisers who draft agreements','A place to test an idea before committing'],
+    tips:['Write down who contributes what and how profit is shared','Agree how either side can exit before you start','Run a small trial project first, and have a lawyer draft the final agreement'],
+    starters:['Looking for a partner for [venture]. I bring [skill, money or contacts] and need [what you need].','How did you split ownership and decisions with your partner?','Has anyone used a trial project before committing to a partnership?']},
+  realestate:{tag:'Landlords, agents, developers and tenants who trade fairly',
+    why:'Premises are one of the largest costs for any business. This room connects businesses with agents, landlords, developers and contractors so you can find the right space on honest terms.',
+    who:'Businesses seeking shops, offices, warehouses or land, and agents, landlords, developers and builders.',
+    gets:['Leads on premises before they are widely advertised','Honest views on rents and agreements','Builders, surveyors and fit-out contractors','Partners for property investment'],
+    tips:['Verify ownership and documents before paying anything','Never pay rent or a deposit to someone you have not met'],
+    starters:['Looking for a [shop, office or warehouse] in [area], budget [amount] per [period].','What should I check before paying advance rent?','Who builds or fits out commercial space well in [region]?']},
+  retail:{tag:'Buy better, sell smarter, and cover each other\'s gaps',
+    why:'Retailers and wholesalers depend on each other: one needs fair prices and steady supply, the other needs reliable buyers. This room connects them and shares what is selling.',
+    who:'Shop owners, market traders, wholesalers, importers and online sellers.',
+    gets:['Better wholesale prices through group buying','Reliable suppliers, and warnings about bad ones','What is selling now and what is not','Ideas on displays, pricing and stock control'],
+    tips:['Share quantities and prices when you ask for quotes','Report bad suppliers factually'],
+    starters:['Who supplies [product] at wholesale in [town]? I buy about [quantity] a month.','Selling [product] for [price]. What are others charging?','How do you decide how much stock to keep?']},
+  salon:{tag:'Salons, barbers, spas and suppliers growing together',
+    why:'Beauty and wellness businesses win on repeat clients and reputation. This room helps owners find products, equipment, trained staff and ideas for keeping clients coming back.',
+    who:'Salons, barbershops, spas, nail and lash studios, wellness practitioners and their suppliers.',
+    gets:['Product and equipment suppliers','Trained stylists and therapists to hire or refer','Ideas for bookings, deposits and no shows','Cross referrals with bridal, event and fashion businesses'],
+    tips:['Share what keeps clients returning','Never post a client\'s photo without permission'],
+    starters:['How do you handle clients who book and do not show up?','Who supplies [product] in bulk in [region]?','Looking for a trained [stylist, barber or therapist]. Who can recommend one?']},
+  supply_chain:{tag:'Keep stock flowing from source to customer',
+    why:'A broken link in the supply chain stops sales. This room helps businesses build dependable chains: sources, storage, transport and backup suppliers, so one failure does not close you down.',
+    who:'Anyone who buys, stores or moves goods, from small shops to producers and traders.',
+    gets:['Backup suppliers so you are never stuck with one','Storage and warehousing options','Transport partners for regular routes','Early warning when prices or availability shift'],
+    tips:['Keep a second supplier for your top three items','Pay on time, reliable buyers get better supply'],
+    starters:['My main supplier of [item] is unreliable. Who is a good alternative?','Looking for warehouse space in [town] for [goods].','How do you plan stock so you do not run out before the next delivery?']},
+  talent_hire:{tag:'Find reliable people to work for you, or find work',
+    why:'A wrong hire costs money and trust, and good people are hard to find. This room lets owners find staff, apprentices and freelancers through people they can ask about, and lets skilled people find businesses.',
+    who:'Owners hiring staff or apprentices, and skilled people or freelancers seeking work.',
+    gets:['Candidates recommended by people you trust','Honest advice on pay, contracts and probation','Short term and freelance help for busy periods','Skills you cannot afford full time'],
+    tips:['Describe the role, pay range and location clearly','Ask for references and speak to them, and put the agreement in writing'],
+    starters:['Hiring a [role] in [town]. Pay [range]. Looking for someone reliable.','I am a [skill] looking for work with a growing business. Here is what I can show.','How do you test a new hire before committing?']}
+};
+function networkChannelInfo(ch){
+  const known = NETWORK_CHANNEL_INFO[ch && ch.key];
+  if(known) return known;
+  return {tag:'A room for businesses in this sector',
+    why:'This room brings together businesses in the same space so they can share suppliers, leads and what works.',
+    who:'Businesses working in or around this sector.',
+    gets:['Introductions to relevant businesses','Honest advice from people doing the same work','Suppliers, partners and customers in one place'],
+    tips:['Be specific about what you offer or need'],
+    starters:['I run [your business]. Here is what I am looking for this month: [need].']};
+}
+function scrollContentTop(){ const c = document.querySelector('.content'); if(!c) return; try{ c.scrollTo({top:0, behavior:'instant'}); }catch(e){ c.scrollTop = 0; } }
 function networkChannelsHtml(){
-  return `<div class="network-split">
-    <div class="card">
-      <div class="card-title">Industry rooms</div>
-      ${NETWORK_CHANNELS.length ? NETWORK_CHANNELS.map(ch=>`<div class="sb-item" style="cursor:pointer;border-radius:8px" onclick="openNetworkChannel('${jsAttr(ch.id)}')"><span class="ic">${ch.ic||'#'}</span><span>${esc(ch.label)}</span></div>`).join('') : `<div style="font-size:11.5px;color:var(--muted)">No rooms yet.</div>`}
+  return `<div id="netChanList">
+    <div class="card" style="margin-bottom:14px;background:var(--teal-tint);border-color:var(--teal)">
+      <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px">Industry rooms</div>
+      <div style="font-size:12px;color:var(--ink-dim);line-height:1.7">Each room is a working space for one sector or one kind of deal. Open a room to see why it exists and how it helps you, then post what you offer or what you need.</div>
     </div>
-    <div id="networkChannelPane"><div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:40px">Pick a room to see the conversation.</div></div>
-  </div>`;
+    ${NETWORK_CHANNELS.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px">${NETWORK_CHANNELS.map(ch=>{ const info = networkChannelInfo(ch); return `<div role="button" tabindex="0" onclick="openNetworkChannel('${jsAttr(ch.id)}')" onkeydown="if(event.key==='Enter'){openNetworkChannel('${jsAttr(ch.id)}')}" style="background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;box-shadow:var(--shadow);-webkit-tap-highlight-color:rgba(74,168,184,.18)">
+        <div style="display:flex;align-items:center;gap:10px"><span style="width:40px;height:40px;border-radius:50%;background:var(--teal-tint);display:inline-flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${esc(ch.ic||'#')}</span><b style="font-size:13.5px;color:var(--navy);line-height:1.3;min-width:0">${esc(ch.label)}</b></div>
+        <div style="font-size:12px;color:var(--ink);line-height:1.55">${esc(info.tag)}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--teal-dim);margin-top:auto">Enter room →</div></div>`; }).join('')}</div>` : `<div class="card"><div style="font-size:12px;color:var(--ink-dim)">No rooms yet.</div></div>`}
+  </div>
+  <div id="networkChannelPane" style="display:none"></div>`;
+}
+function closeNetworkChannel(){
+  unsubscribeNetworkRealtime();
+  NETWORK_ACTIVE_CHANNEL = null; NETWORK_ACTIVE_MESSAGES = [];
+  const l = document.getElementById('netChanList'), p = document.getElementById('networkChannelPane');
+  if(l) l.style.display = '';
+  if(p){ p.style.display = 'none'; p.innerHTML = ''; }
+  scrollContentTop();
 }
 async function openNetworkChannel(channelId){
   unsubscribeNetworkRealtime();
   NETWORK_ACTIVE_CONNECTION = null;
   NETWORK_ACTIVE_CHANNEL = channelId;
-  const pane = document.getElementById('networkChannelPane');
-  if(pane) pane.innerHTML = `<div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:40px">Loading room…</div>`;
+  NETWORK_ACTIVE_MESSAGES = [];
+  const list = document.getElementById('netChanList'), pane = document.getElementById('networkChannelPane');
+  if(!pane) return;
+  if(list) list.style.display = 'none';
+  pane.style.display = '';
+  pane.innerHTML = `<div class="card" style="text-align:center;color:var(--ink-dim);font-size:12px;padding:40px">Loading room…</div>`;
+  scrollContentTop();
   try{
     const { data, error } = await sb.from('network_channel_messages').select('*').eq('channel_id', channelId).order('created_at',{ascending:true}).limit(200);
     if(error) throw error;
     NETWORK_ACTIVE_MESSAGES = data || [];
   }catch(e){ console.error('load channel messages failed', e); NETWORK_ACTIVE_MESSAGES = []; }
-  drawNetworkChannelPane();
+  if(NETWORK_ACTIVE_CHANNEL !== channelId) return; // user already left this room
+  drawNetworkChannelPane(true);
   NETWORK_RT = sb.channel('network_ch_'+channelId)
     .on('postgres_changes', {event:'INSERT', schema:'public', table:'network_channel_messages', filter:`channel_id=eq.${channelId}`}, payload=>{
+      if(NETWORK_ACTIVE_CHANNEL !== channelId) return;
       NETWORK_ACTIVE_MESSAGES.push(payload.new);
-      drawNetworkChannelPane();
+      drawNetworkChannelPane(false);
     }).subscribe();
 }
-function drawNetworkChannelPane(){
+function toggleChannelAbout(){
+  const b = document.getElementById('chanAboutBody'), t = document.getElementById('chanAboutToggle'); if(!b) return;
+  const open = b.style.display === 'none';
+  b.style.display = open ? 'block' : 'none';
+  if(t) t.textContent = open ? 'Hide ▴' : 'Show ▾';
+}
+function useChannelStarter(i){
+  const ch = NETWORK_CHANNELS.find(x=>x.id===NETWORK_ACTIVE_CHANNEL); if(!ch) return;
+  const s = networkChannelInfo(ch).starters[i]; const input = document.getElementById('networkChanInput');
+  if(!s || !input) return;
+  input.value = s;
+  showToast('Added to the box below. Fill in the brackets, then post.');
+}
+function drawNetworkChannelPane(full){
   const pane = document.getElementById('networkChannelPane');
   if(!pane || !NETWORK_ACTIVE_CHANNEL) return;
   const ch = NETWORK_CHANNELS.find(x=>x.id===NETWORK_ACTIVE_CHANNEL);
-  pane.innerHTML = `<div class="card" style="display:flex;flex-direction:column;height:520px;padding:0;overflow:hidden">
-    <div style="padding:14px 18px;border-bottom:1px solid var(--line-soft);font-weight:700;font-size:13px">${ch?(esc(ch.ic||'#')+' '+esc(ch.label)):'Room'}</div>
-    <div id="networkChanMsgs" style="flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:8px"></div>
-    <div style="padding:12px 14px;border-top:1px solid var(--line-soft);display:flex;gap:8px">
-      <input class="inp" id="networkChanInput" placeholder="Post in ${ch?esc(ch.label):'this room'}…" style="margin:0;flex:1" onkeydown="if(event.key==='Enter'){sendNetworkChannelMessage();}">
-      <button class="btn btn-primary" onclick="sendNetworkChannelMessage()">Post</button>
+  if(full || !document.getElementById('networkChanMsgs')){
+    const info = networkChannelInfo(ch);
+    const h = t=>`<div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--navy);margin:14px 0 6px">${t}</div>`;
+    const ul = a=>`<ul style="padding-left:18px;margin:0;font-size:12.5px;color:var(--ink);line-height:1.8">${a.map(i=>`<li>${esc(i)}</li>`).join('')}</ul>`;
+    pane.innerHTML = `
+    <button class="btn btn-ghost" style="margin-bottom:12px;padding:8px 14px" onclick="closeNetworkChannel()">← All rooms</button>
+    <div class="card" style="border-color:var(--navy);background:linear-gradient(135deg,var(--teal-tint),var(--paper))">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:46px;height:46px;border-radius:50%;background:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;border:1px solid var(--line)">${ch?esc(ch.ic||'#'):'#'}</span><div style="min-width:0"><div style="font-size:16px;font-weight:800;color:var(--navy);line-height:1.25">${ch?esc(ch.label):'Room'}</div><div style="font-size:12px;color:var(--ink-dim);margin-top:2px;line-height:1.5">${esc(info.tag)}</div></div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;cursor:pointer" onclick="toggleChannelAbout()"><span style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--navy)">About this room</span><span id="chanAboutToggle" style="font-size:12px;color:var(--teal-dim);font-weight:700">Hide ▴</span></div>
+      <div id="chanAboutBody">
+        ${h('Why this room exists')}<div style="font-size:12.5px;color:var(--ink);line-height:1.75">${esc(info.why)}</div>
+        ${h('Who it is for')}<div style="font-size:12.5px;color:var(--ink);line-height:1.75">${esc(info.who)}</div>
+        ${h('How it helps you')}${ul(info.gets)}
+        ${h('Get the most from it')}${ul(info.tips)}
+        ${h('Room rules')}${ul(NETWORK_ROOM_RULES)}
+        ${h('Tap a starter to begin')}
+        <div style="display:flex;flex-direction:column;gap:8px">${info.starters.map((s,i)=>`<button class="btn btn-ghost" style="text-align:left;justify-content:flex-start;font-weight:500;font-size:12px;line-height:1.5;padding:10px 12px;height:auto;white-space:normal" onclick="useChannelStarter(${i})">${esc(s)}</button>`).join('')}</div>
+      </div>
     </div>
-  </div>`;
+    <div class="card" style="display:flex;flex-direction:column;height:440px;padding:0;overflow:hidden">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--line-soft);font-weight:700;font-size:13px;color:var(--navy)">Conversation</div>
+      <div id="networkChanMsgs" style="flex:1;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:14px 16px;display:flex;flex-direction:column;gap:8px"></div>
+      <div style="padding:12px 14px;border-top:1px solid var(--line-soft);display:flex;gap:8px">
+        <input class="inp" id="networkChanInput" maxlength="1000" placeholder="Post in ${ch?esc(ch.label):'this room'}…" style="margin:0;flex:1;min-width:0" onkeydown="if(event.key==='Enter'){sendNetworkChannelMessage();}">
+        <button class="btn btn-primary" onclick="sendNetworkChannelMessage()">Post</button>
+      </div>
+    </div>`;
+  }
   const msgsEl = document.getElementById('networkChanMsgs');
+  if(!msgsEl) return;
   msgsEl.innerHTML = NETWORK_ACTIVE_MESSAGES.length ? NETWORK_ACTIVE_MESSAGES.map(m=>{
     const mine = m.sender_id===CUR_VENUE_ID;
     return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
       ${mine?'':`<div style="font-size:10px;color:var(--muted);margin-bottom:2px;padding-left:2px">${esc(m.sender_name||'Business')}</div>`}
-      <div style="background:${mine?'var(--navy)':'var(--cream)'};color:${mine?'#fff':'var(--ink)'};padding:9px 13px;border-radius:14px;font-size:12.5px;line-height:1.5">${esc(m.body)}</div>
+      <div style="background:${mine?'var(--navy)':'var(--cream)'};color:${mine?'#fff':'var(--ink)'};padding:9px 13px;border-radius:14px;font-size:12.5px;line-height:1.5;overflow-wrap:anywhere">${esc(m.body)}</div>
     </div>`;
-  }).join('') : `<div style="font-size:11.5px;color:var(--muted);text-align:center;margin-top:20px">Be the first to post here.</div>`;
+  }).join('') : `<div style="font-size:11.5px;color:var(--muted);text-align:center;margin-top:20px">Be the first to post here. Tap a starter above to begin.</div>`;
   msgsEl.scrollTop = msgsEl.scrollHeight;
 }
 async function sendNetworkChannelMessage(){
@@ -3747,10 +3921,10 @@ async function saveNetworkProfile(){
 const INF_LISTS = {};
 const INF_SHOWN = {};
 const INF_FIRST = 5, INF_STEP = 8;
-function infiniteList(id, items, renderRow, emptyHtml, maxH){
-  INF_LISTS[id] = {items, renderRow};
+function infiniteList(id, items, renderRow, emptyHtml, maxH, first, step){
+  INF_LISTS[id] = {items, renderRow, step: step||INF_STEP};
   if(!items.length) return emptyHtml || '';
-  const shown = Math.min(items.length, Math.max(INF_FIRST, INF_SHOWN[id]||0));
+  const shown = Math.min(items.length, Math.max(first||INF_FIRST, INF_SHOWN[id]||0));
   INF_SHOWN[id] = shown;
   return `<div class="inf-list" id="inf_${id}" data-inf="${id}" style="max-height:${maxH||300}px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;padding:0 10px">${items.slice(0,shown).map(renderRow).join('')}</div>
     <div class="sub" id="infcount_${id}" style="margin-top:4px;font-size:10.5px;color:var(--muted);cursor:pointer" onclick="infLoadMore('${jsAttr(id)}')">${infCountText(id)}</div>`;
@@ -3763,7 +3937,7 @@ function infCountText(id){
 function infLoadMore(id){
   const L = INF_LISTS[id], box = document.getElementById('inf_'+id); if(!L || !box) return false;
   const have = INF_SHOWN[id]||0; if(have>=L.items.length) return false;
-  const next = Math.min(L.items.length, have+INF_STEP);
+  const next = Math.min(L.items.length, have+(L.step||INF_STEP));
   box.insertAdjacentHTML('beforeend', L.items.slice(have,next).map(L.renderRow).join(''));
   INF_SHOWN[id] = next;
   const c = document.getElementById('infcount_'+id); if(c) c.textContent = infCountText(id);
@@ -6625,26 +6799,208 @@ function prestigeLockedCard(title){
     <button class="btn btn-ghost" onclick="navTo('settings');setSettingsTab('plan');renderSettings();">Upgrade to Prestige →</button>
   </div>`;
 }
-async function saveInvestorAsk(){
-  const amount = parseFloat(document.getElementById('invAskAmt').value);
-  const purpose = document.getElementById('invAskPurpose').value.trim().slice(0,300);
-  const useOfFunds = document.getElementById('invAskUse').value.trim().slice(0,600);
-  if(!Number.isFinite(amount) || amount<=0){ showToast('Enter a valid ask amount'); return; }
-  DATA.investorAsk = { amount, purpose, useOfFunds, updated: todayStr() };
-  await saveData(); showToast('Saved for this Data Room'); renderInvestor();
+/* ---------- INVESTOR DATA ROOM, section engine, ratios, preparation ----------
+   Every heading is a real button: tap to open or close, and the sticky strip at the
+   top jumps straight to a section. Typed answers save on blur without redrawing
+   the page, so nothing jumps while you write. */
+let INV_SNAP = null;
+const INV_OPEN = {brief:true, performance:true};
+const INV_CHECKLIST = [
+  {g:'Legal and registration', items:[
+    ['reg','Business formally registered','REG_HINT'],
+    ['tin','Tax identification number and returns','TIN_HINT'],
+    ['vat','VAT position confirmed','Registered if you must be, or a clear reason you are not'],
+    ['licence','Licences and permits current','Operating permit, sector licences, local authority permit'],
+    ['payroll','Staff pension and payroll tax in order','PAY_HINT']]},
+  {g:'Financial records', items:[
+    ['rec12','12 months of income and expense records','Entered in TecXFRA with no gaps'],
+    ['bank','Bank and mobile money statements on file','Last 6 to 12 months, matching your records'],
+    ['mgmt','Monthly profit and loss prepared','Even a simple one, every month'],
+    ['debtors','Debtors list with ages','Who owes you, how much, and since when'],
+    ['debts','Loans and obligations listed','Everything you owe, to whom, with repayment dates']]},
+  {g:'Governance and ownership', items:[
+    ['plan','Written business plan','Two to five clear pages is enough'],
+    ['own','Ownership documented','Who owns what share of the business'],
+    ['contracts','Key contracts on file','Major customers, suppliers, premises lease'],
+    ['insurance','Insurance in place','Stock, premises and vehicles where relevant'],
+    ['separate','Business money kept separate from personal','Own business account or wallet']]},
+  {g:'Commercial strength', items:[
+    ['custlist','Customer list with contact details','Ideally 10 or more active customers'],
+    ['costing','Costing and pricing written down','You know cost per unit and margin on each line'],
+    ['supplier','Supplier terms known','Key suppliers, prices and credit terms'],
+    ['roles','Team and roles documented','Who does what, and who covers when you are away']]}
+];
+const INV_CHECK_KEYS = INV_CHECKLIST.flatMap(g=>g.items.map(i=>i[0]));
+const INV_STORY = [
+  ['problem','The problem you solve','Who has it, and what does it cost them today?'],
+  ['solution','What you sell and how it fixes that problem','Say it so a stranger understands in 20 seconds'],
+  ['market','Who your customers are and how big the market is','Where they are, how many, what they spend'],
+  ['traction','Your proof so far','Customers, repeat buyers, results, partnerships'],
+  ['edge','Why you win','What competitors cannot easily copy'],
+  ['team','The people behind it','Founders, key staff, advisers, and what each has done before'],
+  ['plan3','Where the business will be in 3 years','Specific numbers, not wishes']
+];
+const INV_STORY_KEYS = INV_STORY.map(s=>s[0]);
+const INV_QA = [
+  ['q1','What exactly does the business do, and who pays you?'],
+  ['q2','What did you earn over the last 3 months, and is it growing?'],
+  ['q3','What are your margins, and what drives them?'],
+  ['q4','Who are your biggest customers, and what happens if you lose one?'],
+  ['q5','How do customers find you, and what does it cost to win one?'],
+  ['q6','How much is owed to you, and how fast do you collect?'],
+  ['q7','What are your monthly costs, and what is your break-even?'],
+  ['q8','What will you do with the money, and when does it pay back?'],
+  ['q9','What happens to the business if you are away for a month?'],
+  ['q10','What are the three biggest risks, and what is your answer to each?'],
+  ['q11','Who owns the business, and who is on the team?'],
+  ['q12','Where will the business be in three years?']
+];
+const INV_QA_KEYS = INV_QA.map(q=>q[0]);
+
+function invGhana(){ return String(CFG.country||'').toLowerCase()==='ghana'; }
+function invHint(h){
+  const g = invGhana();
+  if(h==='REG_HINT') return g ? 'Registered with the Registrar General, certificate in hand' : 'Registration certificate in hand';
+  if(h==='TIN_HINT') return g ? 'TIN from GRA, tax returns filed and up to date' : 'Tax ID issued, returns filed and up to date';
+  if(h==='PAY_HINT') return g ? 'SSNIT and PAYE in order for anyone you employ' : 'Pension and payroll tax in order for anyone you employ';
+  return h;
 }
-async function addInvestorRisk(){
-  const risk = document.getElementById('invRiskText').value.trim().slice(0,200);
-  const mitigation = document.getElementById('invMitigationText').value.trim().slice(0,300);
-  if(!risk){ showToast('Describe the risk first'); return; }
-  if(!Array.isArray(DATA.investorRisks)) DATA.investorRisks = [];
-  DATA.investorRisks.push({id:uid('RK'), risk, mitigation});
-  await saveData(); showToast('Added'); renderInvestor();
+function invSection(id, title, sub, inner){
+  const open = !!INV_OPEN[id];
+  return `<div class="card inv-sec" id="invsec_${id}" style="padding:0;overflow:hidden">
+    <div class="inv-hd" role="button" tabindex="0" aria-expanded="${open}" onclick="toggleInvSec('${id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleInvSec('${id}')}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 18px;cursor:pointer;-webkit-tap-highlight-color:rgba(74,168,184,.18);min-height:52px">
+      <div style="min-width:0"><div style="font-size:11.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:var(--navy)">${title}</div>${sub?`<div style="font-size:11.5px;color:var(--ink-dim);margin-top:3px;line-height:1.5">${sub}</div>`:''}</div>
+      <span class="inv-chev" style="flex-shrink:0;font-size:18px;color:var(--teal-dim);transition:transform .15s;transform:rotate(${open?180:0}deg)">▾</span>
+    </div>
+    <div class="inv-bd" style="display:${open?'block':'none'};padding:2px 18px 18px">${inner}</div>
+  </div>`;
 }
-async function removeInvestorRisk(id){
-  DATA.investorRisks = (DATA.investorRisks||[]).filter(r=>r.id!==id);
-  await saveData(); renderInvestor();
+function toggleInvSec(id, forceOpen){
+  const el = document.getElementById('invsec_'+id); if(!el) return;
+  INV_OPEN[id] = forceOpen===true ? true : !INV_OPEN[id];
+  const bd = el.querySelector('.inv-bd'), ch = el.querySelector('.inv-chev'), hd = el.querySelector('.inv-hd');
+  if(bd) bd.style.display = INV_OPEN[id] ? 'block' : 'none';
+  if(ch) ch.style.transform = `rotate(${INV_OPEN[id]?180:0}deg)`;
+  if(hd) hd.setAttribute('aria-expanded', INV_OPEN[id] ? 'true' : 'false');
 }
+function jumpInvSec(id){
+  toggleInvSec(id, true);
+  const el = document.getElementById('invsec_'+id), c = document.querySelector('.content'); if(!el || !c) return;
+  const top = el.getBoundingClientRect().top - c.getBoundingClientRect().top + c.scrollTop - 58;
+  try{ c.scrollTo({top:Math.max(0,top), behavior:'smooth'}); }catch(e){ c.scrollTop = Math.max(0,top); }
+}
+function invSetAll(openAll){
+  document.querySelectorAll('.inv-sec').forEach(el=>{ const id = el.id.replace('invsec_',''); INV_OPEN[id] = !openAll; toggleInvSec(id); });
+}
+function redrawInvestor(){
+  if(!INV_SNAP) return;
+  const c = document.querySelector('.content'), y = c ? c.scrollTop : 0;
+  drawInvestorBody(INV_SNAP);
+  if(c) c.scrollTop = y;
+}
+function invClip(s, n){ return String(s==null?'':s).slice(0,n); }
+async function saveInvestorField(group, key, el){
+  const allowed = group==='investorStory' ? INV_STORY_KEYS : group==='investorQA' ? INV_QA_KEYS : [];
+  if(!allowed.includes(key) || !el) return;
+  const v = invClip(el.value, 800).trim();
+  if(!DATA[group] || typeof DATA[group]!=='object' || Array.isArray(DATA[group])) DATA[group] = {};
+  if((DATA[group][key]||'') === v) return;
+  DATA[group][key] = v;
+  await saveData(); showToast('Saved');
+  invRefreshPrep();
+}
+async function toggleInvCheck(key, on){
+  if(!INV_CHECK_KEYS.includes(key)) return;
+  if(!DATA.investorChecklist || typeof DATA.investorChecklist!=='object' || Array.isArray(DATA.investorChecklist)) DATA.investorChecklist = {};
+  DATA.investorChecklist[key] = !!on;
+  await saveData();
+  const done = INV_CHECK_KEYS.filter(k=>DATA.investorChecklist[k]).length;
+  const p = document.getElementById('invChkPct'); if(p) p.textContent = `${done} of ${INV_CHECK_KEYS.length} ready`;
+  const b = document.getElementById('invChkBar'); if(b) b.style.width = Math.round(done/INV_CHECK_KEYS.length*100)+'%';
+  invRefreshPrep();
+}
+function invPrep(){
+  const isPrestige = !!currentPlan().network;
+  const chk = DATA.investorChecklist||{}, story = DATA.investorStory||{}, qa = DATA.investorQA||{};
+  const parts = [];
+  parts.push({k:'Documents', v:Math.round(INV_CHECK_KEYS.filter(k=>chk[k]).length/INV_CHECK_KEYS.length*100)});
+  parts.push({k:'Business story', v:Math.round(INV_STORY_KEYS.filter(k=>String(story[k]||'').length>=20).length/INV_STORY_KEYS.length*100)});
+  parts.push({k:'Investor Q&A', v:Math.round(INV_QA_KEYS.filter(k=>String(qa[k]||'').length>=20).length/INV_QA_KEYS.length*100)});
+  if(isPrestige){
+    const ask = DATA.investorAsk; parts.push({k:'The ask', v:(ask && ask.amount>0 && ask.useOfFunds) ? 100 : (ask && ask.amount>0 ? 50 : 0)});
+    parts.push({k:'Risk register', v:Math.round(Math.min(3,(DATA.investorRisks||[]).length)/3*100)});
+  }
+  const score = Math.round(parts.reduce((s,p)=>s+p.v,0)/parts.length);
+  return {parts, score};
+}
+function invPrepHtml(){
+  const p = invPrep();
+  return `<div id="invPrepBox">${p.parts.map(x=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px"><span>${x.k}</span><span class="mono">${x.v}%</span></div><div style="height:7px;background:var(--line);border-radius:4px"><div style="height:100%;width:${Math.max(2,x.v)}%;background:${x.v>=80?'var(--green)':x.v>=40?'var(--amber)':'var(--coral)'};border-radius:4px"></div></div></div>`).join('')}</div>`;
+}
+function invRefreshPrep(){
+  const box = document.getElementById('invPrepBox'); if(box) box.outerHTML = invPrepHtml();
+  const m = document.getElementById('invPrepScore'); if(m) m.textContent = invPrep().score+'/100';
+}
+function invStatus(s){
+  const map = {good:['var(--green)','var(--green-tint)','Strong'], watch:['var(--amber)','var(--amber-tint)','Watch'], risk:['var(--coral)','var(--coral-tint)','Fix first'], na:['var(--muted)','#eef1f1','Not enough data']};
+  const m = map[s]||map.na;
+  return `<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:700;color:${m[0]};background:${m[1]};white-space:nowrap">${m[2]}</span>`;
+}
+function invContext(snap){
+  const months = (snap.revenue_by_month||[]).slice().reverse();
+  const expBy = {}; (snap.expenses_by_month||[]).forEach(m=>{ expBy[m.month]=m.expenses||0; });
+  const last3 = months.slice(-3);
+  const rev3 = last3.reduce((s,m)=>s+(m.revenue||0),0);
+  const exp3 = last3.reduce((s,m)=>s+(expBy[m.month]||0),0);
+  const n = last3.length;
+  const inv = snap.invoices || {outstanding_count:0,outstanding_total:0,paid_count:0,paid_total:0};
+  const cust = snap.customers || {total:0,hot:0,warm:0,cold:0,repeat_buyers:0,buyers_seen:0};
+  const billed = (inv.paid_total||0)+(inv.outstanding_total||0);
+  const best = months.reduce((b,m)=>(!b||m.revenue>b.revenue)?m:b, null);
+  const margin = (snap.gross_margin_by_month||[]).slice().reverse();
+  const m3 = margin.slice(-3);
+  const gRev = m3.reduce((s,m)=>s+(m.revenue||0),0), gCogs = m3.reduce((s,m)=>s+(m.cogs||0),0);
+  return {
+    months, expBy, n, rev3, exp3,
+    avgRev: n ? rev3/n : null, avgExp: n ? exp3/n : null,
+    netMargin: rev3>0 ? Math.round((rev3-exp3)/rev3*1000)/10 : null,
+    expRatio: rev3>0 ? Math.round(exp3/rev3*1000)/10 : null,
+    collRate: billed>0 ? Math.round((inv.paid_total||0)/billed*100) : null,
+    debtorDays: (rev3>0 && n) ? Math.round((inv.outstanding_total||0)/(rev3/(n*30))) : null,
+    repeatRate: cust.buyers_seen>0 ? Math.round(cust.repeat_buyers/cust.buyers_seen*100) : null,
+    best, grossPct: gRev>0 ? Math.round((gRev-gCogs)/gRev*1000)/10 : null,
+    avgCogs: m3.length ? gCogs/m3.length : null,
+    inv, cust
+  };
+}
+function invRatios(snap, x){
+  const R = [];
+  const add = (label, valueText, rule, status, meaning)=>R.push({label, valueText, rule, status, meaning});
+  add('Revenue trend', snap.mom_growth_pct===null?'No comparison yet':(snap.mom_growth_pct>=0?'+':'')+snap.mom_growth_pct+'% month on month', 'Steady growth over 3 or more months', snap.mom_growth_pct===null?'na':snap.mom_growth_pct>=5?'good':snap.mom_growth_pct>=0?'watch':'risk', 'Investors read the direction before they read the size. One strong month proves little, three in a row proves a pattern.');
+  add('Net margin, last 3 months', x.netMargin===null?'n/a':x.netMargin+'%', 'Above 10% is healthy for most small businesses', x.netMargin===null?'na':x.netMargin>=10?'good':x.netMargin>=0?'watch':'risk', 'What is left of every cedi of revenue after recorded expenses. Negative means the business is spending more than it earns.');
+  add('Expenses as share of revenue', x.expRatio===null?'n/a':x.expRatio+'%', 'Below 85% leaves room to grow', x.expRatio===null?'na':x.expRatio<=85?'good':x.expRatio<=100?'watch':'risk', 'Shows how much room there is to absorb a bad month or repay funding.');
+  if(x.grossPct!==null) add('Gross margin, last 3 months', x.grossPct+'%', 'Depends on industry, but it must be stable', x.grossPct>=30?'good':x.grossPct>=15?'watch':'risk', 'Revenue minus the direct cost of what you sold. A falling gross margin usually means pricing or supplier costs are slipping.');
+  add('Collection rate on invoices', x.collRate===null?'n/a':x.collRate+'%', '85% or more collected', x.collRate===null?'na':x.collRate>=85?'good':x.collRate>=60?'watch':'risk', 'Share of everything you have invoiced that has actually been paid. Money owed is not money earned until it is collected.');
+  add('Debtor days', x.debtorDays===null?'n/a':x.debtorDays+' days', '30 days or fewer', x.debtorDays===null?'na':x.debtorDays<=30?'good':x.debtorDays<=60?'watch':'risk', 'Roughly how many days of revenue are tied up in unpaid invoices. A high number means growth will starve you of cash.');
+  add('Repeat buyer rate', x.repeatRate===null?'n/a':x.repeatRate+'%', '30% or more come back', x.repeatRate===null?'na':x.repeatRate>=30?'good':x.repeatRate>=20?'watch':'risk', 'Customers who buy again are cheaper than new ones. Lenders and investors treat this as proof the product or service is genuinely good.');
+  add('Customer base size', String(x.cust.total)+' contacts', '10 or more for a first meeting', x.cust.total>=30?'good':x.cust.total>=10?'watch':'risk', 'A thin base makes revenue fragile. Keep logging every customer.');
+  if(x.avgExp!==null) add('Monthly break-even', money(x.avgExp), 'Average revenue stays above this', (x.avgRev||0)>=x.avgExp*1.1?'good':(x.avgRev||0)>=x.avgExp?'watch':'risk', 'Based on your average recorded monthly expenses. This is the revenue you must reach every month just to stand still.');
+  return R;
+}
+function invQaHint(q, snap, x){
+  const m = v=>money(v);
+  switch(q){
+    case 'q2': return x.avgRev===null ? 'Log at least one month of dated sales so you have a real number to quote.' : `Your last ${x.n} month${x.n===1?'':'s'}: ${m(x.rev3)} in revenue, about ${m(x.avgRev)} a month.${snap.mom_growth_pct===null?'':` Month on month: ${snap.mom_growth_pct>=0?'+':''}${snap.mom_growth_pct}%.`}`;
+    case 'q3': return x.grossPct!==null ? `Gross margin over the last 3 months is ${x.grossPct}%.${x.netMargin!==null?` Net margin is ${x.netMargin}%.`:''}` : (x.netMargin!==null ? `Net margin over the last 3 months is ${x.netMargin}%. Add cost prices to items to unlock gross margin.` : 'Record costs against your items so margins can be calculated.');
+    case 'q4': return x.cust.total ? `You have ${x.cust.total} contacts logged. Know which two or three bring most of your revenue and what you would do if one left.` : 'Add your customers so you can answer this with facts.';
+    case 'q6': return `${m(x.inv.outstanding_total||0)} is outstanding across ${x.inv.outstanding_count||0} invoice${(x.inv.outstanding_count||0)===1?'':'s'}.${x.debtorDays!==null?` That is about ${x.debtorDays} debtor days.`:''}`;
+    case 'q7': return x.avgExp!==null ? `Average recorded monthly expenses are about ${m(x.avgExp)}. That is your break-even revenue before any owner pay.` : 'Log expenses monthly so your break-even is a fact, not a guess.';
+    case 'q9': return (snap.staff && snap.staff.headcount>0) ? `${snap.staff.headcount} staff on record. Say who covers what, and where it is written down.` : 'No staff on record. Investors read a solo operation as key person risk, so explain how the business keeps running without you.';
+    case 'q11': return (snap.staff && snap.staff.headcount>0) ? `${snap.staff.headcount} people on record in Staff & Shifts.` : '';
+    default: return '';
+  }
+}
+
 async function loadInvestorSnapshot(){
   if(!(await requireSupabase())) return;
   const body = document.getElementById('investorBody');
@@ -6657,125 +7013,186 @@ async function loadInvestorSnapshot(){
     if(body) body.innerHTML = `<div class="card" style="text-align:center;padding:24px"><div style="font-size:12.5px;color:var(--ink-dim);margin-bottom:10px">Could not load your snapshot, check your connection and try again.</div><button class="btn btn-ghost" onclick="loadInvestorSnapshot()">Retry</button></div>`;
   }
 }
+async function saveInvestorAsk(){
+  const amount = parseFloat(document.getElementById('invAskAmt').value);
+  const purpose = document.getElementById('invAskPurpose').value.trim().slice(0,300);
+  const useOfFunds = document.getElementById('invAskUse').value.trim().slice(0,600);
+  const returns = document.getElementById('invAskReturn').value.trim().slice(0,600);
+  if(!Number.isFinite(amount) || amount<=0){ showToast('Enter a valid ask amount'); return; }
+  DATA.investorAsk = { amount, purpose, useOfFunds, returns, updated: todayStr() };
+  await saveData(); showToast('Saved for this Data Room'); redrawInvestor();
+}
+async function addInvestorRisk(){
+  const risk = document.getElementById('invRiskText').value.trim().slice(0,200);
+  const mitigation = document.getElementById('invMitigationText').value.trim().slice(0,300);
+  const lv = document.getElementById('invRiskLevel').value;
+  const level = ['low','medium','high'].includes(lv) ? lv : 'medium';
+  if(!risk){ showToast('Describe the risk first'); return; }
+  if(!Array.isArray(DATA.investorRisks)) DATA.investorRisks = [];
+  DATA.investorRisks.push({id:uid('RK'), risk, mitigation, level});
+  await saveData(); showToast('Added'); redrawInvestor();
+}
+async function removeInvestorRisk(id){
+  DATA.investorRisks = (DATA.investorRisks||[]).filter(r=>r.id!==id);
+  await saveData(); redrawInvestor();
+}
 function drawInvestorBody(snap){
   const body = document.getElementById('investorBody');
   if(!body) return;
+  INV_SNAP = snap;
   const isPrestige = !!currentPlan().network;
-  const months = (snap.revenue_by_month||[]).slice().reverse();
-  const expByMonth = {}; (snap.expenses_by_month||[]).forEach(m=>{ expByMonth[m.month]=m.expenses; });
-  const maxRev = Math.max(1, ...months.map(m=>m.revenue));
-  const cust = snap.customers || {total:0,hot:0,warm:0,cold:0,repeat_buyers:0,buyers_seen:0};
-  const inv = snap.invoices || {outstanding_count:0,outstanding_total:0,paid_count:0,paid_total:0};
+  const x = invContext(snap);
+  const months = x.months, expByMonth = x.expBy, cust = x.cust, inv = x.inv, repeatRate = x.repeatRate;
   const staff = snap.staff || {headcount:0,on_duty_now:0,monthly_payroll_estimate:0};
   const invy = snap.inventory || {sku_count:0,value_at_cost:0,value_at_price:0,below_par_count:0};
   const margin = (snap.gross_margin_by_month||[]).slice().reverse();
   const breakdown = (snap.expense_breakdown||[]).slice();
   const maxBreakdown = Math.max(1, ...breakdown.map(b=>b.total));
-  const repeatRate = cust.buyers_seen>0 ? Math.round((cust.repeat_buyers/cust.buyers_seen)*100) : null;
-  const sinceLabel = snap.on_platform_since ? new Date(snap.on_platform_since).toLocaleDateString('en-GB',{month:'short',year:'numeric'}) : ', ';
+  const maxRev = Math.max(1, ...months.map(m=>m.revenue));
+  const sinceLabel = snap.on_platform_since ? new Date(snap.on_platform_since).toLocaleDateString('en-GB',{month:'short',year:'numeric'}) : 'n/a';
   const ask = DATA.investorAsk || null;
   const risks = DATA.investorRisks || [];
+  const story = DATA.investorStory || {}, qa = DATA.investorQA || {}, chk = DATA.investorChecklist || {};
+  const prep = invPrep();
 
-  // Presentation coaching: plain-English flags built off the same numbers
-  // shown above, not a separate guess, so it always matches what's on
-  // screen. This is the "mock Q&A" idea from the architecture doc, kept
-  // as a short, honest checklist rather than a generic pep talk.
   const coaching = [];
-  if(snap.mom_growth_pct===null) coaching.push('No month-on-month comparison yet, log at least one full prior month of sales before this number means anything to an investor.');
-  else if(snap.mom_growth_pct<0) coaching.push(`Revenue is down ${Math.abs(snap.mom_growth_pct)}% on last month, be ready to explain why before anyone asks.`);
-  else coaching.push(`Revenue is up ${snap.mom_growth_pct}% on last month, lead with this.`);
-  if(repeatRate!==null && repeatRate<20) coaching.push(`Only ${repeatRate}% of your buyers have purchased more than once, a lender will read this as weak retention, work the Referrals & Retention module before this meeting.`);
-  if(inv.outstanding_total>0) coaching.push(`${money(inv.outstanding_total)} is still outstanding across ${inv.outstanding_count} invoice${inv.outstanding_count===1?'':'s'}, know this number cold, it will be asked.`);
-  if(cust.total<10) coaching.push('Fewer than 10 contacts logged, a thin customer base is one of the first things a bank or investor checks, build this up before you present.');
-  if(!coaching.length) coaching.push('Nothing obviously weak in these numbers right now, keep logging daily so this stays accurate.');
+  if(snap.mom_growth_pct===null) coaching.push('No month on month comparison yet. Log at least one full prior month of sales before this number means anything to an investor.');
+  else if(snap.mom_growth_pct<0) coaching.push(`Revenue is down ${Math.abs(snap.mom_growth_pct)}% on last month. Be ready to explain why before anyone asks.`);
+  else coaching.push(`Revenue is up ${snap.mom_growth_pct}% on last month. Lead with this.`);
+  if(repeatRate!==null && repeatRate<20) coaching.push(`Only ${repeatRate}% of your buyers have purchased more than once. A lender will read this as weak retention. Work the Referrals & Retention module before this meeting.`);
+  if(inv.outstanding_total>0) coaching.push(`${money(inv.outstanding_total)} is still outstanding across ${inv.outstanding_count} invoice${inv.outstanding_count===1?'':'s'}. Know this number cold, it will be asked.`);
+  if(x.netMargin!==null && x.netMargin<0) coaching.push('Recorded expenses are higher than revenue over the last 3 months. Have a clear explanation and a date when that turns around.');
+  if(cust.total<10) coaching.push('Fewer than 10 contacts logged. A thin customer base is one of the first things a bank or investor checks, so build this up before you present.');
+  if(prep.score<50) coaching.push(`Your preparation score is ${prep.score}/100. The numbers are only half of what an investor weighs. Complete the checklist, the story and the Q&A below.`);
+  if(!coaching.length) coaching.push('Nothing obviously weak in these numbers right now. Keep logging daily so this stays accurate.');
 
-  body.innerHTML = `
-  <div class="grid-metrics" style="margin-bottom:14px">
-    <div class="metric ${readinessColor(snap.readiness_score)}"><div class="ml">Readiness Score</div><div class="mv">${snap.readiness_score}/100</div><div class="ms">${readinessLabel(snap.readiness_score)}</div></div>
-    <div class="metric navy"><div class="ml">On TecXFRA Since</div><div class="mv" style="font-size:16px">${sinceLabel}</div></div>
-    <div class="metric ${snap.mom_growth_pct===null?'navy':snap.mom_growth_pct<0?'coral':'green'}"><div class="ml">Month-on-Month</div><div class="mv">${snap.mom_growth_pct===null?', ':(snap.mom_growth_pct>=0?'+':'')+snap.mom_growth_pct+'%'}</div></div>
-    <div class="metric navy"><div class="ml">Total Contacts</div><div class="mv">${cust.total}</div></div>
-    <div class="metric ${repeatRate===null?'navy':repeatRate<20?'coral':'green'}"><div class="ml">Repeat Buyer Rate</div><div class="mv">${repeatRate===null?', ':repeatRate+'%'}</div><div class="ms">${cust.repeat_buyers} of ${cust.buyers_seen} buyers</div></div>
-    <div class="metric coral"><div class="ml">Outstanding Debt</div><div class="mv">${money(inv.outstanding_total)}</div><div class="ms">${inv.outstanding_count} invoice${inv.outstanding_count===1?'':'s'}</div></div>
-    <div class="metric green"><div class="ml">Collected</div><div class="mv">${money(inv.paid_total)}</div><div class="ms">${inv.paid_count} invoice${inv.paid_count===1?'':'s'} paid</div></div>
-  </div>
-  <div class="card" style="border-color:var(--navy)"><div class="card-title">Executive Summary</div>
+  const nav = [['brief','Brief'],['performance','Performance'],['ratios','Ratios'],['customers','Customers']];
+  if(isPrestige) nav.push(['unit','Unit economics'],['ask','The ask'],['risks','Risks']);
+  nav.push(['prep','Checklist'],['story','Story'],['qa','Q&A']);
+  if(!isPrestige) nav.push(['locked','Prestige']);
+  const navHtml = `<div class="inv-nav" style="position:sticky;top:0;z-index:5;background:var(--cream);padding:6px 0 10px;margin:-6px 0 6px;display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch">
+    ${nav.map(([k,l])=>`<button class="tab-pill" style="white-space:nowrap;flex-shrink:0" onclick="jumpInvSec('${k}')">${l}</button>`).join('')}
+    <button class="tab-pill" style="white-space:nowrap;flex-shrink:0;border-style:dashed" onclick="invSetAll(false)">Close all</button>
+    <button class="tab-pill" style="white-space:nowrap;flex-shrink:0;border-style:dashed" onclick="invSetAll(true)">Open all</button>
+  </div>`;
+
+  // 1. BRIEF
+  const brief = `
+    <div class="grid-metrics" style="margin-bottom:14px">
+      <div class="metric ${readinessColor(snap.readiness_score)}"><div class="ml">Numbers Score</div><div class="mv">${snap.readiness_score}/100</div><div class="ms">${readinessLabel(snap.readiness_score)}</div></div>
+      <div class="metric ${prep.score>=70?'green':prep.score>=40?'amber':'coral'}"><div class="ml">Preparation Score</div><div class="mv" id="invPrepScore">${prep.score}/100</div><div class="ms">documents, story, Q&A</div></div>
+      <div class="metric navy"><div class="ml">On TecXFRA Since</div><div class="mv" style="font-size:16px">${sinceLabel}</div></div>
+      <div class="metric ${snap.mom_growth_pct===null?'navy':snap.mom_growth_pct<0?'coral':'green'}"><div class="ml">Month on Month</div><div class="mv">${snap.mom_growth_pct===null?'n/a':(snap.mom_growth_pct>=0?'+':'')+snap.mom_growth_pct+'%'}</div></div>
+      <div class="metric coral"><div class="ml">Outstanding Debt</div><div class="mv">${money(inv.outstanding_total)}</div><div class="ms">${inv.outstanding_count} invoice${inv.outstanding_count===1?'':'s'}</div></div>
+      <div class="metric green"><div class="ml">Collected</div><div class="mv">${money(inv.paid_total)}</div><div class="ms">${inv.paid_count} invoice${inv.paid_count===1?'':'s'} paid</div></div>
+    </div>
     <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8">${investorExecutiveSummary(snap, cust, inv, repeatRate)}</div>
-    ${snap.readiness_reasons && snap.readiness_reasons.length ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7"><b style="color:var(--navy)">Score is held back by:</b> ${snap.readiness_reasons.map(esc).join(' · ')}</div>` : ''}
-  </div>
-  <div class="card"><div class="card-title">Revenue by Month</div>
-    <div style="display:flex;align-items:flex-end;gap:10px;height:150px;padding-top:10px">
-    ${months.map(m=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+    ${snap.readiness_reasons && snap.readiness_reasons.length ? `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.7"><b style="color:var(--navy)">Numbers score is held back by:</b> ${snap.readiness_reasons.map(esc).join(' · ')}</div>` : ''}
+    <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--navy);margin:16px 0 8px">How prepared you are</div>
+    ${invPrepHtml()}
+    <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--navy);margin:16px 0 6px">Before you present</div>
+    <ul style="padding-left:18px;font-size:12.5px;color:var(--ink-dim);line-height:1.9;margin:0">${coaching.map(c=>`<li>${esc(c)}</li>`).join('')}</ul>`;
+
+  // 2. PERFORMANCE
+  const performance = `
+    <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--navy);margin:6px 0 8px">Revenue by month</div>
+    <div style="display:flex;align-items:flex-end;gap:10px;height:150px;padding-top:10px;overflow-x:auto">
+    ${months.map(m=>`<div style="flex:1;min-width:44px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
       <div class="mono" style="font-size:9.5px;color:var(--ink-dim);margin-bottom:4px">${money(m.revenue).replace(/\.00$/,'')}</div>
       <div style="width:100%;background:var(--teal);border-radius:5px 5px 0 0;height:${Math.max(4,(m.revenue/maxRev)*110)}px"></div>
-      <div style="font-size:9.5px;color:var(--muted);margin-top:5px">${m.month}</div>
-    </div>`).join('') || '<div class="empty">Not enough dated sales yet to chart a trend</div>'}
+      <div style="font-size:9.5px;color:var(--muted);margin-top:5px">${esc(m.month)}</div></div>`).join('') || '<div class="empty">Not enough dated sales yet to chart a trend</div>'}
     </div>
-  </div>
-  <div class="card"><div class="card-title">Revenue vs Expenses by Month</div>
-    <div class="scroll-tbl"><table><thead><tr><th>Month</th><th>Revenue</th><th>Expenses</th><th>Net</th></tr></thead><tbody>
-    ${months.length ? months.map(m=>{
-      const exp = expByMonth[m.month]||0;
-      return `<tr><td>${m.month}</td><td class="mono">${money(m.revenue)}</td><td class="mono">${money(exp)}</td><td class="mono">${money(m.revenue-exp)}</td></tr>`;
-    }).join('') : `<tr><td colspan="4" class="empty">No dated activity yet</td></tr>`}
+    <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--navy);margin:18px 0 8px">Revenue vs expenses</div>
+    <div class="scroll-tbl"><table><thead><tr><th>Month</th><th>Revenue</th><th>Expenses</th><th>Net</th><th>Net %</th></tr></thead><tbody>
+    ${months.length ? months.map(m=>{ const e = expByMonth[m.month]||0; const net = m.revenue-e; return `<tr><td>${esc(m.month)}</td><td class="mono">${money(m.revenue)}</td><td class="mono">${money(e)}</td><td class="mono">${money(net)}</td><td class="mono">${m.revenue>0?Math.round(net/m.revenue*100)+'%':'n/a'}</td></tr>`; }).join('') : `<tr><td colspan="5" class="empty">No dated activity yet</td></tr>`}
     </tbody></table></div>
-  </div>
-  <div class="two-col">
-    <div class="card"><div class="card-title">Customer Mix</div>
-      <div class="list-row"><span>🔥 Hot</span><span class="mono">${cust.hot}</span></div>
-      <div class="list-row"><span>🌤️ Warm</span><span class="mono">${cust.warm}</span></div>
-      <div class="list-row"><span>❄️ Cold</span><span class="mono">${cust.cold}</span></div>
-    </div>
-    <div class="card"><div class="card-title">Before You Present</div>
-      <ul style="padding-left:18px;font-size:12.5px;color:var(--ink-dim);line-height:1.9;margin:0">
-        ${coaching.map(c=>`<li>${esc(c)}</li>`).join('')}
-      </ul>
-    </div>
-  </div>
-  ${!isPrestige ? prestigeLockedCard('Unit Economics, Staffing, Working Capital & Use of Funds') : `
-  <div class="card"><div class="card-title">Gross Margin by Month <span class="sub">revenue minus Cost of Goods</span></div>
+    ${x.best ? `<div style="font-size:11.5px;color:var(--ink-dim);margin-top:10px;line-height:1.7">Best month on record: <b>${esc(x.best.month)}</b> at ${money(x.best.revenue)}.${x.avgRev!==null?` Average of the last ${x.n} month${x.n===1?'':'s'}: ${money(x.avgRev)}.`:''}</div>` : ''}`;
+
+  // 3. RATIOS
+  const ratios = invRatios(snap, x);
+  const ratiosHtml = `<div style="font-size:11.5px;color:var(--muted);margin:4px 0 8px;line-height:1.6">These are the measures a director, bank or investor reads first. Rules of thumb are general guides for small businesses, not guarantees, and vary by industry.</div>` +
+    ratios.map(r=>`<div style="padding:12px 0;border-bottom:1px solid var(--line-soft)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:12.5px;color:var(--navy)">${esc(r.label)}</b>${invStatus(r.status)}</div>
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:4px"><span class="mono" style="font-size:13px">${esc(r.valueText)}</span><span style="font-size:11px;color:var(--muted)">Rule of thumb: ${esc(r.rule)}</span></div>
+      <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.6;margin-top:4px">${esc(r.meaning)}</div></div>`).join('');
+
+  // 4. CUSTOMERS
+  const customersHtml = `
+    <div class="list-row"><span>🔥 Hot</span><span class="mono">${cust.hot}</span></div>
+    <div class="list-row"><span>🌤️ Warm</span><span class="mono">${cust.warm}</span></div>
+    <div class="list-row"><span>❄️ Cold</span><span class="mono">${cust.cold}</span></div>
+    <div class="list-row"><span>Repeat buyers</span><span class="mono">${cust.repeat_buyers} of ${cust.buyers_seen}${repeatRate!==null?` (${repeatRate}%)`:''}</span></div>
+    <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.7;margin-top:8px">${repeatRate===null?'Log repeat sales so retention can be measured.':repeatRate>=30?'Strong retention. Say this out loud in the meeting, it is the best evidence your product works.':'Retention is the biggest lever you can still pull before the meeting. Use Referrals & Retention and Follow-Ups.'}</div>`;
+
+  // PRESTIGE: unit economics, ask, risks
+  const unit = `
+    <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--navy);margin:6px 0 8px">Gross margin by month</div>
     <div class="scroll-tbl"><table><thead><tr><th>Month</th><th>Revenue</th><th>COGS</th><th>Gross Margin</th><th>Margin %</th></tr></thead><tbody>
-    ${margin.length ? margin.map(m=>`<tr><td>${m.month}</td><td class="mono">${money(m.revenue)}</td><td class="mono">${money(m.cogs)}</td><td class="mono">${money(m.gross_margin)}</td><td class="mono">${m.gross_margin_pct===null?', ':m.gross_margin_pct+'%'}</td></tr>`).join('') : `<tr><td colspan="5" class="empty">Not enough dated sales yet</td></tr>`}
+    ${margin.length ? margin.map(m=>`<tr><td>${esc(m.month)}</td><td class="mono">${money(m.revenue)}</td><td class="mono">${money(m.cogs)}</td><td class="mono">${money(m.gross_margin)}</td><td class="mono">${m.gross_margin_pct===null?'n/a':m.gross_margin_pct+'%'}</td></tr>`).join('') : `<tr><td colspan="5" class="empty">Not enough dated sales yet</td></tr>`}
     </tbody></table></div>
-  </div>
-  <div class="two-col">
-    <div class="card"><div class="card-title">Where the Money Goes <span class="sub">expenses by category, last 6 months</span></div>
-      ${breakdown.length ? breakdown.map(b=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px"><span>${esc(b.category)}</span><span class="mono">${money(b.total)}</span></div><div style="height:7px;background:var(--line);border-radius:4px"><div style="height:100%;width:${Math.max(3,(b.total/maxBreakdown)*100)}%;background:var(--amber);border-radius:4px"></div></div></div>`).join('') : '<div class="empty">No expenses logged yet</div>'}
-    </div>
-    <div class="card"><div class="card-title">Staff & Payroll Position</div>
-      <div class="list-row"><span>Headcount on record</span><span class="mono">${staff.headcount}</span></div>
-      <div class="list-row"><span>On duty right now</span><span class="mono">${staff.on_duty_now}</span></div>
-      <div class="list-row"><span>Est. monthly payroll</span><span class="mono">${money(staff.monthly_payroll_estimate)}</span></div>
-      ${staff.headcount===0?'<div style="font-size:11px;color:var(--muted);margin-top:6px">A solo operation reads as key-person risk to an investor, add anyone who actually works in the business under Staff & Shifts.</div>':''}
-    </div>
-  </div>
-  <div class="card"><div class="card-title">Working Capital, Inventory Position</div>
+    <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--navy);margin:18px 0 8px">Where the money goes, last 6 months</div>
+    ${breakdown.length ? breakdown.map(b=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px"><span>${esc(b.category)}</span><span class="mono">${money(b.total)}</span></div><div style="height:7px;background:var(--line);border-radius:4px"><div style="height:100%;width:${Math.max(3,(b.total/maxBreakdown)*100)}%;background:var(--teal);border-radius:4px"></div></div></div>`).join('') : '<div class="empty">No categorised expenses yet</div>'}
+    <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--navy);margin:18px 0 8px">Team and payroll</div>
+    <div class="list-row"><span>Headcount on record</span><span class="mono">${staff.headcount}</span></div>
+    <div class="list-row"><span>On duty right now</span><span class="mono">${staff.on_duty_now}</span></div>
+    <div class="list-row"><span>Est. monthly payroll</span><span class="mono">${money(staff.monthly_payroll_estimate)}</span></div>
+    ${staff.headcount===0?'<div style="font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.6">A solo operation reads as key person risk. Add everyone who works in the business under Staff & Shifts.</div>':''}
+    <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--navy);margin:18px 0 8px">Working capital and stock</div>
     <div class="grid-metrics">
       <div class="metric navy"><div class="ml">SKUs Tracked</div><div class="mv">${invy.sku_count}</div></div>
-      <div class="metric navy"><div class="ml">Stock Value, at Cost</div><div class="mv">${money(invy.value_at_cost)}</div></div>
-      <div class="metric green"><div class="ml">Stock Value, at Sale Price</div><div class="mv">${money(invy.value_at_price)}</div></div>
+      <div class="metric navy"><div class="ml">Stock at Cost</div><div class="mv">${money(invy.value_at_cost)}</div></div>
+      <div class="metric green"><div class="ml">Stock at Sale Price</div><div class="mv">${money(invy.value_at_price)}</div></div>
       <div class="metric ${invy.below_par_count>0?'coral':'navy'}"><div class="ml">Below Par Level</div><div class="mv">${invy.below_par_count}</div></div>
     </div>
-  </div>
-  <div class="card"><div class="card-title">The Ask, Use of Funds</div>
-    ${ask ? `<div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;margin-bottom:10px"><b style="color:var(--navy)">Requesting ${money(ask.amount)}</b>${ask.purpose?` for ${esc(ask.purpose)}`:''}.${ask.useOfFunds?`<br><br>${esc(ask.useOfFunds)}`:''}<br><span style="font-size:10.5px;color:var(--muted)">Last updated ${fmtDate(ask.updated)}</span></div>` : '<div class="empty" style="margin-bottom:10px">Not set yet, fill this in before your next meeting.</div>'}
-    <label class="lbl">Amount you're raising</label><input class="inp" id="invAskAmt" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="${ask?esc(ask.amount):''}">
-    <label class="lbl">Purpose, one line</label><input class="inp" id="invAskPurpose" placeholder="e.g. Second location deposit + fit-out" value="${ask?esc(ask.purpose||''):''}">
-    <label class="lbl">Use of funds, the detail</label><textarea class="inp" id="invAskUse" rows="3" placeholder="Break down exactly what each part of this covers">${ask?esc(ask.useOfFunds||''):''}</textarea>
-    <button class="btn btn-primary btn-full" style="margin-top:6px" onclick="saveInvestorAsk()">Save Ask</button>
-  </div>
-  <div class="card"><div class="card-title">Risk Register <span class="sub">what you'd rather they ask than assume</span></div>
-    ${risks.length ? risks.map(r=>`<div class="list-row" style="align-items:flex-start"><div><b>${esc(r.risk)}</b>${r.mitigation?`<br><span style="font-size:11.5px;color:var(--ink-dim)">Mitigation: ${esc(r.mitigation)}</span>`:''}</div><span style="color:var(--muted);font-size:11px;cursor:pointer" onclick="removeInvestorRisk('${jsAttr(r.id)}')">remove</span></div>`).join('') : '<div class="empty" style="margin-bottom:10px">None logged. Investors trust founders who name their own risks first.</div>'}
-    <label class="lbl" style="margin-top:10px">Risk</label><input class="inp" id="invRiskText" placeholder="e.g. Single supplier for main product line">
-    <label class="lbl">Mitigation (optional)</label><input class="inp" id="invMitigationText" placeholder="e.g. Second supplier being onboarded this quarter">
-    <button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="addInvestorRisk()">＋ Add to Risk Register</button>
-  </div>
-  `}
-  <div class="card" style="text-align:center">
-    <button class="btn btn-ghost" onclick="loadInvestorSnapshot()">↻ Refresh Snapshot</button>
-    <button class="btn btn-ghost" onclick="window.print()">🖨️ Print / Save as PDF</button>
-    <div style="font-size:10.5px;color:var(--muted);margin-top:8px">Generated ${new Date(snap.generated_at).toLocaleString()}</div>
-  </div>`;
+    ${(x.avgCogs>0 && invy.value_at_cost>0) ? `<div style="font-size:11.5px;color:var(--ink-dim);line-height:1.7">Stock cover: about <b>${(invy.value_at_cost/x.avgCogs).toFixed(1)} months</b> of sales at current cost levels. Too high ties up cash, too low risks running out.</div>` : ''}`;
+
+  const askHtml = `
+    ${ask ? `<div style="font-size:12.5px;color:var(--ink-dim);line-height:1.8;margin-bottom:10px"><b style="color:var(--navy)">Requesting ${money(ask.amount)}</b>${ask.purpose?` for ${esc(ask.purpose)}`:''}.${ask.useOfFunds?`<br><br><b>Use of funds:</b> ${esc(ask.useOfFunds)}`:''}${ask.returns?`<br><br><b>Return or repayment:</b> ${esc(ask.returns)}`:''}<br><span style="font-size:10.5px;color:var(--muted)">Last updated ${esc(fmtDate(ask.updated))}</span></div>` : '<div class="empty" style="margin-bottom:6px">No ask defined yet. Investors expect a number and a reason.</div>'}
+    <label class="lbl">Amount you are raising</label><input class="inp" id="invAskAmt" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="${ask?esc(ask.amount):''}">
+    <label class="lbl">Purpose, one line</label><input class="inp" id="invAskPurpose" maxlength="300" placeholder="e.g. Second location deposit and fit-out" value="${ask?esc(ask.purpose||''):''}">
+    <label class="lbl">Use of funds, the detail</label><textarea class="inp" id="invAskUse" rows="3" maxlength="600" placeholder="Break down exactly what each part covers">${ask?esc(ask.useOfFunds||''):''}</textarea>
+    <label class="lbl">How it pays back or earns a return</label><textarea class="inp" id="invAskReturn" rows="3" maxlength="600" placeholder="e.g. Extra GHS 6,000 monthly revenue from month 3, repayment over 18 months">${ask?esc(ask.returns||''):''}</textarea>
+    <button class="btn btn-primary btn-full" style="margin-top:6px" onclick="saveInvestorAsk()">Save Ask</button>`;
+
+  const lvColor = {low:'var(--green)',medium:'var(--amber)',high:'var(--coral)'};
+  const risksHtml = `
+    ${risks.length ? risks.map(r=>`<div class="list-row" style="align-items:flex-start"><div style="min-width:0"><b>${esc(r.risk)}</b> ${r.level?`<span style="font-size:10.5px;font-weight:700;color:${lvColor[r.level]||'var(--muted)'}">${esc(r.level)} impact</span>`:''}${r.mitigation?`<br><span style="font-size:11.5px;color:var(--ink-dim)">Mitigation: ${esc(r.mitigation)}</span>`:''}</div><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="removeInvestorRisk('${jsAttr(r.id)}')">Remove</button></div>`).join('') : '<div class="empty">No risks listed yet. Name three. An investor trusts the owner who spots risks first.</div>'}
+    <label class="lbl" style="margin-top:10px">Risk</label><input class="inp" id="invRiskText" maxlength="200" placeholder="e.g. Single supplier for main product line">
+    <label class="lbl">Impact if it happens</label><select class="inp" id="invRiskLevel"><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select>
+    <label class="lbl">Mitigation (optional)</label><input class="inp" id="invMitigationText" maxlength="300" placeholder="e.g. Second supplier being onboarded this quarter">
+    <button class="btn btn-ghost btn-full" style="margin-top:6px" onclick="addInvestorRisk()">＋ Add to Risk Register</button>`;
+
+  // CHECKLIST
+  const doneCount = INV_CHECK_KEYS.filter(k=>chk[k]).length;
+  const prepHtml = `
+    <div style="display:flex;justify-content:space-between;font-size:11.5px;margin:4px 0 4px"><span>Documents an investor or bank will ask for</span><span class="mono" id="invChkPct">${doneCount} of ${INV_CHECK_KEYS.length} ready</span></div>
+    <div style="height:8px;background:var(--line);border-radius:4px;margin-bottom:10px"><div id="invChkBar" style="height:100%;width:${Math.round(doneCount/INV_CHECK_KEYS.length*100)}%;background:var(--teal);border-radius:4px"></div></div>
+    ${INV_CHECKLIST.map(g=>`<div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--navy);margin:14px 0 4px">${g.g}</div>${g.items.map(([k,l,h])=>`<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 2px;border-bottom:1px solid var(--line-soft);cursor:pointer"><input type="checkbox" ${chk[k]?'checked':''} onchange="toggleInvCheck('${k}',this.checked)" style="margin-top:2px;width:20px;height:20px;flex-shrink:0"><span style="min-width:0"><b style="font-size:12.5px;color:var(--navy)">${esc(l)}</b><br><span style="font-size:11.5px;color:var(--ink-dim);line-height:1.5">${esc(invHint(h))}</span></span></label>`).join('')}`).join('')}
+    <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">Tick only what you can put in someone's hands today. This is a self check, not legal or tax advice, so confirm requirements with your adviser and the relevant authority.</div>`;
+
+  const storyHtml = `<div style="font-size:11.5px;color:var(--muted);margin:4px 0 8px;line-height:1.6">The numbers show what happened. This is how you explain why, and what comes next. Saves automatically when you leave a box.</div>` +
+    INV_STORY.map(([k,l,h])=>`<label class="lbl" style="margin-top:10px">${esc(l)}</label><div style="font-size:11px;color:var(--muted);margin-bottom:4px">${esc(h)}</div><textarea class="inp" rows="3" maxlength="800" onblur="saveInvestorField('investorStory','${k}',this)">${esc(story[k]||'')}</textarea>`).join('');
+
+  const qaHtml = `<div style="font-size:11.5px;color:var(--muted);margin:4px 0 8px;line-height:1.6">The twelve questions directors, banks and investors ask most. Write your answer in your own words. The hint under each one comes from your real numbers.</div>` +
+    INV_QA.map(([k,q],i)=>{ const h = invQaHint(k, snap, x); return `<div style="margin-top:12px"><b style="font-size:12.5px;color:var(--navy)">${i+1}. ${esc(q)}</b>${h?`<div style="font-size:11.5px;color:var(--teal-dim);margin:3px 0 4px;line-height:1.6">${esc(h)}</div>`:''}<textarea class="inp" rows="3" maxlength="800" placeholder="Your answer" onblur="saveInvestorField('investorQA','${k}',this)">${esc(qa[k]||'')}</textarea></div>`; }).join('');
+
+  body.innerHTML = navHtml +
+    invSection('brief','Boardroom brief','Headline numbers, summary and what to fix before you present', brief) +
+    invSection('performance','Performance','Revenue, expenses and net result by month', performance) +
+    invSection('ratios','Financial health ratios','What a director or lender reads first', ratiosHtml) +
+    invSection('customers','Customers and retention','Who buys, and who comes back', customersHtml) +
+    (isPrestige ? invSection('unit','Unit economics, team and working capital','Margins, cost structure, payroll and stock position', unit) +
+                  invSection('ask','The ask and use of funds','What you want, what it is for, how it pays back', askHtml) +
+                  invSection('risks','Risk register','What you would rather they hear from you', risksHtml) : '') +
+    invSection('prep','Investment readiness checklist','Documents and records to have ready before anyone asks', prepHtml) +
+    invSection('story','Business story','The narrative behind the numbers', storyHtml) +
+    invSection('qa','Investor Q&A preparation','Practise the questions you will be asked', qaHtml) +
+    (!isPrestige ? `<div id="invsec_locked">${prestigeLockedCard('Unit Economics, Staffing, Working Capital, Ask and Risk Register')}</div>` : '') +
+    `<div class="card" style="text-align:center">
+      <button class="btn btn-ghost" onclick="loadInvestorSnapshot()">↻ Refresh Snapshot</button>
+      <button class="btn btn-ghost" onclick="invSetAll(true);setTimeout(()=>window.print(),150)">🖨️ Print / Save as PDF</button>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:8px">Generated ${esc(new Date(snap.generated_at).toLocaleString())}</div>
+    </div>`;
 }
 
 /* ---------- MESSAGES ---------- */
@@ -6888,7 +7305,7 @@ function renderMessageInbox(){
       <div style="display:flex;gap:6px"><button class="btn btn-ghost" style="padding:4px 10px" onclick="archiveTeamMessage('${jsAttr(m.id)}',${m.archived_at?'false':'true'})">${m.archived_at?'Restore':'Archive'}</button><button class="btn btn-ghost" style="padding:4px 10px;color:var(--coral)" onclick="deleteTeamMessage('${jsAttr(m.id)}')">Delete</button></div></div>`;
   const teamCard = teamMsgs.length ? `<div class="card" style="margin-bottom:14px"><div class="card-title" style="cursor:pointer" onclick="toggleTeamMessages()">✉ From the BYINFORGH team <span class="sub">${teamLive.length} message${teamLive.length===1?'':'s'}${teamArch.length?`, ${teamArch.length} archived`:''} · <span id="teamMsgToggle">${TEAM_MSGS_OPEN?'hide ▴':'show ▾'}</span></span></div>
     <div id="teamMsgBody" style="display:${TEAM_MSGS_OPEN?'block':'none'}">
-    ${infiniteList('teammsgs', (TEAM_MSGS_ARCHIVED?teamArch:teamLive), teamRow, `<div class="empty">${TEAM_MSGS_ARCHIVED?'Nothing archived.':'No messages. Archived ones are under the toggle below.'}</div>`, 320)}
+    ${infiniteList('teammsgs', (TEAM_MSGS_ARCHIVED?teamArch:teamLive), teamRow, `<div class="empty">${TEAM_MSGS_ARCHIVED?'Nothing archived.':'No messages. Archived ones are under the toggle below.'}</div>`, 320, 20, 20)}
     ${teamArch.length || TEAM_MSGS_ARCHIVED ? `<button class="btn btn-ghost" style="margin-top:8px;padding:5px 12px" onclick="TEAM_MSGS_ARCHIVED=!TEAM_MSGS_ARCHIVED;INF_SHOWN['teammsgs']=0;renderMessageInbox()">${TEAM_MSGS_ARCHIVED?'← Back to messages':'View archived ('+teamArch.length+')'}</button>` : ''}
     </div></div>` : '';
   document.getElementById('msgBody').innerHTML = teamCard + `
@@ -6899,13 +7316,13 @@ function renderMessageInbox(){
   </div>
   <div class="two-col">
     <div class="card"><div class="card-title">Sent Messages <span class="sub">newest first</span></div>
-      <div class="tab-row" style="margin-bottom:8px">${[['all','All']].concat(Object.entries(MSG_KINDS)).map(([k,l])=>`<button class="tab-pill ${f===k?'active':''}" onclick="msgInboxFilter='${k}';renderMessageInbox()">${l}</button>`).join('')}</div>
-      <div style="max-height:560px;overflow-y:auto">${shown.length ? shown.map(m=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
+      <div class="tab-row" style="margin-bottom:8px">${[['all','All']].concat(Object.entries(MSG_KINDS)).map(([k,l])=>`<button class="tab-pill ${f===k?'active':''}" onclick="msgInboxFilter='${k}';INF_SHOWN['sentmsgs']=0;renderMessageInbox()">${l}</button>`).join('')}</div>
+      ${infiniteList('sentmsgs', shown, m=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
         <div style="display:flex;justify-content:space-between;width:100%;gap:8px"><b>${esc(m.contactName)}</b><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${fmtDate(m.date)}</span></div>
         <div style="font-size:11px;color:var(--muted)">${esc(MSG_CHANNELS[m.channel]||'Other')} · ${esc(MSG_KINDS[m.kind]||'General message')}${m.status==='opened'?' · chat opened':''}</div>
         ${m.text?`<div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-wrap">${esc(m.text)}</div>`:''}
         <div style="display:flex;gap:6px">${m.phone&&waLink(m.phone)?`<a class="btn btn-ghost" style="padding:4px 10px;text-decoration:none" target="_blank" rel="noopener noreferrer" href="${esc(waLink(m.phone))}">Reply on WhatsApp</a>`:''}<button class="btn btn-ghost" style="padding:4px 10px" onclick="deleteLoggedMessage('${jsAttr(m.id)}')">Delete</button></div>
-      </div>`).join('') : `<div class="empty">${log.length?'Nothing in this filter yet.':'No messages logged yet. Send or log one on the right and it will show here.'}</div>`}</div>
+      </div>`, `<div class="empty">${log.length?'Nothing in this filter yet.':'No messages logged yet. Send or log one on the right and it will show here.'}</div>`, 560, 20, 20)}
     </div>
     <div class="card"><div class="card-title">＋ Send or Log a Message <span class="sub">texts sent from your phone can be logged too</span></div>
       <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
@@ -9474,6 +9891,28 @@ window.addEventListener('orientationchange', ()=>setTimeout(setAppVh, 120));
 if(window.visualViewport){ window.visualViewport.addEventListener('resize', setAppVh); }
 setTimeout(setAppVh, 300);
 setTimeout(setAppVh, 1000);
+/* FIX (Oct 2026, screen out of sync, had to pinch to fix): block pinch zoom in the app (not on the
+   Network map), and if the page is ever zoomed anyway, snap it back to 100% when no field is being typed in. */
+(function lockZoom(){
+  const meta = document.querySelector('meta[name="viewport"]');
+  const LOCKED = meta ? meta.getAttribute('content') : '';
+  const inMap = e => !!(e.target && e.target.closest && e.target.closest('.leaflet-container'));
+  ['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev, e=>{ if(!inMap(e)) e.preventDefault(); }, {passive:false}));
+  document.addEventListener('touchmove', e=>{ if(e.touches && e.touches.length>1 && !inMap(e)) e.preventDefault(); }, {passive:false});
+  let fixing = false;
+  function unzoom(){
+    const vv = window.visualViewport;
+    if(!meta || !vv || fixing || vv.scale <= 1.02 || isEditable(document.activeElement)) return;
+    fixing = true;
+    meta.setAttribute('content', 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, shrink-to-fit=no');
+    resetViewportScroll();
+    setTimeout(()=>{ meta.setAttribute('content', LOCKED); fixing = false; setAppVh(); }, 120);
+  }
+  if(window.visualViewport){ window.visualViewport.addEventListener('resize', unzoom); }
+  window.addEventListener('pageshow', ()=>setTimeout(unzoom, 200));
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) setTimeout(unzoom, 250); });
+  window.addEventListener('touchend', ()=>setTimeout(unzoom, 350), {passive:true});
+})();
 /* ---------- Mobile sidebar controls ----------
    openSidebarUI/closeSidebarUI/toggleSidebarUI keep the sidebar and its
    backdrop in sync (tapping the dimmed backdrop over the page closes the
