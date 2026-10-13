@@ -4563,6 +4563,10 @@ async function importInventoryCSV(input){
 
 /* ---------- CRM ---------- */
 let crmFilter = 'all';
+// Crash guard: a contact with a missing/unknown temperature (older data, imports,
+// debtor-created entries) must fall back to 'New / Unread' instead of throwing
+// and taking the whole Clients page down.
+function tempOf(c){ return TEMPS.find(t=>t.key===(c&&c.temp)) || TEMPS[0]; }
 function renderCRM(){
   document.getElementById('pageContent').innerHTML = `
   <div class="tab-row" id="crmTabs"></div>
@@ -4600,7 +4604,7 @@ function drawCrmList(){
   document.getElementById('crmCount').textContent = `(${list.length})`;
   const phoneCounts = {}; (DATA.contacts||[]).forEach(c=>{ const k=phoneKey(c.phone); if(k) phoneCounts[k]=(phoneCounts[k]||0)+1; });
   document.getElementById('crmList').innerHTML = list.length ? list.map(c=>{
-    const temp = TEMPS.find(t=>t.key===c.temp);
+    const temp = tempOf(c);
     return `<div class="list-row" style="cursor:pointer" onclick="openContactModal('${jsAttr(c.id)}')">
       <span><span class="temp-dot" style="background:${temp.color}"></span><b>${esc(c.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(c.phone)}</span>${(phoneKey(c.phone) && (phoneCounts[phoneKey(c.phone)]||0)>1)?' <span title="Another contact has this number" style="color:#8a6414;font-size:11px;font-weight:700">⚠ shared number</span>':''}</span>
       <span class="pill ${temp.pillClass}">${c.stage||temp.label}</span>
@@ -4637,12 +4641,12 @@ async function addContact(){
 }
 function openContactModal(id){
   const c = DATA.contacts.find(x=>x.id===id); if(!c) return;
-  const temp = TEMPS.find(t=>t.key===c.temp);
+  const temp = tempOf(c);
   const curStage = PIPE_STAGES.includes(c.stage) ? c.stage : 'New';
   document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal">
     <div class="modal-head"><h3>${esc(c.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
     <label class="lbl">Temperature</label>
-    <select class="inp" onchange="updateContact('${jsAttr(id)}','temp',this.value)">${TEMPS.map(t=>`<option value="${t.key}" ${t.key===c.temp?'selected':''}>${t.label}</option>`).join('')}</select>
+    <select class="inp" onchange="updateContact('${jsAttr(id)}','temp',this.value)">${TEMPS.map(t=>`<option value="${t.key}" ${t.key===temp.key?'selected':''}>${t.label}</option>`).join('')}</select>
     <label class="lbl">Stage <span class="sub">tap to move this deal, this is the same stage shown on the ${CUR_INDUSTRY_OBJ.pipelineNoun.toLowerCase()} board</span></label>
     <div class="tab-row" style="margin-bottom:14px">${PIPE_STAGES.map(s=>`<button class="tab-pill ${s===curStage?'active':''}" onclick="updateContact('${jsAttr(id)}','stage','${s}')">${s}</button>`).join('')}</div>
     <label class="lbl">Phone</label><input class="inp" type="tel" inputmode="tel" value="${esc(c.phone||'')}" onchange="updateContact('${jsAttr(id)}','phone',this.value)">
@@ -4669,8 +4673,8 @@ function quickInvoiceFor(id){
     // Focus whichever "what's this for" control is actually visible,
     // the picker when items exist, otherwise the free-text box.
     const pick = document.getElementById('sendInvDescPick');
-    if(pick && (DATA.inventory||[]).length) pick.focus();
-    else document.getElementById('sendInvDesc')?.focus();
+    if(pick && (DATA.inventory||[]).length) pick.focus({preventScroll:true});
+    else document.getElementById('sendInvDesc')?.focus({preventScroll:true});
   }, 150);
 }
 async function updateContact(id, field, val){
@@ -4704,7 +4708,7 @@ async function archiveContact(id){
   DATA.archive.push({...c, archivedFrom:'crm', archivedDate:todayStr()});
   await saveData(); closeModal(); renderCRM(); showToast('Archived, restorable anytime');
 }
-function openNewContactModal(){ navTo('crm'); setTimeout(()=>document.getElementById('cName')?.focus(),150); }
+function openNewContactModal(){ navTo('crm'); setTimeout(()=>document.getElementById('cName')?.focus({preventScroll:true}),150); }
 /* A business with none of the selling modules on (mainly the General
    industry default) had no visible way to add an item or service anywhere
    in the app. This turns on Inventory + Invoicing in one tap and lands
@@ -5519,7 +5523,7 @@ function renderInvoicing(){
   </div>
   <div class="two-col">
     <div class="card"><div class="card-title">Debtors, Who Owes What <span class="sub">each job is listed on its own</span></div>
-    ${owed.length ? owed.map(o=>`<div class="list-row" style="cursor:pointer;align-items:flex-start;gap:8px" onclick="openDebtModal('${jsAttr(o.c.id)}','${jsAttr(o.d.id)}')"><span style="min-width:0"><b>${esc(o.c.name)}</b>${debtLabel(o.d)?` <span style="color:var(--ink-dim);font-size:12px">· ${esc(debtLabel(o.d))}</span>`:''}<br><span style="color:var(--muted);font-size:11px">${o.d.due?(o.d.due<t?'overdue since ':'due ')+esc(fmtDate(o.d.due)):'no due date'}${o.d.paid>0?` · paid ${esc(money(o.d.paid))} of ${esc(money(o.d.amount))}`:''}</span></span><span style="display:flex;align-items:center;gap:10px;flex-shrink:0"><span class="mono" style="color:var(--coral)">${money(o.bal)}</span><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="event.stopPropagation();openDebtModal('${jsAttr(o.c.id)}','${jsAttr(o.d.id)}')">Record payment</button></span></div>`).join('') : '<div class="empty">Nothing outstanding.</div>'}
+    ${infiniteList('debtors', owed, o=>`<div class="list-row" style="cursor:pointer;align-items:flex-start;gap:8px" onclick="openDebtModal('${jsAttr(o.c.id)}','${jsAttr(o.d.id)}')"><span style="min-width:0"><b>${esc(o.c.name)}</b>${debtLabel(o.d)?` <span style="color:var(--ink-dim);font-size:12px">· ${esc(debtLabel(o.d))}</span>`:''}<br><span style="color:var(--muted);font-size:11px">${o.d.due?(o.d.due<t?'overdue since ':'due ')+esc(fmtDate(o.d.due)):'no due date'}${o.d.paid>0?` · paid ${esc(money(o.d.paid))} of ${esc(money(o.d.amount))}`:''}</span></span><span style="display:flex;align-items:center;gap:10px;flex-shrink:0"><span class="mono" style="color:var(--coral)">${money(o.bal)}</span><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="event.stopPropagation();openDebtModal('${jsAttr(o.c.id)}','${jsAttr(o.d.id)}')">Record payment</button></span></div>`, '<div class="empty">Nothing outstanding.</div>', 380)}
     </div>
     <div class="card"><div class="card-title">Add Invoice / Debt</div>
       <label class="lbl">Existing ${esc(crmOne)} (optional)</label>
@@ -5551,6 +5555,7 @@ function renderInvoicing(){
     <div id="sendInvResult" style="margin-top:12px"></div>
   </div>
   <div class="card" style="margin-top:16px"><div class="card-title">Recent Invoices Sent</div><div id="recentInvoicesWrap"><div class="empty">Loading…</div></div></div>`;
+  setTimeout(initInfiniteLists, 0);
   loadRecentInvoices();
 }
 function applyInvoiceContact(){
@@ -5577,7 +5582,7 @@ function applyInvoiceService(){
   if(val === '__other__'){
     descInput.style.display = '';
     descInput.value = '';
-    descInput.focus();
+    descInput.focus({preventScroll:true});
     return;
   }
   if(!val){ descInput.style.display = (DATA.inventory||[]).length ? 'none' : ''; return; }
@@ -5639,7 +5644,8 @@ function copyInvoiceLink(link){
 }
 async function loadRecentInvoices(){
   const wrap = document.getElementById('recentInvoicesWrap'); if(!wrap) return;
-  const { data, error } = await sb.rpc('list_my_invoices');
+  let data = null, error = null;
+  try{ if(!sb) throw new Error('offline'); ({ data, error } = await sb.rpc('list_my_invoices')); }catch(e){ error = e || true; }
   if(error){ wrap.innerHTML = '<div class="empty">Could not load invoices.</div>'; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="empty">No invoices sent yet.</div>'; return; }
   wrap.innerHTML = data.slice(0,15).map(inv=>{
@@ -7408,7 +7414,7 @@ function renderJournal(){
 }
 function openJournalFor(contactId, name){
   closeModal(); navTo('journal');
-  setTimeout(()=>{ const sel=document.getElementById('jLink'); if(sel) sel.value = contactId+'|'+name; document.getElementById('jText')?.focus(); },150);
+  setTimeout(()=>{ const sel=document.getElementById('jLink'); if(sel) sel.value = contactId+'|'+name; document.getElementById('jText')?.focus({preventScroll:true}); },150);
 }
 async function addJournal(){
   const text = document.getElementById('jText').value.trim();
@@ -7968,7 +7974,7 @@ function jumpToGuide(key){
   setTimeout(()=>{
     const el = document.querySelector(`.guide-item[data-guide-key="${key}"]`);
     if(!el) return;
-    el.scrollIntoView({behavior:'smooth', block:'center'});
+    revealInScroller(el, true);
     el.style.transition = 'box-shadow .3s';
     el.style.boxShadow = '0 0 0 2px var(--teal)';
     if(ownsGuide(key)) el.classList.add('open');
@@ -9421,9 +9427,40 @@ function isEditable(el){ return !!el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagN
 function resetViewportScroll(){
   try{ window.scrollTo(0,0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }catch(e){}
 }
+/* FIX (Oct 2026, screen jumps down when tapping a field or picking a name, and
+   the topbar ends up pushed off the top): element.scrollIntoView() scrolls EVERY
+   ancestor, including the locked <html>/<body>, which is what shoved the whole
+   shell (and the topbar with it) upward. revealInScroller() only ever moves the
+   element's own scroll containers (.content, a modal, an .inf-list), never the
+   window, and only when the element is actually hidden (under the keyboard or off
+   the edge). Dropdowns/date pickers use native pickers, so they are never moved. */
+function revealInScroller(el, center){
+  if(!el || !el.getBoundingClientRect) return;
+  const vv = window.visualViewport;
+  const vTop = vv ? vv.offsetTop : 0;
+  const vBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+  let node = el.parentElement, guard = 0;
+  while(node && node !== document.body && node !== document.documentElement && guard++ < 12){
+    const oy = getComputedStyle(node).overflowY;
+    if((oy==='auto' || oy==='scroll') && node.scrollHeight > node.clientHeight + 1){
+      const nr = node.getBoundingClientRect(), er = el.getBoundingClientRect();
+      const top = Math.max(nr.top, vTop), bottom = Math.min(nr.bottom, vBottom);
+      const pad = 16;
+      const hidden = er.bottom > bottom - pad || er.top < top + pad;
+      if(hidden){
+        const want = center ? (top + (bottom - top)/2 - er.height/2) : (er.bottom > bottom - pad ? bottom - pad - er.height : top + pad);
+        const delta = er.top - want;
+        try{ node.scrollTo({top: Math.max(0, node.scrollTop + delta), behavior:'smooth'}); }
+        catch(err){ node.scrollTop = Math.max(0, node.scrollTop + delta); }
+      }
+    }
+    node = node.parentElement;
+  }
+}
 document.addEventListener('focusin', e=>{
-  if(!isEditable(e.target)) return;
-  setTimeout(()=>{ try{ e.target.scrollIntoView({block:'center', behavior:'smooth'}); }catch(err){} }, 320);
+  const t = e.target;
+  if(!isEditable(t) || t.tagName==='SELECT' || /^(date|time|datetime-local|month|week|file|checkbox|radio|range|color)$/i.test(t.type||'')) return;
+  setTimeout(()=>{ if(document.activeElement===t){ try{ revealInScroller(t, true); }catch(err){} } }, 320);
 });
 document.addEventListener('focusout', ()=>{
   setTimeout(()=>{ if(!isEditable(document.activeElement)){ resetViewportScroll(); setAppVh(); } }, 120);
