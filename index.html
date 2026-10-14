@@ -9841,7 +9841,14 @@ setAppVh();
    shell at the real height and just scroll that field into view inside .content;
    (2) the moment focus leaves, snap the window back to 0,0 and re-measure. */
 function isEditable(el){ return !!el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName); }
+/* FIX (Oct 2026, \"can't scroll down on the front pages, it keeps jumping back\"): the page-scroll reset
+   below is only meant for the locked dashboard shell. On the sign-in and setup wizard screens the
+   BODY is the scroller, and resetting it (on every scroll event, on focusout, touchend, etc.) snapped
+   the page back to the top every time the user tried to scroll. It now does nothing unless the
+   dashboard (#app.active) is showing. */
+function appShellActive(){ const a = document.getElementById('app'); return !!(a && a.classList.contains('active')); }
 function resetViewportScroll(){
+  if(!appShellActive()) return;
   try{ window.scrollTo(0,0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }catch(e){}
 }
 /* FIX (Oct 2026, screen jumps down when tapping a field or picking a name, and
