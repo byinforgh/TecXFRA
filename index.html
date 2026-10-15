@@ -424,6 +424,21 @@ label.lbl{display:block; font-size:10.5px; font-weight:700; letter-spacing:.7px;
 .cart-num{width:76px; text-align:center; border:1px solid var(--line); border-radius:6px; padding:3px 4px; font-family:'IBM Plex Mono',monospace; font-size:13px; background:#fff; color:var(--ink);}
 .cart-num.cart-price{width:92px; text-align:right; font-size:12px;}
 .qs-cell{display:flex; flex-direction:column; gap:4px;}
+/* ---------- A-Z LISTS: up to 20 rows look exactly as before; past 20 the list becomes a fixed box that loads more as you scroll, with an iPhone style letter rail ---------- */
+.az-wrap{position:relative;display:flex;align-items:stretch;gap:4px}
+.az-box{flex:1;min-width:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;padding:0 10px;position:relative}
+.az-box.scroll-tbl{padding:0;overflow-x:auto}
+.az-box.qs-grid{padding:8px 10px;align-content:start}
+.az-h{font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--teal-dim);background:var(--cream);padding:4px 10px;margin:0 -10px;position:sticky;top:0;z-index:2;border-bottom:1px solid var(--line-soft)}
+.az-box.qs-grid .az-h{grid-column:1/-1;margin:0 -10px}
+tr.az-h td{position:sticky;top:0;z-index:2;background:var(--cream);font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--teal-dim);padding:4px 10px;border-bottom:1px solid var(--line-soft)}
+.az-rail{width:18px;flex:none;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:2px 0;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
+.az-rail span{font-size:10px;font-weight:700;line-height:1;color:var(--teal-dim);width:100%;text-align:center;padding:1px 0;border-radius:6px}
+.az-rail span.on{background:var(--teal);color:#fff}
+.az-bubble{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:58px;height:58px;border-radius:16px;background:var(--navy);color:#fff;font-size:28px;font-weight:800;display:none;align-items:center;justify-content:center;pointer-events:none;z-index:6;opacity:.92}
+.az-sort{display:flex;gap:6px;margin-bottom:8px}
+.az-count{margin-top:4px;font-size:10.5px;color:var(--muted)}
+
 .qs-cell .qs-item{width:100%;}
 .qs-pack{display:block; width:100%; text-align:left; font-size:10.5px; font-weight:600; padding:5px 7px; border:1px dashed var(--teal); border-radius:8px; background:#fff; color:var(--teal-dim); cursor:pointer;}
 .qs-pack:hover{background:var(--cream);}
@@ -2688,6 +2703,7 @@ function navTo(page){
   if(!CFG.modules.includes(page) && page!=='settings') page='today';
   if(page!=='network' && NETWORK_PRESENCE_TIMER){ clearInterval(NETWORK_PRESENCE_TIMER); NETWORK_PRESENCE_TIMER = null; }
   CUR_PAGE = page;
+  Object.keys(AZ_SCROLL).forEach(k=>{ AZ_SCROLL[k] = 0; });
   document.querySelectorAll('.sb-item').forEach(el=>el.classList.toggle('active', el.dataset.page===page));
   closeSidebarUI();
   const m = MODULES.find(x=>x.key===page);
@@ -3957,6 +3973,158 @@ document.addEventListener('scroll', e=>{
   if(t && t.classList && t.classList.contains('inf-list') && t.scrollTop + t.clientHeight >= t.scrollHeight - 40) infLoadMore(t.getAttribute('data-inf'));
 }, true);
 
+/* ---------- A-Z LISTS ----------
+   One helper for every long name based list (clients, products and services,
+   till items, follow-ups, sent messages). Rules:
+   - 20 rows or fewer: plain list, nothing extra on screen.
+   - Over 20: fixed height box, rows load 20 at a time as you scroll, and a
+     letter rail down the side (tap or drag a letter to jump, like Contacts on
+     an iPhone). Letters shown are only the ones that exist.
+   - Lists that are naturally in date order (follow-ups, sent messages) keep
+     that order by default and get a small "A to Z" switch; the rail only shows
+     in A to Z mode, because a letter jump means nothing in date order.
+   Jumping only ever scrolls the list's own box, never the page. Rows are built
+   by the caller's own render function, which already escapes everything. */
+const AZ = {}, AZ_SHOWN = {}, AZ_SORT = {}, AZ_SCROLL = {}, AZ_PIN = {};
+const AZ_AFTER = 20, AZ_STEP = 20;
+function azLetter(n){ const c = String(n||'').trim().charAt(0).toUpperCase(); return (c>='A' && c<='Z') ? c : '#'; }
+function azCmp(a,b){ return String(a||'').trim().localeCompare(String(b||'').trim(), undefined, {sensitivity:'base', numeric:true}); }
+function azReset(id){ AZ_SHOWN[id] = 0; AZ_SCROLL[id] = 0; }
+function azSort(id, v){ AZ_SORT[id] = v; azReset(id); const st = AZ[id]; if(st && st.redraw) st.redraw(); }
+function azRows(st, from, to){
+  let h = '', prev = from>0 ? azLetter(st.getName(st.items[from-1])) : null;
+  for(let i=from;i<to;i++){
+    const it = st.items[i];
+    if(st.sorted){
+      const L = azLetter(st.getName(it));
+      if(L!==prev){
+        h += st.mode==='table' ? `<tr class="az-h" data-l="${L}"><td colspan="${st.cols}">${L}</td></tr>` : `<div class="az-h" data-l="${L}">${L}</div>`;
+        prev = L;
+      }
+    }
+    h += st.renderRow(it);
+  }
+  return h;
+}
+function azCountText(id){
+  const st = AZ[id]; if(!st) return '';
+  const n = AZ_SHOWN[id]||0;
+  return n>=st.items.length ? `${st.items.length} in total` : `Showing ${n} of ${st.items.length}, scroll for more`;
+}
+function azList(id, items, getName, renderRow, opts){
+  opts = opts || {};
+  const mode = opts.mode || 'div';
+  const sorted = !opts.defaultOrder || AZ_SORT[id]==='az';
+  const list = sorted ? items.slice().sort((a,b)=>azCmp(getName(a),getName(b))) : items.slice();
+  const st = AZ[id] = {items:list, getName, renderRow, mode, cols:opts.cols||1, sorted, redraw:opts.redraw, empty:opts.empty||''};
+  const toggle = opts.defaultOrder ? `<div class="az-sort"><button class="tab-pill ${sorted?'':'active'}" onclick="azSort('${id}','date')">${opts.defaultLabel||'Date'}</button><button class="tab-pill ${sorted?'active':''}" onclick="azSort('${id}','az')">A to Z</button></div>` : '';
+  if(!list.length){
+    return toggle + (mode==='table' ? `<div class="scroll-tbl"><table><thead>${opts.head||''}</thead><tbody>${opts.empty||''}</tbody></table></div>` : (opts.empty||''));
+  }
+  // small list: exactly as before, no box, no rail
+  if(list.length<=AZ_AFTER){
+    AZ_SHOWN[id] = list.length;
+    const rows = azRows(Object.assign({}, st, {sorted:false}), 0, list.length);
+    if(mode==='table') return toggle + `<div class="scroll-tbl" style="max-height:${opts.maxH||440}px"><table><thead>${opts.head||''}</thead><tbody>${rows}</tbody></table></div>`;
+    if(mode==='grid') return toggle + `<div class="qs-grid" id="qsGrid_${id}" style="max-height:${opts.maxH||300}px">${rows}</div>`;
+    return toggle + rows;
+  }
+  const shown = Math.min(list.length, Math.max(AZ_AFTER, AZ_SHOWN[id]||0));
+  AZ_SHOWN[id] = shown;
+  const rows = azRows(st, 0, shown);
+  const maxH = opts.maxH || 440;
+  let box;
+  if(mode==='table') box = `<div class="az-box scroll-tbl" id="az_${id}" data-az="${id}" style="max-height:min(${maxH}px,70vh)"><table><thead>${opts.head||''}</thead><tbody id="azb_${id}">${rows}</tbody></table></div>`;
+  else if(mode==='grid') box = `<div class="az-box qs-grid" id="az_${id}" data-az="${id}" style="max-height:min(${maxH}px,70vh)">${rows}</div>`;
+  else box = `<div class="az-box" id="az_${id}" data-az="${id}" style="max-height:min(${maxH}px,70vh)">${rows}</div>`;
+  let rail = '';
+  if(sorted){
+    const seen = []; list.forEach(it=>{ const L = azLetter(getName(it)); if(!seen.includes(L)) seen.push(L); });
+    rail = `<div class="az-rail" data-az="${id}">${seen.map(L=>`<span data-l="${L}">${L}</span>`).join('')}</div>`;
+  }
+  return toggle + `<div class="az-wrap">${box}${rail}<div class="az-bubble" id="azbub_${id}"></div></div><div class="sub az-count" id="azcount_${id}">${azCountText(id)}</div>`;
+}
+function azTarget(id){ return document.getElementById('azb_'+id) || document.getElementById('az_'+id); }
+function azLoad(id, upTo){
+  const st = AZ[id], box = document.getElementById('az_'+id), tgt = azTarget(id); if(!st || !box || !tgt) return false;
+  const have = AZ_SHOWN[id]||0; if(have>=st.items.length) return false;
+  const next = Math.min(st.items.length, Math.max(have+AZ_STEP, upTo||0));
+  tgt.insertAdjacentHTML('beforeend', azRows(st, have, next));
+  AZ_SHOWN[id] = next;
+  const c = document.getElementById('azcount_'+id); if(c) c.textContent = azCountText(id);
+  return true;
+}
+function azJump(id, L){
+  const st = AZ[id], box = document.getElementById('az_'+id); if(!st || !box) return;
+  const idx = st.items.findIndex(it=>azLetter(st.getName(it))===L); if(idx<0) return;
+  if(idx>=(AZ_SHOWN[id]||0)) azLoad(id, idx+1);
+  let hdr = box.querySelector(`[data-l="${L}"]`); if(!hdr) return;
+  // Make sure there is enough content below the letter to scroll it to the top of the box
+  // (the end of the list can't scroll further, same as Contacts on an iPhone).
+  let guard = 0;
+  while(guard++ < 10){
+    const off = box.scrollTop + hdr.getBoundingClientRect().top - box.getBoundingClientRect().top;
+    if(box.scrollHeight - off >= box.clientHeight || !azLoad(id)) break;
+  }
+  box.scrollTop += hdr.getBoundingClientRect().top - box.getBoundingClientRect().top;
+  azMarkActive(id, L);
+}
+function azMarkActive(id, force){
+  const box = document.getElementById('az_'+id), rail = document.querySelector(`.az-rail[data-az="${id}"]`); if(!box || !rail) return;
+  const top = box.getBoundingClientRect().top; let cur = null;
+  box.querySelectorAll('.az-h').forEach(h=>{ if(h.getBoundingClientRect().top - top <= 6) cur = h.getAttribute('data-l'); });
+  if(!cur){ const f = box.querySelector('.az-h'); cur = f ? f.getAttribute('data-l') : null; }
+  // at the very end of the list the last letter can't reach the top, so mark the one that was asked for
+  if(force && box.scrollTop + box.clientHeight >= box.scrollHeight - 2) cur = force;
+  AZ_PIN[id] = (force && cur===force) ? {l:force, st:box.scrollTop} : null;
+  if(!force && AZ_PIN[id] && Math.abs(box.scrollTop - AZ_PIN[id].st) < 3) cur = AZ_PIN[id].l;
+  rail.querySelectorAll('span').forEach(sp=>sp.classList.toggle('on', sp.getAttribute('data-l')===cur));
+}
+// Call after a page that uses azList has drawn: restores where you were, and keeps
+// loading rows until there is something to scroll.
+function azInit(){
+  document.querySelectorAll('.az-box').forEach(box=>{
+    if(!box.clientHeight) return;
+    const id = box.getAttribute('data-az'); let guard = 0;
+    while(box.scrollHeight < box.clientHeight + 90 && guard++ < 20 && azLoad(id)){}
+    if(AZ_SCROLL[id]) box.scrollTop = AZ_SCROLL[id];
+    azMarkActive(id);
+  });
+}
+let AZ_DRAG = null, AZ_RAF = 0;
+function azRailPoint(rail, y){
+  const spans = Array.from(rail.children); if(!spans.length) return null;
+  let best = spans[0], bd = Infinity;
+  spans.forEach(sp=>{ const r = sp.getBoundingClientRect(); const d = y<r.top ? r.top-y : (y>r.bottom ? y-r.bottom : 0); if(d<bd){ bd = d; best = sp; } });
+  return best.getAttribute('data-l');
+}
+function azRailTouch(e){
+  if(!AZ_DRAG) return;
+  const L = azRailPoint(AZ_DRAG.rail, e.clientY); if(!L || L===AZ_DRAG.last) return;
+  AZ_DRAG.last = L; azJump(AZ_DRAG.id, L);
+  const b = document.getElementById('azbub_'+AZ_DRAG.id); if(b){ b.textContent = L; b.style.display = 'flex'; }
+}
+document.addEventListener('pointerdown', e=>{
+  const rail = e.target && e.target.closest ? e.target.closest('.az-rail') : null; if(!rail) return;
+  e.preventDefault();
+  AZ_DRAG = {rail, id: rail.getAttribute('data-az'), last: null};
+  try{ rail.setPointerCapture(e.pointerId); }catch(x){}
+  azRailTouch(e);
+}, true);
+document.addEventListener('pointermove', e=>{ if(AZ_DRAG) azRailTouch(e); }, true);
+function azEndDrag(){
+  if(!AZ_DRAG) return; const id = AZ_DRAG.id; AZ_DRAG = null;
+  setTimeout(()=>{ const b = document.getElementById('azbub_'+id); if(b) b.style.display = 'none'; }, 450);
+}
+document.addEventListener('pointerup', azEndDrag, true);
+document.addEventListener('pointercancel', azEndDrag, true);
+document.addEventListener('scroll', e=>{
+  const t = e.target; if(!(t && t.classList && t.classList.contains('az-box'))) return;
+  const id = t.getAttribute('data-az'); AZ_SCROLL[id] = t.scrollTop;
+  if(t.scrollTop + t.clientHeight >= t.scrollHeight - 60) azLoad(id);
+  if(!AZ_RAF){ AZ_RAF = requestAnimationFrame(()=>{ AZ_RAF = 0; azMarkActive(id); }); }
+}, true);
+
 /* ---------- TODAY ---------- */
 function txTypeLabel(type){ return ({sale:'Sale at till', invoice:'Invoice payment'})[type] || 'Income'; }
 function renderToday(){
@@ -4771,19 +4939,20 @@ function renderCRM(){
   }).join('');
   drawCrmList();
 }
-function setCrmFilter(k){ crmFilter=k; renderCRM(); }
+function setCrmFilter(k){ crmFilter=k; azReset('crm'); renderCRM(); }
 function drawCrmList(){
   let list = DATA.contacts||[];
   if(crmFilter!=='all') list = list.filter(c=>c.temp===crmFilter);
   document.getElementById('crmCount').textContent = `(${list.length})`;
   const phoneCounts = {}; (DATA.contacts||[]).forEach(c=>{ const k=phoneKey(c.phone); if(k) phoneCounts[k]=(phoneCounts[k]||0)+1; });
-  document.getElementById('crmList').innerHTML = list.length ? list.map(c=>{
+  document.getElementById('crmList').innerHTML = azList('crm', list, c=>c.name, c=>{
     const temp = tempOf(c);
     return `<div class="list-row" style="cursor:pointer" onclick="openContactModal('${jsAttr(c.id)}')">
       <span><span class="temp-dot" style="background:${temp.color}"></span><b>${esc(c.name)}</b> <span style="color:var(--muted);font-size:11px">· ${esc(c.phone)}</span>${(phoneKey(c.phone) && (phoneCounts[phoneKey(c.phone)]||0)>1)?' <span title="Another contact has this number" style="color:#8a6414;font-size:11px;font-weight:700">⚠ shared number</span>':''}</span>
       <span class="pill ${temp.pillClass}">${c.stage||temp.label}</span>
     </div>`;
-  }).join('') : '<div class="empty">No matches, add one on the right.</div>';
+  }, {empty:'<div class="empty">No matches, add one on the right.</div>', maxH:480, redraw:()=>drawCrmList()});
+  setTimeout(azInit,0);
 }
 function normalizePhone(p){ return (p||'').replace(/\D/g,''); }
 // Same number written two ways (0241234567, +233 24 123 4567, 233241234567)
@@ -5200,14 +5369,14 @@ function renderFollowups(){
     <div class="card"><div class="card-title">Follow-Up Queue <span class="sub">everything due, across every module, in one list</span></div>
     ${overdueN ? `<div style="background:#fbe9e6;border:1.5px solid var(--coral);color:var(--coral);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:13px;font-weight:700">⚠ ${overdueN} overdue ${overdueN===1?'follow-up':'follow-ups'}${todayN?` · ${todayN} due today`:''}<div style="font-weight:500;font-size:11.5px;margin-top:2px">Oldest first. Clear these before anything new.</div></div>`
        : (due.length ? `<div style="background:#e4f3ea;color:#3f8f5f;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:12.5px;font-weight:600">✓ Nothing overdue${todayN?` · ${todayN} due today`:''}</div>` : '')}
-    ${due.length ? due.map(f=>{ const late = (f.due||'')<t; return `
+    ${azList('followups', due, f=>f.contactName, f=>{ const late = (f.due||'')<t; return `
       <div class="list-row" style="align-items:flex-start;${late?'background:#fdf3f1;border-left:4px solid var(--coral);padding-left:10px;border-radius:6px;':''}">
         <div><b style="${f.contactId&&(DATA.contacts||[]).some(c=>c.id===f.contactId)?'cursor:pointer;text-decoration:underline;text-decoration-color:var(--teal)':''}" ${f.contactId&&(DATA.contacts||[]).some(c=>c.id===f.contactId)?`onclick="openContactModal('${jsAttr(f.contactId)}')" role="button" tabindex="0"`:''}>${esc(f.contactName)}</b>${late?` <span class="pill" style="background:var(--coral);color:#fff;font-size:10px;padding:2px 8px">OVERDUE${daysLate(f.due)?' · '+daysLate(f.due):''}</span>`:''}<br><span style="font-size:11.5px;color:${late?'var(--coral)':'var(--ink-dim)'}">${esc(f.detail)} · due ${fmtDate(f.due)}</span></div>
         <div style="display:flex;gap:6px">
           <button class="btn btn-ghost" style="padding:6px 10px" onclick="snoozeFollowup('${jsAttr(f.id)}')">Snooze 3d</button>
           <button class="btn btn-primary" style="padding:6px 10px" onclick="doneFollowup('${jsAttr(f.id)}')">✓ Done</button>
         </div>
-      </div>`; }).join('') : '<div class="empty">Nothing outstanding, nice work.</div>'}
+      </div>`; }, {defaultOrder:true, defaultLabel:'Due date', empty:'<div class="empty">Nothing outstanding, nice work.</div>', maxH:520, redraw:()=>renderFollowups()})}
     </div>
     <div class="card"><div class="card-title">＋ Add a Follow-Up</div>
       <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
@@ -5218,6 +5387,7 @@ function renderFollowups(){
       <button class="btn btn-primary btn-full" onclick="addFollowup()">＋ Add Follow-Up</button>
     </div>
   </div>`;
+  setTimeout(azInit,0);
 }
 async function addFollowup(){
   const existingId = document.getElementById('fuContact').value;
@@ -5269,12 +5439,13 @@ function renderPOS(){
     </div>
   </div>
   <div id="lastSaleCard"></div>`;
-  document.getElementById('qsGrid').innerHTML = (DATA.inventory||[]).map(it=>`
+  document.getElementById('qsGrid').outerHTML = azList('till', DATA.inventory||[], it=>it.name, it=>`
     <div class="qs-cell"><button class="qs-item" onclick="addToCart('${jsAttr(it.id)}')"><div class="qn">${esc(it.name)}</div><div class="qp">${money(it.price)}${it.unit?' / '+esc(it.unit):''}</div>${(tracksStock() && it.stock<=it.par)?'<div style="font-size:10px;color:var(--coral)">low stock</div>':''}</button>
     ${tracksStock()?(it.packs||[]).map(pk=>`<button class="qs-pack" onclick="addToCart('${jsAttr(it.id)}','${jsAttr(pk.id)}')">＋ ${esc(pk.name)} · ${money(packPrice(it,pk))}</button>`).join(''):''}</div>
-  `).join('');
+  `, {mode:'grid', maxH:340, empty:'', redraw:()=>renderPOS()});
   drawCart();
   drawLastSale();
+  setTimeout(azInit,0);
 }
 // Persistent "it went through" confirmation at the bottom of the till,
 // separate from the toast (which disappears on its own), so the owner
@@ -5468,9 +5639,7 @@ function renderInventory(){
   <div class="two-col">
     <div class="card">
       <div class="card-title">${CUR_INDUSTRY_OBJ.itemNoun}${stocked?', Stock':''} <span class="sub">click a row to edit</span></div>
-      <div class="scroll-tbl"><table><thead><tr><th>${stocked?'Item':'Name'}</th>${stocked?'<th>Stock</th><th>Par</th>':''}<th>Cost</th><th>Price</th><th>Notes</th></tr></thead><tbody>
-        ${(DATA.inventory||[]).map(it=>`<tr style="cursor:pointer;${stocked && it.stock<=it.par?'color:var(--coral)':''}" onclick="openItemModal('${jsAttr(it.id)}')"><td>${esc(it.name)}${stocked && (it.packs||[]).length?`<div style="font-size:10.5px;color:var(--muted)">${(it.packs||[]).map(p=>esc(p.name)).join(' · ')}</div>`:''}</td>${stocked?`<td class="mono">${fmtQty(it.stock||0)}${it.unit?` <span style="color:var(--muted);font-size:10.5px">${esc(it.unit)}</span>`:''}${stockBreakdown(it)?`<div style="font-size:10.5px;color:var(--muted)">${esc(stockBreakdown(it))}</div>`:''}</td><td class="mono">${fmtQty(it.par||0)}</td>`:''}<td class="mono">${money(it.cost)}</td><td class="mono">${money(it.price)}</td><td style="color:var(--muted);font-size:11.5px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.notes||'')}</td></tr>`).join('') || `<tr><td colspan="${stocked?6:4}" class="empty">No ${CUR_INDUSTRY_OBJ.itemNoun.toLowerCase()} yet</td></tr>`}
-      </tbody></table></div>
+      ${azList('inventory', DATA.inventory||[], it=>it.name, it=>`<tr style="cursor:pointer;${stocked && it.stock<=it.par?'color:var(--coral)':''}" onclick="openItemModal('${jsAttr(it.id)}')"><td>${esc(it.name)}${stocked && (it.packs||[]).length?`<div style="font-size:10.5px;color:var(--muted)">${(it.packs||[]).map(p=>esc(p.name)).join(' · ')}</div>`:''}</td>${stocked?`<td class="mono">${fmtQty(it.stock||0)}${it.unit?` <span style="color:var(--muted);font-size:10.5px">${esc(it.unit)}</span>`:''}${stockBreakdown(it)?`<div style="font-size:10.5px;color:var(--muted)">${esc(stockBreakdown(it))}</div>`:''}</td><td class="mono">${fmtQty(it.par||0)}</td>`:''}<td class="mono">${money(it.cost)}</td><td class="mono">${money(it.price)}</td><td style="color:var(--muted);font-size:11.5px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.notes||'')}</td></tr>`, {mode:'table', cols:stocked?6:4, head:`<tr><th>${stocked?'Item':'Name'}</th>${stocked?'<th>Stock</th><th>Par</th>':''}<th>Cost</th><th>Price</th><th>Notes</th></tr>`, maxH:440, empty:`<tr><td colspan="${stocked?6:4}" class="empty">No ${CUR_INDUSTRY_OBJ.itemNoun.toLowerCase()} yet</td></tr>`, redraw:()=>renderInventory()})}
     </div>
     <div class="card">
       <div class="card-title">${stocked?'Restock / Add an Item':`Add a ${esc(singular)}`}</div>
@@ -5497,6 +5666,7 @@ function renderInventory(){
       </div>
     </div>
   </div>`;
+  setTimeout(azInit,0);
 }
 function refreshRestockIn(){
   const sel = document.getElementById('rIn'); if(!sel) return;
@@ -7316,13 +7486,13 @@ function renderMessageInbox(){
   </div>
   <div class="two-col">
     <div class="card"><div class="card-title">Sent Messages <span class="sub">newest first</span></div>
-      <div class="tab-row" style="margin-bottom:8px">${[['all','All']].concat(Object.entries(MSG_KINDS)).map(([k,l])=>`<button class="tab-pill ${f===k?'active':''}" onclick="msgInboxFilter='${k}';INF_SHOWN['sentmsgs']=0;renderMessageInbox()">${l}</button>`).join('')}</div>
-      ${infiniteList('sentmsgs', shown, m=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
+      <div class="tab-row" style="margin-bottom:8px">${[['all','All']].concat(Object.entries(MSG_KINDS)).map(([k,l])=>`<button class="tab-pill ${f===k?'active':''}" onclick="msgInboxFilter='${k}';azReset('sentmsgs');renderMessageInbox()">${l}</button>`).join('')}</div>
+      ${azList('sentmsgs', shown, m=>m.contactName, m=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
         <div style="display:flex;justify-content:space-between;width:100%;gap:8px"><b>${esc(m.contactName)}</b><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${fmtDate(m.date)}</span></div>
         <div style="font-size:11px;color:var(--muted)">${esc(MSG_CHANNELS[m.channel]||'Other')} · ${esc(MSG_KINDS[m.kind]||'General message')}${m.status==='opened'?' · chat opened':''}</div>
         ${m.text?`<div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-wrap">${esc(m.text)}</div>`:''}
         <div style="display:flex;gap:6px">${m.phone&&waLink(m.phone)?`<a class="btn btn-ghost" style="padding:4px 10px;text-decoration:none" target="_blank" rel="noopener noreferrer" href="${esc(waLink(m.phone))}">Reply on WhatsApp</a>`:''}<button class="btn btn-ghost" style="padding:4px 10px" onclick="deleteLoggedMessage('${jsAttr(m.id)}')">Delete</button></div>
-      </div>`, `<div class="empty">${log.length?'Nothing in this filter yet.':'No messages logged yet. Send or log one on the right and it will show here.'}</div>`, 560, 20, 20)}
+      </div>`, {defaultOrder:true, defaultLabel:'Newest', empty:`<div class="empty">${log.length?'Nothing in this filter yet.':'No messages logged yet. Send or log one on the right and it will show here.'}</div>`, maxH:560, redraw:()=>renderMessageInbox()})}
     </div>
     <div class="card"><div class="card-title">＋ Send or Log a Message <span class="sub">texts sent from your phone can be logged too</span></div>
       <label class="lbl">Existing ${CUR_INDUSTRY_OBJ.crmNoun.toLowerCase().slice(0,-1)} (optional)</label>
@@ -7339,6 +7509,7 @@ function renderMessageInbox(){
     </div>
   </div>`;
   setTimeout(initInfiniteLists, 0);
+  setTimeout(azInit, 0);
 }
 function applyMsgContact(){
   const id = document.getElementById('mlContact').value;
