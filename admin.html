@@ -1626,8 +1626,10 @@ function renderList(rows){
       </div>
       <div class="row">
         <select id="plan-${r.id}">
-          <option value="growth" ${p.plan==='growth'?'selected':''}>Growth</option>
+          <option value="starter" ${p.plan==='starter'?'selected':''}>Starter</option>
+          <option value="growth" ${(p.plan==='growth'||!p.plan)?'selected':''}>Growth</option>
           <option value="enterprise" ${p.plan==='enterprise'?'selected':''}>Enterprise</option>
+          <option value="prestige" ${p.plan==='prestige'?'selected':''}>Prestige</option>
         </select>
         <button class="btn-ok" onclick="approve(${r.id})">Approve &amp; activate</button>
         <button class="btn-danger" onclick="reject(${r.id})">Reject</button>
