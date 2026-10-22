@@ -120,6 +120,12 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 #authScreen .wiz-card{max-width:420px; position:relative; z-index:2;}
 #authScreen.hidden{display:none;}
 .auth-tab-on{background:var(--teal); color:#fff; border-color:var(--teal);}
+.auth-seg{display:flex; gap:6px; background:var(--cream); border:1.5px solid var(--line); border-radius:12px; padding:4px; margin-bottom:22px;}
+.auth-seg button{flex:1; border:0; background:transparent; color:var(--ink-dim); font-family:inherit; font-size:14px; font-weight:700; padding:12px 10px; border-radius:9px; cursor:pointer; min-height:44px;}
+.auth-seg button.on{background:var(--navy); color:#fff;}
+.auth-link{background:none; border:0; padding:0; font-family:inherit; font-size:12.5px; font-weight:600; color:var(--teal-dim); cursor:pointer; text-decoration:underline;}
+#setPwScreen{min-height:100vh; align-items:center; justify-content:center; padding:32px 20px; background:linear-gradient(160deg, var(--navy-deep) 0%, var(--navy) 55%, #0e2f3a 100%);}
+#setPwScreen .wiz-card{max-width:420px; position:relative; z-index:2;}
 #wizard{min-height:100vh; align-items:center; justify-content:center; padding:32px 20px; display:flex; position:relative; overflow:hidden;
   background:
     radial-gradient(circle at 18% 20%, rgba(74,168,184,.30), transparent 42%),
@@ -515,6 +521,10 @@ tr.az-h td{position:sticky;top:0;z-index:2;background:var(--cream);font-size:11p
       <div><div class="name">TecXFRA</div><div class="tag">Complete Total Control</div></div>
     </div>
 
+    <div class="auth-seg" id="authSeg">
+      <button type="button" id="authSegSignup" class="on" onclick="if(AUTH_INTENT!=='signup') authGoBack()">Create account</button>
+      <button type="button" id="authSegLogin" onclick="showLogin()">Log in</button>
+    </div>
     <div class="wiz-eyebrow" id="authEyebrow">Last step</div>
     <div class="wiz-h" id="authMode" style="font-size:20px;font-weight:700;margin-bottom:8px">Create your login</div>
     <div class="wiz-sub" id="authSub">Not every owner has email or WhatsApp, use whichever you have. This is what you'll use to log back in.</div>
@@ -530,8 +540,13 @@ tr.az-h td{position:sticky;top:0;z-index:2;background:var(--cream);font-size:11p
 
     <!-- EMAIL + PASSWORD -->
     <div id="authEmailBox">
-      <div class="field"><label>Email</label><input id="authEmail" type="email" placeholder="you@business.com"></div>
-      <div class="field"><label>Password</label><input id="authPassword" type="password" placeholder="At least 6 characters"></div>
+      <div class="field"><label>Email</label><input id="authEmail" type="email" placeholder="you@business.com" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email" onkeydown="if(event.key==='Enter'){authEnter();}"></div>
+      <div class="field"><label>Password</label><input id="authPassword" type="password" placeholder="At least 6 characters" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter'){authEnter();}">
+        <div style="margin-top:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <button type="button" class="auth-link" id="authPwToggle" onclick="toggleAuthPw()">Show password</button>
+          <button type="button" class="auth-link" id="authForgotLink" onclick="doForgotPassword()" style="display:none">Forgot password?</button>
+        </div>
+      </div>
     </div>
 
     <!-- PHONE + OTP -->
@@ -545,7 +560,7 @@ tr.az-h td{position:sticky;top:0;z-index:2;background:var(--cream);font-size:11p
     <div id="authError" style="color:#c0584a;font-size:12px;margin-bottom:10px;display:none"></div>
 
     <div id="authPendingConfirm" style="display:none;background:var(--teal-tint,#eaf4f5);border:1px solid var(--teal);border-radius:10px;padding:12px 14px;margin-bottom:12px">
-      <div style="font-size:12.5px;color:var(--navy);line-height:1.6;margin-bottom:8px">Account created, we sent a confirmation link to <b id="authPendingEmail"></b>. Open it on this device to finish setup. Didn't get it? Check spam, or resend below.</div>
+      <div style="font-size:12.5px;color:var(--navy);line-height:1.6;margin-bottom:8px">Account created, we sent a confirmation link to <b id="authPendingEmail"></b>. Open the newest email from us to finish setup, it works on any phone or browser. Didn't get it? Check spam, or resend below.</div>
       <button class="btn btn-ghost" id="authResendBtn" style="width:100%;font-size:12.5px" onclick="resendConfirmation()">Resend confirmation email</button>
     </div>
 
@@ -553,6 +568,9 @@ tr.az-h td{position:sticky;top:0;z-index:2;background:var(--cream);font-size:11p
       <button class="btn btn-ghost" id="authBackBtn" onclick="authGoBack()">← Back</button>
       <span id="authSignupBtnWrap"><button class="btn btn-primary" onclick="doSignUp()">Create account & enter TecXFRA →</button></span>
       <span id="authSigninBtnWrap" style="display:none"><button class="btn btn-primary" onclick="doSignIn()">Sign in →</button></span>
+    </div>
+    <div id="authLoginExtras" style="display:none;margin-top:12px">
+      <button type="button" class="btn btn-ghost btn-full" id="authMagicBtn" onclick="doEmailMagicLink()">Email me a sign in link instead</button>
     </div>
     <div id="authPhoneActions" class="wiz-nav" style="display:none">
       <button class="btn btn-ghost" onclick="authGoBack()">← Back</button>
@@ -562,6 +580,27 @@ tr.az-h td{position:sticky;top:0;z-index:2;background:var(--cream);font-size:11p
     <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--muted)" id="authSwitchLine">
       Already using TecXFRA? <a href="#" onclick="showLogin();return false;" style="color:var(--teal-dim);font-weight:600">Log in instead</a>
     </div>
+  </div>
+</div>
+
+<!-- ================= SET PASSWORD (after a recovery, invite or sign in link) ================= -->
+<div id="setPwScreen" style="display:none">
+  <div class="wiz-card">
+    <div class="wiz-brand">
+      <div class="mark">
+        <svg viewBox="0 0 100 100"><circle cx="50" cy="46" r="9" fill="#4aa8b8"/><path d="M50 55 C42 68 44 84 50 96 C56 84 58 68 50 55 Z" fill="#4aa8b8"/><circle cx="47" cy="42" r="6.5" fill="#eaf5f6" opacity=".55"/></svg>
+      </div>
+      <div><div class="name">TecXFRA</div><div class="tag">Complete Total Control</div></div>
+    </div>
+    <div class="wiz-eyebrow" id="setPwEyebrow">Almost there</div>
+    <div class="wiz-h" id="setPwTitle" style="font-size:20px;font-weight:700;margin-bottom:8px">Set your password</div>
+    <div class="wiz-sub" id="setPwSub"></div>
+    <div class="field"><label>New password</label><input id="setPwNew" type="password" placeholder="At least 6 characters" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter'){saveLinkPassword();}"></div>
+    <div class="field"><label>Type it again</label><input id="setPwNew2" type="password" placeholder="Same password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter'){saveLinkPassword();}"></div>
+    <div style="margin:-6px 0 12px"><button type="button" class="auth-link" id="setPwToggle" onclick="toggleSetPw()">Show password</button></div>
+    <div id="setPwError" style="font-size:12px;margin-bottom:10px;display:none"></div>
+    <button class="btn btn-primary btn-full" id="setPwBtn" onclick="saveLinkPassword()">Save password & continue →</button>
+    <div id="setPwSkipWrap" style="text-align:center;margin-top:14px;display:none"><button type="button" class="auth-link" onclick="skipSetPassword()">Skip for now</button></div>
   </div>
 </div>
 
@@ -576,8 +615,13 @@ tr.az-h td{position:sticky;top:0;z-index:2;background:var(--cream);font-size:11p
         </div>
         <div><div class="name">TecXFRA</div><div class="tag">Complete Total Control</div></div>
       </div>
-      <a href="#" onclick="showLogin();return false;" style="font-size:12px;font-weight:600;color:var(--teal-dim)">Already using TecXFRA? Log in →</a>
     </div>
+
+    <div class="auth-seg">
+      <button type="button" class="on">New business</button>
+      <button type="button" onclick="showLogin()">Log in</button>
+    </div>
+    <div id="wizSignedInBanner" style="display:none;background:var(--teal-tint);border:1px solid var(--teal);border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:12.5px;color:var(--navy);line-height:1.6"></div>
 
     <!-- STEP 1: business basics -->
     <div class="wiz-step active" data-step="1">
@@ -689,6 +733,29 @@ const SUPABASE_ANON_KEY = 'sb_publishable_KwKhcg8loLN4Ai0WH7s7PQ_0WPFhcsB';
 // CDN host) that script can fail to load, which used to crash this whole
 // block with no real explanation. This loader tries a second CDN before
 // giving up, so a single blocked host doesn't take down signup/login.
+// What the sign in / recovery / invite link was, and whether it failed.
+// Captured here, BEFORE supabase-js starts, because the library removes the
+// hash from the address bar as soon as it has read the tokens. Without this
+// the app could not tell a password reset link from an ordinary visit, and a
+// link that had expired came back with an error in the URL that nothing ever
+// read, which looked exactly like "it sent me back to the start page".
+// The link type is only trusted from the hash, errors can arrive in either.
+const URL_AUTH = (function(){
+  const out = { type:null, error:null, errorCode:null };
+  try{
+    const h = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+    const q = new URLSearchParams(window.location.search || '');
+    out.type = h.get('type') || null;
+    out.errorCode = h.get('error_code') || q.get('error_code') || null;
+    out.error = h.get('error_description') || q.get('error_description') || h.get('error') || q.get('error') || null;
+  }catch(e){}
+  return out;
+})();
+// Where email links should send people back to: this exact page, without
+// any query string or hash. Must be listed under Redirect URLs in the
+// Supabase dashboard (Authentication, URL Configuration). If it is not
+// listed, Supabase quietly falls back to the Site URL instead.
+const APP_URL = window.location.origin + window.location.pathname;
 let SUPABASE_READY = false;
 let SUPABASE_LOAD_FAILED = false;
 let sb = null;
@@ -841,12 +908,32 @@ function setAuthChannel(mode){
   document.getElementById('authPhoneBox').style.display = mode==='phone' ? 'block' : 'none';
   document.getElementById('authEmailActions').style.display = mode==='email' ? 'flex' : 'none';
   document.getElementById('authPhoneActions').style.display = mode==='phone' ? 'flex' : 'none';
+  syncLoginExtras(mode);
   document.getElementById('authError').style.display = 'none';
   document.getElementById('authPendingConfirm').style.display = 'none';
 }
+function syncLoginExtras(channel){
+  const login = AUTH_INTENT === 'login' && channel === 'email';
+  const ex = document.getElementById('authLoginExtras');
+  const fg = document.getElementById('authForgotLink');
+  if(ex) ex.style.display = login ? 'block' : 'none';
+  if(fg) fg.style.display = login ? 'inline-block' : 'none';
+}
+function toggleAuthPw(){
+  const i = document.getElementById('authPassword');
+  const show = i.type === 'password';
+  i.type = show ? 'text' : 'password';
+  document.getElementById('authPwToggle').textContent = show ? 'Hide password' : 'Show password';
+}
+function authEnter(){ if(AUTH_INTENT === 'login') doSignIn(); else doSignUp(); }
 function setAuthMode(mode){
   AUTH_INTENT = mode;
   const signup = mode === 'signup';
+  const segS = document.getElementById('authSegSignup'), segL = document.getElementById('authSegLogin');
+  if(segS) segS.classList.toggle('on', signup);
+  if(segL) segL.classList.toggle('on', !signup);
+  const pwEl = document.getElementById('authPassword');
+  if(pwEl) pwEl.setAttribute('autocomplete', signup ? 'new-password' : 'current-password');
   document.getElementById('authEyebrow').textContent = signup ? 'Last step' : 'Welcome back';
   document.getElementById('authMode').textContent = signup ? 'Create your login' : 'Log in to TecXFRA';
   document.getElementById('authSub').textContent = signup
@@ -897,6 +984,31 @@ async function goToAccountCreation(){
   if(await requireSupabase()){
     const { data:{ session } } = await sb.auth.getSession();
     if(session){
+      // Signed in through an email link with no business saved yet: this is
+      // the normal path for a new owner, not a clash with another account.
+      // Previously this showed the "you're already signed in, sign out
+      // first" warning, which sent people round in circles. Only when the
+      // account really does have a business (or we cannot tell) is the
+      // warning still shown, so nobody's real data can be overwritten.
+      let hasBusiness = true;
+      try{
+        const { data: rows, error } = await sb.rpc('get_tenant_bootstrap');
+        if(!error){
+          const row = Array.isArray(rows) ? rows[0] : rows;
+          hasBusiness = !!(row && row.cfg && Object.keys(row.cfg).length);
+        }
+      }catch(e){ hasBusiness = true; }
+      if(!hasBusiness){
+        CUR_VENUE_ID = session.user.id;
+        CUR_USER_EMAIL = (session.user.email || '').toLowerCase().trim();
+        hideSignedInBanner();
+        document.getElementById('wizard').style.display = 'none';
+        document.getElementById('authScreen').style.display = 'none';
+        await finishSetup(PENDING_SETUP);
+        PENDING_SETUP = null;
+        try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
+        return;
+      }
       showExistingSessionWarning(session);
       return;
     }
@@ -978,7 +1090,23 @@ function authErr(msg){
   if(msg && typeof msg === 'object'){
     msg = msg.message || msg.error_description || msg.error || msg.hint || 'Something went wrong. Please try again.';
   }
-  el.textContent = msg; el.style.display = 'block';
+  el.textContent = msg; el.style.display = 'block'; el.style.color = '#c0584a';
+}
+function authInfo(msg){
+  const el = document.getElementById('authError');
+  el.textContent = msg; el.style.display = 'block'; el.style.color = '#2f6f4f';
+}
+// Turns Supabase's technical messages into something a business owner can act on.
+function friendlyAuthError(err){
+  const raw = (err && (err.message || err.error_description || err.msg)) || (typeof err === 'string' ? err : '');
+  const m = raw.toLowerCase();
+  if(m.includes('invalid login credentials')) return 'That email and password do not match. Check the spelling, or tap "Forgot password?" to set a new one.';
+  if(m.includes('email not confirmed')) return 'This email has not been confirmed yet. Open the confirmation email we sent, or resend it below.';
+  if((err && err.status === 429) || m.includes('rate limit') || m.includes('too many')) return 'Too many attempts or emails in a short time. Please wait a few minutes and try once more.';
+  if(m.includes('captcha')) return 'The "I am human" check expired. Please tick it again and retry.';
+  if(m.includes('same password') || m.includes('different from the old')) return 'Choose a password that is different from your old one.';
+  if(m.includes('password') && (m.includes('weak') || m.includes('at least'))) return 'That password is too short or too easy to guess. Use at least 6 characters.';
+  return raw || 'Something went wrong. Please try again.';
 }
 async function requireSupabase(){
   if(!SUPABASE_READY && !SUPABASE_LOAD_FAILED){ await supabaseReadyPromise; }
@@ -990,17 +1118,41 @@ async function requireSupabase(){
   }
   return true;
 }
+let AUTH_BUSY = false;
 async function doSignUp(){
+  if(AUTH_BUSY) return;
   if(!(await requireSupabase())) return;
-  const email = document.getElementById('authEmail').value.trim();
+  const email = document.getElementById('authEmail').value.trim().toLowerCase();
   const password = document.getElementById('authPassword').value;
   if(!email || password.length<6){ authErr('Enter an email and a password of at least 6 characters.'); return; }
   if(HCAPTCHA_CONFIGURED && !getCaptchaToken()){ authErr('Please complete the "I am human" check above.'); return; }
-  const { data, error } = await sb.auth.signUp({ email, password, options: HCAPTCHA_CONFIGURED ? { captchaToken: getCaptchaToken() } : undefined });
-  resetCaptcha();
-  if(error){ authErr(error); return; }
-  if(data.session){ await afterAuth(data.session); }
-  else { showPendingConfirm(email); }
+  AUTH_BUSY = true;
+  authInfo('Creating your account...');
+  try{
+    // The wizard answers travel with the account itself, so confirming the
+    // email on a different phone or browser still finds them. Before, they
+    // only lived in this browser's storage, and a link opened anywhere else
+    // dropped the owner back on the empty start page.
+    const opts = { emailRedirectTo: APP_URL };
+    if(PENDING_SETUP) opts.data = { pending_setup: PENDING_SETUP };
+    if(HCAPTCHA_CONFIGURED) opts.captchaToken = getCaptchaToken();
+    const { data, error } = await sb.auth.signUp({ email, password, options: opts });
+    resetCaptcha();
+    if(error){ authErr(friendlyAuthError(error)); return; }
+    // Supabase answers "success" with an empty identities list when the email
+    // already has an account, and sends nothing. That used to show "we sent a
+    // confirmation link" for an email that would never arrive.
+    if(data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0){
+      PENDING_SETUP = null;
+      try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
+      setAuthMode('login');
+      document.getElementById('authEmail').value = email;
+      authErr('This email already has a TecXFRA account. Log in here, or tap "Forgot password?" if you cannot remember it.');
+      return;
+    }
+    if(data.session){ await afterAuth(data.session); }
+    else { showPendingConfirm(email); }
+  }finally{ AUTH_BUSY = false; }
 }
 let RESEND_COOLDOWN_UNTIL = 0;
 function showPendingConfirm(email){
@@ -1040,15 +1192,60 @@ async function resendConfirmation(){
   updateResendBtn();
 }
 async function doSignIn(){
+  if(AUTH_BUSY) return;
   if(!(await requireSupabase())) return;
-  const email = document.getElementById('authEmail').value.trim();
+  const email = document.getElementById('authEmail').value.trim().toLowerCase();
   const password = document.getElementById('authPassword').value;
   if(!email || !password){ authErr('Enter your email and password.'); return; }
   if(HCAPTCHA_CONFIGURED && !getCaptchaToken()){ authErr('Please complete the "I am human" check above.'); return; }
-  const { data, error } = await sb.auth.signInWithPassword({ email, password, options: HCAPTCHA_CONFIGURED ? { captchaToken: getCaptchaToken() } : undefined });
+  AUTH_BUSY = true;
+  authInfo('Signing you in...');
+  try{
+    const { data, error } = await sb.auth.signInWithPassword({ email, password, options: HCAPTCHA_CONFIGURED ? { captchaToken: getCaptchaToken() } : undefined });
+    resetCaptcha();
+    if(error){
+      if((error.message || '').toLowerCase().includes('email not confirmed')){ showPendingConfirm(email); }
+      authErr(friendlyAuthError(error));
+      return;
+    }
+    await afterAuth(data.session);
+  }finally{ AUTH_BUSY = false; }
+}
+let AUTH_MAIL_COOLDOWN_UNTIL = 0;
+// Sends a password reset email. The link brings the person back to a
+// "choose a new password" screen (see showSetPassword), not just the start page.
+async function doForgotPassword(){
+  if(!(await requireSupabase())) return;
+  const email = (document.getElementById('authEmail').value || '').trim().toLowerCase();
+  if(!email){ authErr('Type your email in the box above first, then tap "Forgot password?" again.'); return; }
+  if(Date.now() < AUTH_MAIL_COOLDOWN_UNTIL){ authErr('A link was just sent. Please wait a minute before asking for another one.'); return; }
+  if(HCAPTCHA_CONFIGURED && !getCaptchaToken()){ authErr('Please complete the "I am human" check above.'); return; }
+  const opts = { redirectTo: APP_URL };
+  if(HCAPTCHA_CONFIGURED) opts.captchaToken = getCaptchaToken();
+  const { error } = await sb.auth.resetPasswordForEmail(email, opts);
   resetCaptcha();
-  if(error){ authErr(error); return; }
-  await afterAuth(data.session);
+  if(error){ authErr(friendlyAuthError(error)); return; }
+  AUTH_MAIL_COOLDOWN_UNTIL = Date.now() + 60000;
+  authInfo('If ' + email + ' has an account, a reset link is on its way. Open the newest email only, older links stop working. Check spam too.');
+}
+// Sends a one-tap sign in link to an account that already exists.
+async function doEmailMagicLink(){
+  if(!(await requireSupabase())) return;
+  const email = (document.getElementById('authEmail').value || '').trim().toLowerCase();
+  if(!email){ authErr('Type your email in the box above first, then tap the button again.'); return; }
+  if(Date.now() < AUTH_MAIL_COOLDOWN_UNTIL){ authErr('A link was just sent. Please wait a minute before asking for another one.'); return; }
+  if(HCAPTCHA_CONFIGURED && !getCaptchaToken()){ authErr('Please complete the "I am human" check above.'); return; }
+  const options = { shouldCreateUser: false, emailRedirectTo: APP_URL };
+  if(HCAPTCHA_CONFIGURED) options.captchaToken = getCaptchaToken();
+  const { error } = await sb.auth.signInWithOtp({ email, options });
+  resetCaptcha();
+  const generic = 'If ' + email + ' has an account, a sign in link is on its way. Open the newest email only, older links stop working. Check spam too.';
+  if(error){
+    if((error.message || '').toLowerCase().includes('signups not allowed')){ authInfo(generic); return; }
+    authErr(friendlyAuthError(error)); return;
+  }
+  AUTH_MAIL_COOLDOWN_UNTIL = Date.now() + 60000;
+  authInfo(generic);
 }
 async function doPhoneSendOtp(){
   if(!(await requireSupabase())) return;
@@ -1100,7 +1297,13 @@ async function afterAuth(session){
 
   await loadAll();
   if(CFG){ boot(); }
+  else if(LOAD_FAILED){ showLoadFailed(); }
+  else if(pendingFromSession(session)){
+    await finishSetup(pendingFromSession(session));
+    clearSessionPending();
+  }
   else{
+    showSignedInBanner();
     // Signed in but no business on file yet (e.g. they used "Log in"
     // by mistake, or an account exists with nothing saved), send them
     // through setup instead of showing a blank app.
@@ -1110,6 +1313,7 @@ async function afterAuth(session){
 }
 async function signOut(){
   await sb.auth.signOut();
+  hideSignedInBanner();
   try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
   CUR_VENUE_ID = null; CFG = null; DATA = null; PENDING_SETUP = null;
   hideBootLoading();
@@ -1123,52 +1327,216 @@ async function signOut(){
   wizGo(1);
 }
 async function initAuthGate(){
-  // The wizard is already showing by default (the front door).
-  // This only silently checks for a returning, still-valid session
-  // so we don't make someone log in twice on the same device.
+  // The wizard is the front door. This checks for a returning session and
+  // for a sign in, recovery or invite link, and decides where to send them.
   renderIndustryGrid();
   populateWizCountry();
   const { data:{ session } } = await sb.auth.getSession();
+
+  // A link that failed (expired, already used, or opened first by an email
+  // app's link scanner) comes back with an error in the URL. Show a clear
+  // message on the log in screen instead of the start page with no reason.
+  const linkFailed = !!(URL_AUTH.errorCode || URL_AUTH.error);
+  if(linkFailed) cleanAuthUrl();
+
   if(!session){
     hideBootLoading();
+    if(linkFailed){
+      showLogin();
+      authErr(linkErrorMessage());
+      return;
+    }
     document.getElementById('wizard').style.display = 'flex';
     wizGo(1);
     return;
   }
+
   CUR_VENUE_ID = session.user.id;
   CUR_USER_EMAIL = (session.user.email || '').toLowerCase().trim();
+
+  // Password reset link: land on a "choose a new password" screen.
+  if(URL_AUTH.type === 'recovery'){
+    hideBootLoading();
+    showSetPassword('recovery');
+    return;
+  }
+  // Invite or sign in link: offer to set a password right away so the
+  // person never needs another link. Magic link users can skip once.
+  if((URL_AUTH.type === 'invite' || URL_AUTH.type === 'magiclink') && !passwordPromptDone(session.user.id)){
+    hideBootLoading();
+    showSetPassword(URL_AUTH.type === 'invite' ? 'invite' : 'magiclink');
+    return;
+  }
+  await routeSignedIn(session);
+}
+
+// Decides what a signed in person sees: their business, the finish-setup
+// step, or a retry screen if the server could not be reached.
+async function routeSignedIn(session){
   await loadAll();
   if(CFG){ boot(); return; }
 
-  // Signed in (this is exactly what happens right after someone clicks
-  // the "confirm your email" link and lands back on the site) but no
-  // business saved yet. This used to silently leave the wizard sitting
-  // on step 1 with no explanation, looking exactly like "nothing
-  // happened, back to the home page" even though login worked fine.
-  // Recover the wizard answers they already filled in before signing
-  // up (saved to localStorage in goToAccountCreation) and finish
-  // creating their business automatically, same as a same-tab signup.
+  // Could not reach the server. Do NOT drop an existing owner onto the
+  // "create your business" start page just because their data did not load.
+  if(LOAD_FAILED){ showLoadFailed(); return; }
+
+  // Signed in, no business saved yet (e.g. they just confirmed their email).
+  // Recover the wizard answers: from this browser, or from the account itself
+  // when the link was opened on a different phone or browser.
   if(!PENDING_SETUP){
     try{
       const stored = localStorage.getItem('tecxfra_pending_setup');
       if(stored) PENDING_SETUP = JSON.parse(stored);
     }catch(e){}
   }
+  if(!PENDING_SETUP){ PENDING_SETUP = pendingFromSession(session); }
   if(PENDING_SETUP){
     await finishSetup(PENDING_SETUP);
     PENDING_SETUP = null;
     try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
+    clearSessionPending();
     return;
   }
 
-  // Genuinely no pending setup on this device (e.g. confirmed on a
-  // different device/browser than the one the wizard was filled in
-  // on), send them into the wizard to set up their business, but
-  // make it obvious they ARE logged in rather than looking broken.
+  // Genuinely nothing saved anywhere: send them into the wizard with a clear
+  // banner so it is obvious they ARE signed in and only the business details
+  // are left. No second login is needed at the end.
   hideBootLoading();
   document.getElementById('wizard').style.display = 'flex';
   wizGo(1);
-  showToast(`You're logged in as ${session.user.email || session.user.phone || 'your account'}, let's finish setting up your business.`);
+  showSignedInBanner();
+}
+
+function pendingFromSession(session){
+  try{
+    const p = session && session.user && session.user.user_metadata && session.user.user_metadata.pending_setup;
+    if(p && typeof p === 'object' && typeof p.bizName === 'string' && Array.isArray(p.modules) && typeof p.industry === 'string') return p;
+  }catch(e){}
+  return null;
+}
+async function clearSessionPending(){
+  try{ await sb.auth.updateUser({ data: { pending_setup: null } }); }catch(e){ console.error('could not clear saved setup answers', e); }
+}
+function showSignedInBanner(){
+  const b = document.getElementById('wizSignedInBanner'); if(!b) return;
+  b.textContent = 'You are signed in as ' + (CUR_USER_EMAIL || 'your account') + '. Fill in your business details below to finish. You do not need to create another login.';
+  b.style.display = 'block';
+}
+function hideSignedInBanner(){
+  const b = document.getElementById('wizSignedInBanner'); if(b) b.style.display = 'none';
+}
+function cleanAuthUrl(){
+  try{
+    const u = new URL(window.location.href);
+    ['error','error_code','error_description'].forEach(k => u.searchParams.delete(k));
+    u.hash = '';
+    window.history.replaceState(null, '', u.pathname + u.search);
+  }catch(e){}
+}
+function linkErrorMessage(){
+  const t = ((URL_AUTH.errorCode || '') + ' ' + (URL_AUTH.error || '')).toLowerCase();
+  if(t.includes('expired') || t.includes('invalid') || t.includes('otp')){
+    return 'That link has expired or was already used. Each link works once and only for a short time, and some email apps open it before you do. Log in with your email and password, or tap "Email me a sign in link instead" for a fresh one.';
+  }
+  return 'That link did not work. Log in below, or tap "Email me a sign in link instead" for a fresh one.';
+}
+
+// ---- Set password screen (recovery, invite, or first magic link sign in) ----
+let SETPW_KIND = null;
+function passwordPromptDone(uid){ try{ return localStorage.getItem('tecxfra_pw_prompt_' + uid) === '1'; }catch(e){ return false; } }
+function markPasswordPromptDone(uid){ try{ localStorage.setItem('tecxfra_pw_prompt_' + uid, '1'); }catch(e){} }
+function showSetPassword(kind){
+  SETPW_KIND = kind;
+  document.getElementById('wizard').style.display = 'none';
+  document.getElementById('authScreen').style.display = 'none';
+  const copy = {
+    recovery:  ['Reset password', 'Choose a new password', 'Pick a password you will remember. As soon as you save it, you go straight in.'],
+    invite:    ['Welcome', 'Create your password', 'This is what you will use to log in from now on. As soon as you save it, you go straight in.'],
+    magiclink: ['You are signed in', 'Set a password for next time', 'So you can log in any time without waiting for an email link. You can skip this and do it later in Settings.']
+  }[kind] || ['Almost there', 'Set your password', ''];
+  document.getElementById('setPwEyebrow').textContent = copy[0];
+  document.getElementById('setPwTitle').textContent = copy[1];
+  document.getElementById('setPwSub').textContent = copy[2];
+  document.getElementById('setPwNew').value = '';
+  document.getElementById('setPwNew2').value = '';
+  document.getElementById('setPwNew').type = 'password';
+  document.getElementById('setPwNew2').type = 'password';
+  document.getElementById('setPwToggle').textContent = 'Show password';
+  document.getElementById('setPwError').style.display = 'none';
+  document.getElementById('setPwSkipWrap').style.display = kind === 'magiclink' ? 'block' : 'none';
+  document.getElementById('setPwBtn').disabled = false;
+  document.getElementById('setPwScreen').style.display = 'flex';
+}
+function toggleSetPw(){
+  const a = document.getElementById('setPwNew'), b = document.getElementById('setPwNew2');
+  const show = a.type === 'password';
+  a.type = show ? 'text' : 'password'; b.type = show ? 'text' : 'password';
+  document.getElementById('setPwToggle').textContent = show ? 'Hide password' : 'Show password';
+}
+function setPwErr(msg){
+  const el = document.getElementById('setPwError');
+  el.textContent = msg; el.style.display = 'block'; el.style.color = '#c0584a';
+}
+async function saveLinkPassword(){
+  const pw1 = document.getElementById('setPwNew').value;
+  const pw2 = document.getElementById('setPwNew2').value;
+  if(pw1.length < 6){ setPwErr('Your password needs at least 6 characters.'); return; }
+  if(pw1 !== pw2){ setPwErr('The two passwords do not match. Type them again.'); return; }
+  if(!(await requireSupabase())) return;
+  const btn = document.getElementById('setPwBtn');
+  btn.disabled = true;
+  try{
+    const { error } = await sb.auth.updateUser({ password: pw1 });
+    if(error){ setPwErr(friendlyAuthError(error)); btn.disabled = false; return; }
+  }catch(e){
+    setPwErr('Could not save that right now. Check your connection and try again.');
+    btn.disabled = false;
+    return;
+  }
+  markPasswordPromptDone(CUR_VENUE_ID);
+  document.getElementById('setPwScreen').style.display = 'none';
+  showToast('Password saved. You can log in with it any time.');
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ showLogin(); return; }
+  await routeSignedIn(session);
+}
+async function skipSetPassword(){
+  if(SETPW_KIND !== 'magiclink') return; // reset and invite links must set one
+  markPasswordPromptDone(CUR_VENUE_ID);
+  document.getElementById('setPwScreen').style.display = 'none';
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ showLogin(); return; }
+  await routeSignedIn(session);
+}
+
+// ---- Could not load the business (connection problem, not a missing account) ----
+function showLoadFailed(){
+  hideBootLoading();
+  document.getElementById('wizard').style.display = 'none';
+  document.getElementById('authScreen').style.display = 'none';
+  let el = document.getElementById('loadFailedScreen');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'loadFailedScreen';
+    el.style.cssText = 'position:fixed;inset:0;background:var(--navy);display:flex;align-items:center;justify-content:center;padding:20px;z-index:500';
+    el.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:28px 24px;text-align:center">'
+      + '<div style="font-weight:700;font-size:17px;color:var(--navy);margin-bottom:10px">We could not load your business</div>'
+      + '<div style="font-size:13.5px;color:#4a5556;line-height:1.6;margin-bottom:18px">Your account is fine and nothing was lost. This is usually a slow or dropped connection. Check your data or Wi-Fi, then try again.</div>'
+      + '<button class="btn btn-primary btn-full" onclick="retryLoad()">Try again</button>'
+      + '<button class="btn btn-full" style="margin-top:8px;background:none;border:1px solid var(--line)" onclick="signOut()">Log out</button>'
+      + '</div>';
+    document.body.appendChild(el);
+  }
+  el.style.display = 'flex';
+}
+async function retryLoad(){
+  const el = document.getElementById('loadFailedScreen'); if(el) el.style.display = 'none';
+  const bl = document.getElementById('bootLoading'); if(bl) bl.style.display = 'flex';
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    if(!session){ hideBootLoading(); showLogin(); return; }
+    await routeSignedIn(session);
+  }catch(e){ console.error('retry failed', e); showLoadFailed(); }
 }
 
 /* ============================================================
@@ -1342,7 +1710,9 @@ async function saveData(){
   catch(e){ console.error('saveData failed', e); showToast(/too many requests/i.test(e?.message||'') ? e.message : 'Could not save, check connection'); return false; }
   finally{ SAVES_PENDING--; }
 }
+let LOAD_FAILED = false; // true when the last loadAll() could not reach the server (as opposed to "no business saved")
 async function loadAll(){
+  LOAD_FAILED = false;
   CFG = null; DATA = null; CUR_SUBSCRIPTION = null;
   if(!CUR_VENUE_ID) return;
   try{
@@ -1367,7 +1737,7 @@ async function loadAll(){
         if(storedPlan !== correctedPlan) saveCfg();
       }
     }
-  }catch(e){ console.error('loadAll failed', e); CFG = null; DATA = null; }
+  }catch(e){ console.error('loadAll failed', e); CFG = null; DATA = null; LOAD_FAILED = true; }
   // Self-heal: a business should never be left with an empty module
   // list (blank sidebar, blank app, looks completely broken even
   // though the account and its data are fine). If that ever happens,
