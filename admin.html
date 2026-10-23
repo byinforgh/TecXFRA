@@ -874,7 +874,7 @@ function openGrantPlan(venueId, name, currentSource){
   // paying customer, but it should never be a silent side effect. Warn
   // first so it's always a deliberate choice.
   if(currentSource==='founder'){
-    if(!confirm(`${name} already holds an active FOUNDING slot. Granting a plan here will replace that with a manual paid grant, this is how you convert a founder into a genuine paying customer, but it does NOT release their founding slot on its own. If they're fully converting, release their slot separately afterwards (Founding & Cohort tab) so it can go to a new signup.\n\nContinue granting a plan?`)) return;
+    if(!confirm(`${name} already holds an active FOUNDING slot. Granting a plan here will replace that with a manual paid grant, this is how you convert a founder into a genuine paying customer, and it also releases their founding slot automatically, so the old free package stops showing and the slot goes back to the pool for a new signup.\n\nContinue granting a plan?`)) return;
   }
   const plan = prompt(`Grant which paid plan to "${name}"?\nType one of: starter, growth, enterprise, prestige`, 'growth');
   if(!plan) return;
