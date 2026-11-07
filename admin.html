@@ -215,6 +215,8 @@
       </div>
       <div id="billingSummaryWrap" class="stat-grid"></div>
       <div id="trialInviteWrap" style="margin-top:14px"></div>
+      <div id="linkFunnelWrap" style="margin-top:14px"></div>
+      <div id="paymentInstructionsWrap" style="margin-top:14px"></div>
       <div class="row" style="justify-content:space-between;margin:24px 0 12px">
         <div class="sub" style="margin-bottom:0">Plan mismatches, active subscription plan disagrees with the cached plan on the account. Read-only, subscriptions is always the source of truth.</div>
         <button class="refresh-link" onclick="loadPlanMismatches()">Refresh</button>
@@ -562,7 +564,7 @@ function switchTab(name){
 // this browser tab, and (Overview only) once a minute. Before this, a page
 // left open all day kept showing the numbers from when it was first opened,
 // so a business that registered since then showed in the wrong place.
-function refreshOverview(){ loadStats(); loadBillingSummary(); }
+function refreshOverview(){ loadStats(); loadBillingSummary(); loadLinkFunnel(); renderPaymentInstructions(); }
 function refreshTab(name){
   if(!sb) return;
   if(name==='overview') refreshOverview();
@@ -1003,7 +1005,7 @@ async function copyTrialText(what){
 // account 7 days later. Reminders go out 3 days before and on the day for
 // every choice, and nothing happens at all until one is chosen.
 function renewalActionSelect(venueId, name, current){
-  const opts = [['','Choose…'],['renew','Renew automatically'],['pause','Pause account'],['delete','Delete account']];
+  const opts = [['','Choose…'],['renew','Renew when marked paid'],['pause','Pause account'],['delete','Delete account']];
   return `<select style="width:auto;padding:4px 8px;font-size:12px" data-name="${esc(name)}" onchange="setRenewalAction('${esc(venueId)}',this.value,'${esc(current||'')}',this)">${opts.map(([v,l])=>`<option value="${v}" ${(current||'')===v?'selected':''}>${l}</option>`).join('')}</select>`;
 }
 async function setRenewalAction(venueId, value, previous, selEl){
@@ -1020,6 +1022,7 @@ async function setRenewalAction(venueId, value, previous, selEl){
 function autoActionNote(b){
   if(b.status==='paused' && b.deactivate_after) return `<div class="sub" style="margin:2px 0 0;color:var(--danger)">Paused. Deactivates ${fmtDate(b.deactivate_after)} unless paid</div>`;
   if(b.delete_after) return `<div class="sub" style="margin:2px 0 0;color:var(--danger)">Deletes ${fmtDate(b.delete_after)} unless paid</div>`;
+  if(b.last_auto_action==='marked_paid') return `<div class="sub" style="margin:2px 0 0">Marked paid ${fmtDate(b.last_auto_action_at)}</div>`;
   if(b.last_auto_action==='auto_renewed') return `<div class="sub" style="margin:2px 0 0">Auto renewed ${fmtDate(b.last_auto_action_at)}</div>`;
   if(b.last_auto_action==='paused') return `<div class="sub" style="margin:2px 0 0">Paused ${fmtDate(b.last_auto_action_at)}</div>`;
   if(b.last_auto_action==='trial_ended') return `<div class="sub" style="margin:2px 0 0">Trial ended ${fmtDate(b.last_auto_action_at)}</div>`;
@@ -1116,6 +1119,50 @@ async function editRenewalDate(venueId, name, currentIso){
 // Payments tab: everyone with a fixed renewal date, soonest first, so
 // who's due and who's coming up is visible at a glance instead of having
 // to scan the whole Businesses table for it.
+
+// Link funnel: unique visitors per link per day (since migration 0061), finished
+// setups stamped with their source, and claims. Read only.
+async function loadLinkFunnel(){
+  const wrap = document.getElementById('linkFunnelWrap'); if(!wrap) return;
+  const { data, error } = await sb.rpc('admin_link_funnel');
+  if(error || !data){ wrap.innerHTML = `<div class="card empty">Could not load link numbers: ${esc((error&&error.message)||'no data')}</div>`; return; }
+  const n = (o,k)=>Number((o||{})[k])||0;
+  const rows = [['Trial link','trial','trial'],['Ghana cohort link','ghana','ghana'],['Diaspora cohort link','diaspora','diaspora'],['Partner referral links','ref',null],['No link (normal signup)','direct',null]];
+  wrap.innerHTML = `<div class="card"><div style="font-weight:700;margin-bottom:4px">Link results</div>
+    <div class="sub" style="margin-bottom:10px">Clicks are unique people per day. Finished setup is a business that completed the wizard through that link. Claimed is a founding spot or a started trial.</div>
+    <div class="table-scroll"><table class="biz-table"><thead><tr><th>Link</th><th>Clicks, all time</th><th>Clicks, 7 days</th><th>Finished setup</th><th>Claimed</th></tr></thead><tbody>
+    ${rows.map(([label,src,claim])=>`<tr><td><b>${esc(label)}</b></td><td>${src==='direct'?'n/a':n(data.clicks,src)}</td><td>${src==='direct'?'n/a':n(data.clicks_7d,src)}</td><td>${n(data.finished,src)}</td><td>${claim?n(data.claimed,claim):'n/a'}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="sub" style="margin-top:8px">${n(data.finished,'unstamped')} earlier businesses were created before source tracking started, so they have no source.</div></div>`;
+}
+// Payment details shown to businesses outside Ghana after they request a bank transfer.
+async function renderPaymentInstructions(){
+  const wrap = document.getElementById('paymentInstructionsWrap'); if(!wrap) return;
+  let cur = '';
+  try{ const { data } = await sb.rpc('get_payment_instructions'); cur = data || ''; }catch(e){ console.error(e); }
+  wrap.innerHTML = `<div class="card"><div style="font-weight:700;margin-bottom:4px">International payment details</div>
+    <div class="sub" style="margin-bottom:10px">Shown to businesses outside Ghana after they choose bank transfer. Put your Wise, bank or other receiving details here. Until you save something, they are told your team will send details within one business day.</div>
+    <textarea id="payInstrText" rows="6" maxlength="2000" style="width:100%;margin-bottom:8px">${esc(cur)}</textarea>
+    <button class="refresh-link" onclick="savePaymentInstructions()">Save details</button></div>`;
+}
+async function savePaymentInstructions(){
+  const el = document.getElementById('payInstrText'); if(!el) return;
+  const { error } = await sb.rpc('admin_set_payment_instructions', { p_text: el.value });
+  alert(error ? `Could not save: ${error.message||error}` : 'Saved. Businesses outside Ghana will see this after requesting a bank transfer.');
+}
+async function markRenewalPaid(venueId, name){
+  if(!confirm(`Mark "${name}" as PAID?\n\nThis moves their renewal date forward one month, reactivates them if paused, and sends them a receipt message and email.`)) return;
+  const { data, error } = await sb.rpc('admin_mark_renewal_paid', { p_venue_id: venueId });
+  if(error){ alert(`Could not save: ${error.message||error}`); return; }
+  if(data && data.success===false){ alert(data.message || 'Nothing to update.'); return; }
+  loadBusinesses(); loadRenewals();
+}
+function waRemindUrl(r){
+  const phone = String(r.owner_phone||'').replace(/\D/g,'');
+  const end = r.current_period_end ? fmtDate(r.current_period_end) : '';
+  const msg = `Hi ${r.owner_name||''}, a friendly reminder from TecXFRA: your ${r.plan||''} plan for ${r.business_name||'your business'} ${end ? 'renews on '+end : 'is due'}. Please complete payment in the app (Settings, then Plan) or reply here and we will help. Thank you.`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+}
 async function loadRenewals(){
   const wrap = document.getElementById('renewalsWrap');
   if(!wrap) return;
@@ -1159,6 +1206,7 @@ async function loadRenewals(){
         <td>${(r.provider==='founding_free'||r.provider==='trial')?'<span class="sub" style="margin:0">'+(r.provider==='trial'?'Reminder then asks to pay':'Free, no renewal')+'</span>':renewalActionSelect(r.venue_id,r.business_name,r.renewal_action)}${autoActionNote(r)}</td>
         <td>
           <button class="refresh-link" onclick="editRenewalDate('${r.venue_id}',${nameJs},'${r.current_period_end||''}')">Edit</button>
+          ${(r.provider==='founding_free'||r.provider==='trial'||!r.current_period_end) ? '' : `<button class="refresh-link" style="color:var(--ok,#3f8f5f)" onclick="markRenewalPaid('${r.venue_id}',${nameJs})">Paid, +1 month</button>${r.owner_phone ? `<a class="refresh-link" style="text-decoration:none" target="_blank" rel="noopener noreferrer" href="${esc(waRemindUrl(r))}">WhatsApp reminder</a>` : ''}`}
           ${overdueInactive ? `<button class="refresh-link" style="color:var(--danger)" onclick="confirmDeactivate('${r.venue_id}',${nameJs})">Deactivate (unpaid)</button>` : ''}
         </td>
       </tr>`;}).join('')}</tbody></table></div>`;
