@@ -1776,7 +1776,7 @@ async function loadAll(){
       CFG = (row.cfg && Object.keys(row.cfg).length) ? row.cfg : null;
       DATA = (row.data && Object.keys(row.data).length) ? hydrateData(row.data) : null;
       CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, provider: row.provider, current_period_end: row.current_period_end };
-      if(row.status==='paused'){ loadBillingNotice(); } else { CUR_BILLING_NOTICE = null; } loadAddons();
+      if(row.status==='paused' || (row.status==='active' && row.provider!=='founding_free' && row.provider!=='trial')){ loadBillingNotice(); } else { CUR_BILLING_NOTICE = null; } loadAddons();
       if(CFG){
         const correctedPlan = (row.status === 'active') ? row.plan : 'starter';
         const storedPlan = row.cfg && row.cfg.plan;
@@ -1823,7 +1823,7 @@ async function syncSubscription(){
     const row = Array.isArray(rows) ? rows[0] : rows;
     if(row){
       CUR_SUBSCRIPTION = { plan: row.plan, status: row.status, provider: row.provider, current_period_end: row.current_period_end };
-      if(row.status==='paused'){ loadBillingNotice(); } else { CUR_BILLING_NOTICE = null; } loadAddons();
+      if(row.status==='paused' || (row.status==='active' && row.provider!=='founding_free' && row.provider!=='trial')){ loadBillingNotice(); } else { CUR_BILLING_NOTICE = null; } loadAddons();
       if(CFG){
         const active = row.status === 'active';
         const correctedPlan = active ? row.plan : 'starter';
@@ -2337,6 +2337,32 @@ const WIZ_REF = (function(){
     return (v && /^[A-Za-z0-9]{4,24}$/.test(v)) ? v : null;
   }catch(e){ return null; }
 })();
+// ---- Link tracking (migration 0061). Counts one visit per person per day for
+// each invite link, and stamps where a finished signup came from. Never blocks
+// the page: every call is wrapped and failures are only logged.
+function linkSource(){ return WIZ_COHORT || (WIZ_TRIAL ? 'trial' : (WIZ_REF ? 'ref' : null)); }
+function txVisitorId(){
+  let v = null;
+  try{ v = localStorage.getItem('tx_vid'); }catch(e){}
+  if(!v || !/^[A-Za-z0-9_-]{8,64}$/.test(v)){
+    const a = new Uint8Array(12);
+    try{ crypto.getRandomValues(a); }catch(e){ for(let i=0;i<12;i++) a[i]=Math.floor(Math.random()*256); }
+    v = Array.from(a, b=>b.toString(16).padStart(2,'0')).join('');
+    try{ localStorage.setItem('tx_vid', v); }catch(e){}
+  }
+  return v;
+}
+window.addEventListener('load', function(){
+  try{
+    const src = linkSource();
+    if(!src || typeof sb==='undefined' || !sb) return;
+    sb.rpc('record_link_visit', { p_source: src, p_visitor: txVisitorId() }).then(function(){}, function(e){ console.error('link visit not recorded', e); });
+  }catch(e){ console.error(e); }
+});
+async function stampSignupSource(){
+  try{ await sb.rpc('stamp_signup_source', { p_source: linkSource() || 'direct' }); }
+  catch(e){ console.error('stampSignupSource failed', e); }
+}
 async function applyReferralCodeIfPresent(){
   if(!WIZ_REF) return;
   try{ await sb.rpc('apply_referral_code', { p_code: WIZ_REF }); }
@@ -2662,6 +2688,7 @@ async function finishSetup(setup){
   // arrived through, independent of cohort/founding-slot status, a referred
   // business can be on any plan and still count toward its referrer's tier.
   await applyReferralCodeIfPresent();
+  await stampSignupSource();
   await boot();
   if(isTestAccount){
     showToast(`Internal test account, Prestige granted directly. No founding slot used.`);
@@ -10160,6 +10187,9 @@ async function loadBillingNotice(){
     if(error) throw error;
     CUR_BILLING_NOTICE = data || null;
     if(data && data.status==='paused') showPausedPopup(data);
+    else if(data && data.status==='active' && Number(data.overdue_days)>0){
+      try{ const k='tx_overdue_'+String(data.current_period_end||'x'); if(!sessionStorage.getItem(k)){ sessionStorage.setItem(k,'1'); showToast('Your payment is overdue. Open Settings, then Plan, to pay and avoid a pause.'); } }catch(e){}
+    }
   }catch(e){ console.error('loadBillingNotice failed', e); }
 }
 function closePausedPopup(){
@@ -10210,6 +10240,7 @@ function trialDaysLeft(sub){
   return Math.max(0, Math.ceil((new Date(sub.current_period_end).getTime() - Date.now())/86400000));
 }
 function subStatusLabel(sub){
+  if(typeof CUR_BILLING_NOTICE!=='undefined' && CUR_BILLING_NOTICE && Number(CUR_BILLING_NOTICE.overdue_days)>0 && sub && sub.status==='active'){ const od=Number(CUR_BILLING_NOTICE.overdue_days); return `Payment overdue by ${od} day${od===1?'':'s'}, pay now to avoid a pause`; }
   const d = trialDaysLeft(sub);
   if(d!==null) return `Free trial, ${d} day${d===1?'':'s'} left`;
   if(sub && sub.provider==='trial' && sub.status==='expired') return 'Trial ended, payment needed to keep your plan';
@@ -10239,6 +10270,7 @@ async function confirmCancelSubscription(){
     showToast('Could not cancel, check connection and try again.');
   }
 }
+function isOverseasPayer(){ try{ const c = getCountryInfo()?.currency; return !!c && c!=='GHS'; }catch(e){ return false; } }
 function openUpgradeModal(key){
   const plan = PLANS.find(p=>p.key===key);
   const paystackReady = /^pk_(test|live)_/.test(PAYSTACK_PUBLIC_KEY) && PAYSTACK_PUBLIC_KEY.indexOf('REPLACE_ME')===-1;
@@ -10249,9 +10281,12 @@ function openUpgradeModal(key){
       ? `<button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="payWithPaystack('${key}')">Pay with Card / Paystack →</button>`
       : `<div style="font-size:11px;color:var(--muted);background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px">Card payments aren't turned on yet, use Mobile Money or Request an Invoice below.</div>`
     }
-    <button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="requestMomoInvoice('${key}','momo')">Pay with Mobile Money</button>
+    ${isOverseasPayer()
+      ? `<button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="requestMomoInvoice('${key}','transfer')">Pay by international bank transfer</button>
+    <button class="btn btn-ghost btn-full" style="margin-bottom:14px" onclick="requestMomoInvoice('${key}','invoice')">Request an Invoice</button>`
+      : `<button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="requestMomoInvoice('${key}','momo')">Pay with Mobile Money</button>
     <button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="requestMomoInvoice('${key}','invoice')">Request an Invoice</button>
-    <button class="btn btn-ghost btn-full" style="margin-bottom:14px" onclick="requestMomoInvoice('${key}','cash')">Pay with Cash</button>
+    <button class="btn btn-ghost btn-full" style="margin-bottom:14px" onclick="requestMomoInvoice('${key}','cash')">Pay with Cash</button>`}
     <div style="font-size:11px;color:var(--muted);text-align:center">Card payments activate instantly. MoMo, invoice, and cash requests are confirmed by our team, usually within one business day.</div>
     <button class="btn btn-ghost btn-full" style="margin-top:14px" onclick="closeModal()">Cancel</button>
   </div></div>`;
@@ -10290,7 +10325,7 @@ async function payWithPaystack(planKey){
   handler.openIframe();
 }
 async function requestMomoInvoice(planKey, method){
-  const methodLabel = {momo:'Mobile Money', invoice:'an invoice', cash:'a cash'}[method] || method;
+  const methodLabel = {momo:'Mobile Money', invoice:'an invoice', cash:'a cash', transfer:'an international bank transfer'}[method] || method;
   const planLabel = PLANS.find(p=>p.key===planKey).label;
   const waMessage = `TecXFRA upgrade request\nBusiness: ${CFG.bizName}\nPlan: ${planLabel}\nMethod: ${methodLabel}\nPlease confirm and activate.`;
   // Previously pre-opened a blank tab before these awaits to dodge mobile
@@ -10309,14 +10344,27 @@ async function requestMomoInvoice(planKey, method){
     if(error) throw error;
   }catch(e){ console.error(e); requestSaved = false; }
   closeModal();
-  const confirmLabel = {momo:'MoMo payment', invoice:'invoice', cash:'cash payment'}[method] || method;
+  const confirmLabel = {momo:'MoMo payment', invoice:'invoice', cash:'cash payment', transfer:'bank transfer'}[method] || method;
   if(requestSaved){
     showToast(`Request logged, our team will confirm your ${confirmLabel} and activate ${planLabel} within one business day.`);
   } else {
     showToast(`Could not log your request, check your connection and try again.`);
     return;
   }
+  if(method==='transfer'){
+    let txt = '';
+    try{ const { data } = await sb.rpc('get_payment_instructions'); txt = data || ''; }catch(e){ console.error(e); }
+    showTransferInstructions(planLabel, txt);
+  }
   notifyAdminWhatsApp(waMessage);
+}
+function showTransferInstructions(planLabel, txt){
+  const body = txt ? `<div style="white-space:pre-wrap;font-size:13px;line-height:1.6;background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:12px">${esc(txt)}</div>`
+    : `<div style="font-size:13px;line-height:1.6;margin-bottom:12px">Our team will send you the transfer details by email or WhatsApp within one business day.</div>`;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay show" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:420px">
+    <div class="disp" style="font-size:17px;font-weight:700;margin-bottom:8px">Bank transfer for ${esc(planLabel)}</div>${body}
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Use your business name as the payment reference. We activate your plan as soon as the transfer is confirmed.</div>
+    <button class="btn btn-primary btn-full" onclick="closeModal()">Done</button></div></div>`;
 }
 // Opens the customer's own WhatsApp with a message pre-addressed to the
 // admin number, this is the "notify me on WhatsApp" path while there's
