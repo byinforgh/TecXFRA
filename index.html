@@ -216,6 +216,11 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 .sb-item .ic{font-size:15px; width:18px; text-align:center; flex-shrink:0;}
 .sb-item .badge{margin-left:auto; background:var(--coral); color:#fff; font-size:9.5px; font-weight:800; padding:2px 6px; border-radius:10px; font-family:'IBM Plex Mono',monospace;}
 .sb-item.active .badge{background:rgba(255,255,255,.28);}
+.sb-item .badge.badge-msg, .sb-item.active .badge.badge-msg{background:#e0523f; color:#fff; animation:msgPulse 1.8s ease-in-out infinite;}
+@keyframes msgPulse{0%,100%{box-shadow:0 0 0 0 rgba(224,82,63,.55)}50%{box-shadow:0 0 0 5px rgba(224,82,63,0)}}
+@media (prefers-reduced-motion:reduce){ .sb-item .badge.badge-msg{animation:none} }
+#menuToggle{position:relative}
+#menuToggle.has-unread::after{content:'';position:absolute;top:3px;right:3px;width:9px;height:9px;border-radius:50%;background:#e0523f;box-shadow:0 0 0 2px #fff}
 .sb-foot{padding:14px; border-top:1px solid rgba(255,255,255,.08);}
 .sb-staff{display:flex; align-items:center; gap:9px; padding:8px 8px; border-radius:9px; cursor:pointer;}
 .sb-staff:hover{background:rgba(255,255,255,.06);}
@@ -2759,6 +2764,7 @@ async function boot(){
     DATA = hydrateData(DATA);
     renderSidebar();
     navTo('today');
+    refreshBizMessages(false); // unread badge and inbox, independent of the popups
     runAutoArchive(); // fire-and-forget housekeeping, at most once/day
     if(CFG.walkthroughDone === false){ showWalkthrough(); }
     else{ checkAnnouncements(); } // fire-and-forget, shows any unread update banner
@@ -2877,6 +2883,7 @@ async function checkBusinessMessages(){
     const { data, error } = await sb.rpc('get_my_business_messages');
     if(error) throw error;
     MY_BIZ_MSGS = Array.isArray(data) ? data : [];
+    updateMsgBadge();
     BIZ_MSG_QUEUE = MY_BIZ_MSGS.filter(m=>!m.read_at).reverse();
     if(BIZ_MSG_QUEUE.length) showNextBizMessage();
     else checkInactivityAccountability();
@@ -2897,8 +2904,43 @@ async function ackBizMessage(id){
   try{ await sb.rpc('mark_business_message_read', { p_id: id }); }
   catch(e){ console.error('mark_business_message_read failed', e); }
   const m = MY_BIZ_MSGS.find(x=>x.id===id); if(m && !m.read_at) m.read_at = new Date().toISOString();
+  updateMsgBadge();
   showNextBizMessage();
 }
+// ---- Unread signal for team messages (7 Nov 2026) ----
+// A coloured, pulsing count on Messages & Templates (and a dot on the phone
+// menu button), the inbox card opens by itself when something is unread, new
+// messages are marked NEW, and the list refreshes every 5 minutes with a toast
+// when something new arrives. Read state still lives on the server.
+function bizUnreadCount(){ return (typeof MY_BIZ_MSGS!=='undefined' && Array.isArray(MY_BIZ_MSGS)) ? MY_BIZ_MSGS.filter(m=>!m.read_at && !m.archived_at).length : 0; }
+function updateMsgBadge(){
+  try{
+    const n = bizUnreadCount();
+    const mt = document.getElementById('menuToggle'); if(mt) mt.classList.toggle('has-unread', n>0);
+    const el = document.querySelector('#sbNav .sb-item[data-page="messages"]'); if(!el) return;
+    el.querySelectorAll('.badge-msg').forEach(b=>b.remove());
+    if(n>0 && !el.querySelector('.badge')){ const sp=document.createElement('span'); sp.className='badge badge-msg'; sp.textContent=String(n); el.appendChild(sp); }
+  }catch(e){ console.error('updateMsgBadge failed', e); }
+}
+async function refreshBizMessages(announce){
+  try{
+    const before = bizUnreadCount();
+    const { data, error } = await sb.rpc('get_my_business_messages');
+    if(error) throw error;
+    MY_BIZ_MSGS = Array.isArray(data) ? data : [];
+    const n = bizUnreadCount();
+    if(n>0 && !TEAM_MSGS_OPEN && !TEAM_MSGS_TOUCHED) TEAM_MSGS_OPEN = true;
+    updateMsgBadge();
+    if(announce && n>before) showToast(`You have ${n} unread message${n===1?'':'s'} from the BYINFORGH team. Open Messages & Templates.`);
+    if(CUR_PAGE==='messages') renderMessageInbox();
+  }catch(e){ console.error('refreshBizMessages failed', e); }
+}
+async function markAllTeamRead(){
+  const unread = MY_BIZ_MSGS.filter(m=>!m.read_at && !m.archived_at);
+  await Promise.all(unread.map(m=>sb.rpc('mark_business_message_read',{p_id:m.id}).then(()=>{ m.read_at=new Date().toISOString(); }, e=>console.error('mark read failed', e))));
+  updateMsgBadge(); renderMessageInbox();
+}
+setInterval(function(){ try{ if(document.visibilityState==='visible' && typeof CFG!=='undefined' && CFG) refreshBizMessages(true); }catch(e){} }, 300000);
 function showNextAnnouncement(){
   const a = ANNOUNCEMENT_QUEUE.shift();
   if(!a){ closeModal(); checkBusinessMessages(); return; }
@@ -3128,6 +3170,7 @@ function renderSidebar(){
     let badge = '';
     if(m.key==='followups'){ const n=(DATA.followups||[]).filter(f=>!f.done && f.due<=todayStr()).length; if(n) badge=`<span class="badge">${n}</span>`; }
     if(m.key==='reminders'){ const n=(DATA.reminders||[]).filter(r=>!r.done && r.dueDate<=todayStr()).length; if(n) badge=`<span class="badge">${n}</span>`; }
+    if(m.key==='messages'){ const n=bizUnreadCount(); if(n) badge=`<span class="badge badge-msg">${n}</span>`; }
     if(m.key==='accountability'){ const sc = accountabilityTodayScore(); if(sc.total>0) badge=`<span class="badge">${sc.done}/${sc.total}</span>`; }
     if(isLocked(m.key)) badge = `<span style="margin-left:auto;font-size:11px">🔒</span>`;
     return `<div class="sb-item" data-page="${m.key}" onclick="navTo('${m.key}')"><span class="ic">${m.ic}</span><span>${labelFor(m.key)}</span>${badge}</div>`;
@@ -3141,6 +3184,7 @@ function renderSidebar(){
   const moreItems = on.filter(m=>TECXFRA_MORE_KEYS.includes(m.key));
   if(moreItems.length) html += `<div class="sb-group-label">More</div>` + moreItems.map(row).join('');
   document.getElementById('sbNav').innerHTML = html;
+  updateMsgBadge();
 }
 function labelFor(key){
   if(key==='crm') return CUR_INDUSTRY_OBJ.crmNoun;
@@ -7867,8 +7911,9 @@ function setMsgCat(k){ msgCat=k; renderMessages(); }
 const MSG_CHANNELS = {whatsapp:'WhatsApp', sms:'Text / SMS', call:'Phone call', email:'Email', other:'Other'};
 const MSG_KINDS = {payment_reminder:'Payment reminder', follow_up:'Follow-up', invoice:'Invoice', general:'General message'};
 let msgInboxFilter = 'all';
-let TEAM_MSGS_OPEN = false, TEAM_MSGS_ARCHIVED = false;
+let TEAM_MSGS_OPEN = false, TEAM_MSGS_ARCHIVED = false, TEAM_MSGS_TOUCHED = false;
 function toggleTeamMessages(){
+  TEAM_MSGS_TOUCHED = true;
   TEAM_MSGS_OPEN = !TEAM_MSGS_OPEN;
   const b = document.getElementById('teamMsgBody'), t = document.getElementById('teamMsgToggle');
   if(b) b.style.display = TEAM_MSGS_OPEN ? 'block' : 'none';
@@ -7937,13 +7982,15 @@ function renderMessageInbox(){
   const thisWeek = log.filter(m=>(m.ts||m.date||'')>=weekAgo.slice(0,10)).length;
   const reminders = log.filter(m=>m.kind==='payment_reminder').length;
   const teamMsgs = (typeof MY_BIZ_MSGS!=='undefined' && Array.isArray(MY_BIZ_MSGS)) ? MY_BIZ_MSGS : [];
+  updateMsgBadge();
   const teamLive = teamMsgs.filter(m=>!m.archived_at), teamArch = teamMsgs.filter(m=>m.archived_at);
-  const teamRow = m=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px">
-      <div style="display:flex;justify-content:space-between;width:100%;gap:8px"><b>${esc(m.subject)}</b><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${esc(fmtDate((m.created_at||'').slice(0,10)))}</span></div>
+  const teamRow = m=>`<div class="list-row" style="align-items:flex-start;flex-direction:column;gap:4px;${(!m.read_at&&!m.archived_at)?'border-left:4px solid #e0523f;padding-left:10px;background:rgba(224,82,63,.07)':''}">
+      <div style="display:flex;justify-content:space-between;width:100%;gap:8px"><b>${(!m.read_at&&!m.archived_at)?'<span style="background:#e0523f;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;margin-right:6px;letter-spacing:.4px">NEW</span>':''}${esc(m.subject)}</b><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${esc(fmtDate((m.created_at||'').slice(0,10)))}</span></div>
       <div style="font-size:12px;color:var(--ink-dim);line-height:1.6;white-space:pre-line">${esc(m.body)}</div>
       <div style="display:flex;gap:6px"><button class="btn btn-ghost" style="padding:4px 10px" onclick="archiveTeamMessage('${jsAttr(m.id)}',${m.archived_at?'false':'true'})">${m.archived_at?'Restore':'Archive'}</button><button class="btn btn-ghost" style="padding:4px 10px;color:var(--coral)" onclick="deleteTeamMessage('${jsAttr(m.id)}')">Delete</button></div></div>`;
-  const teamCard = teamMsgs.length ? `<div class="card" style="margin-bottom:14px"><div class="card-title" style="cursor:pointer" onclick="toggleTeamMessages()">✉ From the BYINFORGH team <span class="sub">${teamLive.length} message${teamLive.length===1?'':'s'}${teamArch.length?`, ${teamArch.length} archived`:''} · <span id="teamMsgToggle">${TEAM_MSGS_OPEN?'hide ▴':'show ▾'}</span></span></div>
+  const teamCard = teamMsgs.length ? `<div class="card" style="margin-bottom:14px"><div class="card-title" style="cursor:pointer" onclick="toggleTeamMessages()">✉ From the BYINFORGH team ${bizUnreadCount()?`<span style="background:#e0523f;color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px;margin-left:6px">${bizUnreadCount()} unread</span>`:''} <span class="sub">${teamLive.length} message${teamLive.length===1?'':'s'}${teamArch.length?`, ${teamArch.length} archived`:''} · <span id="teamMsgToggle">${TEAM_MSGS_OPEN?'hide ▴':'show ▾'}</span></span></div>
     <div id="teamMsgBody" style="display:${TEAM_MSGS_OPEN?'block':'none'}">
+    ${bizUnreadCount()?`<button class="btn btn-ghost" style="margin-bottom:8px;padding:5px 12px" onclick="markAllTeamRead()">Mark all as read</button>`:''}
     ${infiniteList('teammsgs', (TEAM_MSGS_ARCHIVED?teamArch:teamLive), teamRow, `<div class="empty">${TEAM_MSGS_ARCHIVED?'Nothing archived.':'No messages. Archived ones are under the toggle below.'}</div>`, 320, 20, 20)}
     ${teamArch.length || TEAM_MSGS_ARCHIVED ? `<button class="btn btn-ghost" style="margin-top:8px;padding:5px 12px" onclick="TEAM_MSGS_ARCHIVED=!TEAM_MSGS_ARCHIVED;INF_SHOWN['teammsgs']=0;renderMessageInbox()">${TEAM_MSGS_ARCHIVED?'← Back to messages':'View archived ('+teamArch.length+')'}</button>` : ''}
     </div></div>` : '';
