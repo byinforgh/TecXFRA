@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TecXFRA, Admin</title>
 <meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://js.hcaptcha.com https://*.hcaptcha.com https://hcaptcha.com; style-src 'self' 'unsafe-inline' https://*.hcaptcha.com https://hcaptcha.com; font-src 'self' data:; img-src 'self' data: blob: https:; connect-src 'self' https://bnbcozkrvqforiunwzrz.supabase.co wss://bnbcozkrvqforiunwzrz.supabase.co https://*.hcaptcha.com https://hcaptcha.com; frame-src https://*.hcaptcha.com https://hcaptcha.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<style id="antiClickjack">html{display:none !important}</style>
+<script>
+(function(){ var s=document.getElementById('antiClickjack'); var framed=(window.top!==window.self); var live=/(^|\.)tecxfra\.com$/i.test(location.hostname); if(!framed || !live){ if(s) s.parentNode.removeChild(s); } else { try{ window.top.location=window.self.location; }catch(e){} } })();
+</script>
 <style>
   :root{ --teal:#4aa8b8; --teal-dim:#3a8b99; --navy:#123642; --navy-deep:#0c262f; --cream:#faf8f3; --ink:#0c262f; --line:#e4ded2; --danger:#c0584a; --ok:#3f8f5f; --amber:#c98a2e; }
   *{box-sizing:border-box}
@@ -697,7 +703,7 @@ async function loadBackupPoints(){
   if(!venueId){ wrap.innerHTML = ''; return; }
   wrap.innerHTML = '<div class="sub">Loading snapshots…</div>';
   const { data, error } = await sb.rpc('admin_list_tenant_backups', { p_venue_id: venueId });
-  if(error){ wrap.innerHTML = `<div class="sub">Could not load: ${error.message||error}</div>`; return; }
+  if(error){ wrap.innerHTML = `<div class="sub">Could not load: ${esc(error.message||error)}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="sub">No snapshots yet for this business.</div>'; return; }
   wrap.innerHTML = data.map(b=>`
     <div class="ann-recip-row">
@@ -736,7 +742,7 @@ async function loadPlanMismatches(){
   const wrap = document.getElementById('mismatchWrap');
   wrap.innerHTML = '<div class="card empty">Checking…</div>';
   const { data, error } = await sb.rpc('admin_list_plan_mismatches');
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not check: ${error.message||error}</div>`; return; }
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not check: ${esc(error.message||error)}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No mismatches, every active subscription matches the plan cached on the account.</div>'; return; }
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
       <th>Business</th><th>Cached plan (cfg)</th><th>Real plan (subscriptions)</th><th>Status</th><th>Renews</th>
@@ -843,7 +849,7 @@ async function loadAbandonedSignups(){
   const wrap = document.getElementById('abandonedWrap');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
   const { data, error } = await sb.rpc('admin_list_abandoned_signups');
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not load: ${error.message||error}</div>`; return; }
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load: ${esc(error.message||error)}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No abandoned signups right now.</div>'; return; }
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr>
       <th>Owner email</th><th>Signed up</th><th>Last sign-in</th><th></th>
@@ -1172,7 +1178,7 @@ async function loadRenewals(){
   // not exist. This needs no SQL change and can never drift from the
   // Businesses tab.
   const { data, error } = await sb.rpc('admin_list_businesses');
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not load renewals: ${error.message||error}</div>`; return; }
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load renewals: ${esc(error.message||error)}</div>`; return; }
   const rows = (data||[]).filter(b=>b.status==='active' || b.current_period_end);
   if(!rows.length){ wrap.innerHTML = '<div class="card empty">No active businesses or renewal dates yet.</div>'; return; }
   // Dated ones soonest first, "Not set" ones last.
@@ -1240,7 +1246,7 @@ async function loadBusinessMessages(){
   if(!venueId){ wrap.innerHTML = '<div class="card empty">Pick a business above to see its messages.</div>'; return; }
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
   const { data, error } = await sb.rpc('admin_list_business_messages', { p_venue_id: venueId });
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not load messages: ${error.message||error}</div>`; return; }
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load messages: ${esc(error.message||error)}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No messages sent to this business yet.</div>'; return; }
   wrap.innerHTML = data.map(m=>`
     <div class="card" style="margin-bottom:10px">
@@ -1257,7 +1263,7 @@ async function loadBusinesses(){
   const badge = document.getElementById('bizQuickFilterBadge');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
   const { data, error } = await sb.rpc('admin_list_businesses');
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not load businesses: ${error.message||error}</div>`; return; }
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load businesses: ${esc(error.message||error)}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No businesses signed up yet.</div>'; return; }
 
   // BUG FIX (raised in audit): this used to only ever read the plan
@@ -1435,14 +1441,14 @@ async function loadCohortAdmin(){
     sb.rpc('get_cohort_slots_status'),
     sb.rpc('admin_list_cohort_claims')
   ]);
-  if(slots.error){ statWrap.innerHTML = `<div class="card empty">Could not load cohort slots: ${slots.error.message||slots.error}. Has founding_cohorts_schema.sql been run yet?</div>`; return; }
+  if(slots.error){ statWrap.innerHTML = `<div class="card empty">Could not load cohort slots: ${esc(slots.error.message||slots.error)}. Has founding_cohorts_schema.sql been run yet?</div>`; return; }
   const byKey = {}; (slots.data||[]).forEach(r=>{ byKey[r.cohort]=r; });
   const card = (key,label)=>{
     const s = byKey[key] || {cap:10, used:0, remaining:10};
     return `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-num">${s.remaining} / ${s.cap}</div><div class="sub" style="margin:2px 0 0">spots remaining</div></div>`;
   };
   statWrap.innerHTML = card('diaspora','Diaspora Cohort (Prestige)') + card('ghana','Ghana Cohort (Prestige)');
-  if(claims.error){ listWrap.innerHTML = `<div class="card empty">Could not load claimed businesses: ${claims.error.message||claims.error}</div>`; return; }
+  if(claims.error){ listWrap.innerHTML = `<div class="card empty">Could not load claimed businesses: ${esc(claims.error.message||claims.error)}</div>`; return; }
   if(!claims.data || !claims.data.length){ listWrap.innerHTML = '<div class="card empty">No cohort spots claimed yet. Share an invite link ending in ?cohort=diaspora or ?cohort=ghana with the businesses you\'re targeting.</div>'; return; }
   listWrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr><th>Business</th><th>Cohort</th><th>Plan</th><th>Claimed</th></tr></thead><tbody>${claims.data.map(c=>`
       <tr>
@@ -1456,7 +1462,7 @@ async function loadNetworkProfiles(){
   const wrap = document.getElementById('networkTableWrap');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
   const { data, error } = await sb.rpc('admin_list_network_profiles');
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not load Network profiles: ${error.message||error}</div>`; return; }
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load Network profiles: ${esc(error.message||error)}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No Network profiles yet, businesses only appear here once they set up their profile on the Prestige plan.</div>'; return; }
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr><th>Business</th><th>Industry</th><th>HQ</th><th>Verified</th><th>Updated</th><th></th></tr></thead><tbody>${data.map(p=>`
       <tr data-business="${p.business_id}">
@@ -1479,7 +1485,7 @@ async function loadEnterpriseQualification(){
   const wrap = document.getElementById('enterpriseQualWrap');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
   const { data, error } = await sb.rpc('admin_list_network_enterprise_status');
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not load Enterprise businesses: ${error.message||error}</div>`; return; }
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load Enterprise businesses: ${esc(error.message||error)}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No Ghana Enterprise businesses yet.</div>'; return; }
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr><th>Business</th><th>Member since</th><th>Status</th><th>Network profile</th></tr></thead><tbody>${data.map(e=>`
       <tr>
@@ -1496,7 +1502,7 @@ async function loadAdmins(){
   const wrap = document.getElementById('adminsTableWrap');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
   const { data, error } = await sb.rpc('admin_list_admins');
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not load admins: ${error.message||error}</div>`; return; }
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load admins: ${esc(error.message||error)}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">No admins found.</div>'; return; }
   wrap.innerHTML = `<div class="table-scroll"><table class="biz-table"><thead><tr><th>Email</th><th>Added</th></tr></thead><tbody>${data.map(a=>`
       <tr><td>${esc(a.email||a.user_id)}</td><td>${fmtDate(a.added_at)}</td></tr>`).join('')}</tbody></table></div>`;
@@ -1528,7 +1534,7 @@ async function loadAnnouncements(){
   const wrap = document.getElementById('annListWrap');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
   const { data, error } = await sb.rpc('admin_list_announcements_with_stats', { p_limit: 20 });
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not load announcements: ${error.message||error}</div>`; return; }
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load announcements: ${esc(error.message||error)}</div>`; return; }
   if(!data || !data.length){ wrap.innerHTML = '<div class="card empty">Nothing posted yet.</div>'; return; }
   // Read count is always shown (mark_announcement_read only ever fires
   // for notify_inapp announcements, so this is honest either way). Email
@@ -1598,7 +1604,7 @@ async function openAnnRecipients(id, title){
   const { data, error } = await sb.rpc('admin_announcement_recipient_status', { p_announcement_id: id });
   const body = document.getElementById('annRecipBody');
   if(!body) return; // modal was closed before the request came back
-  if(error){ body.innerHTML = `<div class="card empty">Could not load: ${error.message||error}</div>`; return; }
+  if(error){ body.innerHTML = `<div class="card empty">Could not load: ${esc(error.message||error)}</div>`; return; }
   if(!data || !data.length){ body.innerHTML = '<div class="card empty">No businesses to show yet.</div>'; return; }
   body.innerHTML = data.map(r=>`
     <div class="ann-recip-row">
@@ -1620,7 +1626,7 @@ async function loadTickets(){
   const wrap = document.getElementById('ticketsWrap');
   wrap.innerHTML = '<div class="card empty">Loading…</div>';
   const { data, error } = await sb.rpc('admin_list_support_tickets');
-  if(error){ wrap.innerHTML = `<div class="card empty">Could not load tickets: ${error.message||error}</div>`; return; }
+  if(error){ wrap.innerHTML = `<div class="card empty">Could not load tickets: ${esc(error.message||error)}</div>`; return; }
   const filter = document.getElementById('ticketFilter').value;
   const rows = (data||[]).filter(t => filter==='all' || t.status===filter);
   if(!rows.length){ wrap.innerHTML = `<div class="card empty">Nothing ${filter==='all'?'reported yet':'with that status'}.</div>`; return; }
@@ -1669,7 +1675,7 @@ function renderList(rows){
         ${esc(r.owner_name)||'Unknown owner'} · ${r.owner_phone?`<a href="https://wa.me/${esc(r.owner_phone).replace(/\D/g,'')}" target="_blank" rel="noopener noreferrer">${esc(r.owner_phone)}</a>`:'no phone on file'} · ${esc(r.owner_email)||'no email'}
       </div>
       <div class="meta">
-        ${esc(r.provider.toUpperCase())} · requested plan: <b>${esc(p.plan)||'Not specified'}</b> ·
+        ${esc(String(r.provider||"unknown").toUpperCase())} · requested plan: <b>${esc(p.plan)||'Not specified'}</b> ·
         ${new Date(r.created_at).toLocaleString()}
       </div>
       <div class="row">
@@ -1723,7 +1729,7 @@ function renderGuideList(rows){
         ${esc(r.owner_name)||'Unknown owner'} · ${r.owner_phone?`<a href="https://wa.me/${esc(r.owner_phone).replace(/\D/g,'')}" target="_blank" rel="noopener noreferrer">${esc(r.owner_phone)}</a>`:'no phone on file'} · ${esc(r.owner_email)||'no email'}
       </div>
       <div class="meta">
-        ${esc(r.provider.toUpperCase())} · guide: <b>${esc(p.guide_key)||'Not specified'}</b> ·
+        ${esc(String(r.provider||"unknown").toUpperCase())} · guide: <b>${esc(p.guide_key)||'Not specified'}</b> ·
         ${new Date(r.created_at).toLocaleString()}
       </div>
       <div class="row">
@@ -1770,4 +1776,3 @@ async function signOutAdmin(){
 
 </body>
 </html>
-
