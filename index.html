@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>TecXFRA, Complete Total Control</title>
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://js.paystack.co https://js.hcaptcha.com https://*.hcaptcha.com https://hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://*.hcaptcha.com https://hcaptcha.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://bnbcozkrvqforiunwzrz.supabase.co wss://bnbcozkrvqforiunwzrz.supabase.co https://nominatim.openstreetmap.org https://*.hcaptcha.com https://hcaptcha.com https://*.paystack.co https://*.paystack.com; frame-src https://*.hcaptcha.com https://hcaptcha.com https://*.paystack.co https://*.paystack.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<style id="antiClickjack">html{display:none !important}</style>
+<script>
+/* Anti-clickjacking: on tecxfra.com the page stays hidden if another site frames it. Elsewhere (previews, local files) it renders normally. */
+(function(){ var s=document.getElementById('antiClickjack'); var framed=(window.top!==window.self); var live=/(^|\.)tecxfra\.com$/i.test(location.hostname); if(!framed || !live){ if(s) s.parentNode.removeChild(s); } else { try{ window.top.location=window.self.location; }catch(e){} } })();
+</script>
 <meta name="description" content="TecXFRA is the complete Business OS for SME owners, Today, Expenses, CRM, Execution, Follow-Ups, Revenue, Accountability. Built in Ghana, for Ghana, run your entire business from your phone.">
 <link rel="canonical" href="https://www.tecxfra.com/">
 <!-- Favicon: same navy/teal drop-pin mark used throughout the app, as an
@@ -752,8 +759,8 @@ tr.az-h td{position:sticky;top:0;z-index:2;background:var(--cream);font-size:11p
 
 <script src="https://js.paystack.co/v1/inline.js"></script>
 <script src="https://js.hcaptcha.com/1/api.js?render=explicit" async defer></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 /* ============================================================
    TecXFRA, SUPABASE CLIENT + AUTH GATE
@@ -1174,7 +1181,7 @@ async function doSignUp(){
   if(!(await requireSupabase())) return;
   const email = document.getElementById('authEmail').value.trim().toLowerCase();
   const password = document.getElementById('authPassword').value;
-  if(!email || password.length<6){ authErr('Enter an email and a password of at least 6 characters.'); return; }
+  if(!email || password.length<10){ authErr('Enter an email and a password of at least 10 characters.'); return; }
   const email2 = (document.getElementById('authEmail2').value || '').trim().toLowerCase();
   if(email !== email2){ authErr('The two email addresses do not match. Check the spelling, one wrong letter means the confirmation link never arrives.'); return; }
   const hint = emailTypoHint(email);
@@ -9711,13 +9718,183 @@ async function restoreArchive(i){
 }
 
 /* ---------- SETTINGS ---------- */
+/* ---------- TEACH ME: built-in step by step guide, one track per plan ----------
+   Static content only. Progress is stored as DATA.teachDone (a plain
+   {lessonKey:true} object) through the normal saveData() path, so it is
+   additive and needs no migration. Every string is escaped on render. */
+const TEACH_LEVELS = [
+  {key:'starter', label:'Starter', ic:'🌱', tag:'Run the daily basics',
+   intro:'Starter is built so nobody is left out. Learn these ten lessons in order and you will be running your day from TecXFRA by the end of the week.',
+   week:['Day 1: lessons 1 and 2','Day 2: lesson 3, add your first 10 customers','Day 3: lessons 4 and 5','Day 4: lesson 6','Day 5: lessons 7 and 8','Day 6: lesson 9','Day 7: lesson 10 and read your Revenue page'],
+   lessons:[
+    {k:'s1', ic:'⚙️', t:'Set up your business', pages:['settings'], why:'Everything in TecXFRA reads from these details, so get them right once.',
+     steps:['Open Settings, then the Business tab.','Check your business name, your name and your WhatsApp number. Type the number with the country code, for example +233.','Choose your country and currency. TecXFRA shows your local tax and payroll notes from this.','Choose your daily tone: Motivation, Faith or Plain.','Tap Save Changes.'],
+     tip:'If you change country later, check your currency too.'},
+    {k:'s2', ic:'🏠', t:'Start every day on Today', pages:['today'], why:'Today tells you what needs you right now, so you stop guessing.',
+     steps:['Open Today first thing every morning.','Read the money in so far, follow-ups due, low stock and hot leads.','Check what is on your calendar for today.','Use the quick actions at the top to add a sale, contact or expense without hunting through menus.','Read your daily tip before you start work.'],
+     tip:'Make Today the first thing you open before WhatsApp or social media.'},
+    {k:'s3', ic:'👥', t:'Add your customers', pages:['crm'], why:'Your customer list is your business. TecXFRA cannot remind you about people it does not know.',
+     steps:['Open CRM and Pipeline. The name may change to suit your industry, for example Guests or Patients.','Tap Add.','Enter the name and phone number.','Pick a temperature: Cold (new), Warm (interested), Hot (ready to buy) or Active (current customer).','Save. If the phone number already belongs to another contact, TecXFRA warns you so you do not create a duplicate.','Tap the WhatsApp button on any contact to open a chat in one tap.'],
+     tip:'Starter holds 30 contacts. Add real customers first, not test names.'},
+    {k:'s4', ic:'🔔', t:'Clear your follow-ups', pages:['followups'], why:'Most lost sales are simply people nobody followed up.',
+     steps:['Open Follow-Ups.','Overdue ones are highlighted with a count. Start with the oldest.','Tap a name to open that contact.','Send your message on WhatsApp.','Tap Done when finished, or Snooze to move it to another day.','Aim to end each day with nothing overdue.'],
+     tip:'A late follow-up is still better than none.'},
+    {k:'s5', ic:'🧾', t:'Record every sale', pages:['pos','invoicing','bookings'], why:'If a sale is not recorded, your numbers lie to you.',
+     steps:['Shops and food businesses: open Sales and Point of Sale. Service businesses: open Invoicing or Bookings.','Tap items to add them to the cart.','Attach the customer when you know who it is.','Check the total and complete the sale.','If a customer still owes a balance, keep it as a debt against their name so you can chase it later.'],
+     tip:'Starter allows 60 sales or transactions a month.'},
+    {k:'s6', ic:'💸', t:'Log your expenses', pages:['expenses'], why:'Profit is what is left after spending. You cannot see it if spending is in your head.',
+     steps:['Open Expenses and Budgets.','Enter the amount, the category and the date.','Save it the same day, while you remember.','Check the month to date total.','Compare it with your budget and cut what is leaking.'],
+     tip:'Record mobile money charges and transport too. Small costs add up.'},
+    {k:'s7', ic:'📅', t:'Use the calendar', pages:['calendar'], why:'One place for every appointment, shift and due date.',
+     steps:['Open Calendar.','Choose a day or add a new event.','Enter the title, date and time.','Save. It will show on your Today page on the day.'],
+     tip:'Add the appointment while the customer is still with you.'},
+    {k:'s8', ic:'💬', t:'Send better messages', pages:['messages'], why:'Ready-made scripts save time and stop you saying the wrong thing.',
+     steps:['Open Messages and Templates.','Pick a group: Cold, Warm, Close or Objection.','Tap copy on the script you want.','Replace the [NAME] part with the customer name.','Paste it into WhatsApp and send.'],
+     tip:'Change the wording until it sounds like you. Customers can tell a copied message.'},
+    {k:'s9', ic:'📊', t:'Read your revenue', pages:['revenue'], why:'This is how you know if the week was good or bad.',
+     steps:['Open Revenue and Analytics.','Read the 7 day chart, revenue, expenses, net and conversion.','Ask one question: what did I do on the best day?','Use Download my records to save your revenue, expenses or your whole account whenever you want a copy.'],
+     tip:'Look at this every Sunday evening.'},
+    {k:'s10', ic:'🛡️', t:'Keep your account safe', pages:['settings'], settingsTab:'account', why:'Your business data is only as safe as your login.',
+     steps:['Open Settings, then the Account tab.','Change your password to something long and unique, at least 10 characters, not used anywhere else.','Never share your password, not even with someone claiming to be TecXFRA. We will never ask for it.','Sign out on any phone or computer that is not yours.','Do not open TecXFRA from a link sent by a stranger. Type tecxfra.com yourself.','If something looks wrong, use Report a Problem in the same tab.'],
+     tip:'A phone with a screen lock protects your business too.'}
+   ]},
+  {key:'growth', label:'Growth', ic:'🌿', tag:'Add retention and analytics',
+   intro:'Growth adds the tools that turn one-time buyers into returning customers. Finish Starter first, then work through these in order.',
+   week:['Week 1: Business Brain and Audit','Week 2: Persona and Accountability','Week 3: Referrals and Retention','Week 4: Import, Reminders, debtors and your first monthly review'],
+   lessons:[
+    {k:'g1', ic:'🧠', t:'Teach your Business Brain', pages:['settings'], settingsTab:'brain', why:'The more it knows, the better your AI Assistant answers.',
+     steps:['Open Settings, then Business Brain.','Add your goals, for example the revenue you want by December.','Add notes about what you sell, who buys most and what your biggest problem is.','Come back weekly and add what changed.','Growth keeps your last 10 learned facts for the AI Assistant.'],
+     tip:'Specific notes beat long notes.'},
+    {k:'g2', ic:'🧭', t:'Take the Business Audit', pages:['audit'], why:'It shows where your business really is, not where you hope it is.',
+     steps:['Open Business Audit.','Answer every question honestly.','Read your score and the areas that scored lowest.','Pick the two lowest areas and write them as goals in your Business Brain.','Come back every quarter and answer again to see your progress.'],
+     tip:'Honest answers help you. Nobody else sees them.'},
+    {k:'g3', ic:'🎯', t:'Build your ideal client', pages:['persona'], why:'When you know exactly who buys best, your marketing stops wasting money.',
+     steps:['Open Ideal Client Persona.','Describe your best customer: age, income, problems, where they spend time, what stops them buying and what makes them buy.','Save it.','Use it before every post, ad or message by asking whether it speaks to this person.'],
+     tip:'Look at your five best customers. The pattern is your persona.'},
+    {k:'g4', ic:'✅', t:'Run daily accountability', pages:['accountability'], why:'Discipline is a score you can see.',
+     steps:['Open Daily Accountability.','Tick each daily task as you complete it.','Watch your score and streak.','Review the weekly and monthly roll-ups.','Write down one thing to improve next month.'],
+     tip:'A streak is built by never skipping two days.'},
+    {k:'g5', ic:'🤝', t:'Turn customers into referrers', pages:['referrals'], why:'A referred customer costs almost nothing and trusts you from day one.',
+     steps:['Open Referrals and Retention.','Learn the four loyalty tiers.','Ask for a referral right after a happy moment. The guide gives you four ready-made ask scripts.','Record who referred whom and the reward you gave.','Use the re-activation scripts on customers who have gone quiet.'],
+     tip:'The best time to ask is straight after you delivered well.'},
+    {k:'g6', ic:'📥', t:'Import your existing list', pages:['crm'], why:'Move your old spreadsheet in minutes instead of retyping.',
+     steps:['Save your contacts as a CSV file with name and phone columns.','Open CRM and Pipeline, then tap Add.','Use Import from CSV and choose your file.','Check the list for duplicates and wrong numbers.','Inventory has a similar CSV import on its page.'],
+     tip:'Clean the spreadsheet first. Bad data in means bad data out.'},
+    {k:'g7', ic:'⏰', t:'Never miss a renewal', pages:['reminders'], why:'Licenses, rent and subscriptions have due dates that cost you when missed.',
+     steps:['Open Reminders and Renewals.','Add anything with a due date: license, insurance, rent, supplier contract, subscription.','Set the date.','TecXFRA warns you before it is due.','When it is paid, mark it done and renew for the next period.'],
+     tip:'Add every recurring payment today, not later.'},
+    {k:'g8', ic:'💳', t:'Chase what you are owed', pages:['invoicing'], why:'Unpaid money is a loan you gave for free.',
+     steps:['Open Invoicing and Debtors.','Tap Add Invoice or Debt and pick the customer.','Add the items and amount, then send the invoice link on WhatsApp.','Check the total exposure at the top, which is everyone who owes you.','Follow up the largest and oldest debts first.'],
+     tip:'Send the invoice the same day. Delay makes people forget.'},
+    {k:'g9', ic:'🗓️', t:'Do a weekly and monthly review', pages:['revenue','accountability'], why:'Owners who review every week catch problems while they are small.',
+     steps:['Every Sunday open Revenue and compare this week with last week.','Open Daily Accountability and read your weekly score.','Ask the AI Assistant what to fix first.','At month end write what worked, what did not and one change for next month.'],
+     tip:'Fifteen minutes weekly beats a panic once a quarter.'}
+   ]},
+  {key:'enterprise', label:'Enterprise', ic:'🌳', tag:'Run the whole operation',
+   intro:'Enterprise removes every cap and adds the tools for owners who run a team and want to be investment ready. Complete Growth first.',
+   week:['Week 1: Branding and team','Week 2: Journal and the AI Assistant','Week 3: Investor Data Room','Week 4: Quarterly review and backup'],
+   lessons:[
+    {k:'e1', ic:'🎨', t:'Make it your brand', pages:['settings'], settingsTab:'branding', why:'Your team and customers should see your business, not ours.',
+     steps:['Open Settings, then Branding.','Upload your logo.','Choose your brand colour.','Save and check the app on your phone.'],
+     tip:'Use a clear, square logo on a plain background.'},
+    {k:'e2', ic:'🧑‍💼', t:'Set up your team properly', pages:['staff'], why:'With no staff cap, structure matters more than numbers.',
+     steps:['Open Staff and Shifts.','Add every team member with their role and pay type.','Use the on-duty toggle and shift log each day.','Check the payroll basics and your country tax and payroll notes in Settings.','Review attendance weekly.'],
+     tip:'Write down who is responsible for what. Confusion costs money.'},
+    {k:'e3', ic:'📓', t:'Keep a business journal', pages:['journal'], why:'Decisions and lessons are lost unless you write them down.',
+     steps:['Open Journal and Notes.','Write a short entry each day: what happened, what you learned, what you will change.','Tag an entry to a specific client when it concerns them.','Search old entries before big decisions.'],
+     tip:'Three honest lines a day is enough.'},
+    {k:'e4', ic:'✨', t:'Use the AI at full depth', pages:['ai'], why:'Enterprise lets the AI recall up to 200 facts about your business.',
+     steps:['Keep feeding your Business Brain with goals and notes.','Open AI Assistant.','Ask specific questions: which customers have gone quiet, what is my best selling item, what should I do this week.','Act on one suggestion and record the result in your Journal.'],
+     tip:'Ask about your own numbers, not general advice.'},
+    {k:'e5', ic:'🏦', t:'Prepare your Investor Data Room', pages:['investor'], why:'Banks and investors fund businesses with proof, not promises.',
+     steps:['Keep sales, expenses, contacts and staff up to date for at least three months.','Open Investor Data Room.','Open each heading and read what it shows.','Fix gaps and missing records before any meeting.','Use it as your preparation sheet when you meet a bank, an investor or a large client.'],
+     tip:'Clean records for three months make your story believable.'},
+    {k:'e6', ic:'🌐', t:'Join the Network', pages:['network'], why:'Other businesses can find you, and you can find suppliers and partners.',
+     steps:['Open Network.','Complete your public profile.','Browse businesses and industry rooms.','Send connection requests to businesses that fit.','Keep private business details off your public profile.'],
+     tip:'Only share what you are happy for other businesses to see.'},
+    {k:'e7', ic:'💾', t:'Protect and back up your data', pages:['settings'], settingsTab:'data', why:'Your records should survive a lost phone.',
+     steps:['Open Revenue and use Download my whole account to keep a copy.','Open Settings, then Data and Storage to see what is stored and how old records are archived.','Save the downloaded copy somewhere safe, such as your email or a drive.','Repeat every month.'],
+     tip:'Rename the file with the month so you can find it later.'},
+    {k:'e8', ic:'🔭', t:'Run a quarterly review', pages:['audit','revenue'], why:'Every three months, step back and decide what to change.',
+     steps:['Answer the Business Audit again and compare with last time.','Compare quarterly revenue and expenses.','Review your goals in the Business Brain and mark finished ones.','Choose three priorities for the next quarter.','Write them in your Journal.'],
+     tip:'Three priorities is a plan. Ten is a wish list.'}
+   ]}
+];
+let TEACH_LEVEL = null;
+function teachDone(){ return (DATA && DATA.teachDone && typeof DATA.teachDone==='object') ? DATA.teachDone : {}; }
+function teachGo(level, k){
+  const L = TEACH_LEVELS.find(x=>x.key===level); const les = L && L.lessons.find(x=>x.k===k); if(!les) return;
+  if(les.settingsTab){ settingsTab = les.settingsTab; navTo('settings'); return; }
+  const target = (les.pages||[]).find(p=>CFG.modules.includes(p) && !isLocked(p));
+  if(target){ navTo(target); return; }
+  const locked = (les.pages||[]).find(p=>CFG.modules.includes(p) && isLocked(p));
+  if(locked){ navTo(locked); return; }
+  showToast('That module is switched off. Turn it on in Settings, Modules.');
+}
+async function teachToggle(k){
+  if(!DATA) return;
+  if(!DATA.teachDone || typeof DATA.teachDone!=='object') DATA.teachDone = {};
+  if(DATA.teachDone[k]) delete DATA.teachDone[k]; else DATA.teachDone[k] = Date.now();
+  await saveData();
+  drawTeachMe(document.getElementById('setBody'));
+}
+function teachPick(level){ TEACH_LEVEL = level; drawTeachMe(document.getElementById('setBody')); }
+function teachOpen(k){
+  const el = document.getElementById('tl_'+k); if(el) el.open = !el.open;
+}
+function drawTeachMe(b){
+  if(!b) return;
+  const myKey = (currentPlan().key==='prestige') ? 'enterprise' : currentPlan().key;
+  if(!TEACH_LEVEL || !TEACH_LEVELS.some(x=>x.key===TEACH_LEVEL)) TEACH_LEVEL = myKey;
+  const L = TEACH_LEVELS.find(x=>x.key===TEACH_LEVEL);
+  const done = teachDone();
+  const myIdx = TEACH_LEVELS.findIndex(x=>x.key===myKey), thisIdx = TEACH_LEVELS.findIndex(x=>x.key===L.key);
+  const total = L.lessons.length, finished = L.lessons.filter(x=>done[x.k]).length;
+  const pct = total ? Math.round(finished/total*100) : 0;
+  const above = thisIdx > myIdx;
+  b.innerHTML = `
+  <div class="card">
+    <div class="card-title">Teach Me <span class="sub">step by step, at your own pace</span></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+      ${TEACH_LEVELS.map(x=>`<button class="tab-pill ${x.key===L.key?'active':''}" onclick="teachPick('${x.key}')">${x.ic} ${esc(x.label)}${x.key===myKey?' (yours)':''}</button>`).join('')}
+    </div>
+    <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px">${esc(L.label)}: ${esc(L.tag)}</div>
+    <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7;margin-bottom:12px">${esc(L.intro)}</div>
+    ${above?`<div class="pill pill-cold" style="margin-bottom:12px;white-space:normal">You are on ${esc(currentPlan().label)}. Some of these tools unlock when you upgrade. You can still read ahead.</div>`:''}
+    <div style="background:var(--cream);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:700;color:var(--navy)"><span>Your progress</span><span>${finished} of ${total} lessons</span></div>
+      <div style="height:7px;background:var(--line);border-radius:6px;margin-top:6px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--teal)"></div></div>
+    </div>
+    <details style="margin-bottom:14px"><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--navy);padding:4px 0">Your first week plan</summary>
+      <div style="margin-top:6px">${L.week.map(w=>`<div class="list-row"><span style="font-size:12.5px">${esc(w)}</span></div>`).join('')}</div>
+    </details>
+    ${L.lessons.map((les,i)=>{
+      const isDone = !!done[les.k];
+      return `<details id="tl_${esc(les.k)}" style="border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:#fff">
+        <summary style="cursor:pointer;padding:12px 14px;font-size:13px;font-weight:700;color:var(--navy);display:flex;gap:8px;align-items:center;${isDone?'opacity:.6':''}">
+          <span>${esc(les.ic)}</span><span style="flex:1">${i+1}. ${esc(les.t)}</span>${isDone?'<span class="pill pill-active">Done</span>':''}
+        </summary>
+        <div style="padding:2px 14px 14px">
+          <div style="font-size:12.5px;color:var(--ink-dim);line-height:1.7;margin-bottom:10px"><b style="color:var(--navy)">Why it matters:</b> ${esc(les.why)}</div>
+          <ol style="margin:0 0 10px 18px;padding:0;font-size:12.5px;line-height:1.8;color:var(--ink)">${les.steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ol>
+          <div style="font-size:12px;color:var(--teal-dim);line-height:1.6;margin-bottom:12px"><b>Tip:</b> ${esc(les.tip)}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="teachGo('${esc(L.key)}','${esc(les.k)}')">Take me there</button>
+            <button class="btn btn-ghost" onclick="teachToggle('${esc(les.k)}')">${isDone?'Mark not done':'Mark as done'}</button>
+          </div>
+        </div>
+      </details>`;
+    }).join('')}
+  </div>`;
+}
+
 let settingsTab = 'business';
 function renderSettings(){
   document.getElementById('pageContent').innerHTML = `
   <div class="settings-tabs" id="setTabs"></div>
   <div id="setBody"></div>`;
-  document.getElementById('setTabs').innerHTML = ['business','brain','plan','branding','industry','modules','team','data','account'].map(k=>
-    `<button class="tab-pill ${settingsTab===k?'active':''}" onclick="setSettingsTab('${k}')">${{business:'Business',brain:'Business Brain 🧠',plan:'Plan',branding:'Branding',industry:'Industry',modules:'Modules',team:'Team & Roles',data:'Data & Storage',account:'Account'}[k]}</button>`).join('');
+  document.getElementById('setTabs').innerHTML = ['business','teach','brain','plan','branding','industry','modules','team','data','account'].map(k=>
+    `<button class="tab-pill ${settingsTab===k?'active':''}" onclick="setSettingsTab('${k}')">${{business:'Business',teach:'Teach Me 🎓',brain:'Business Brain 🧠',plan:'Plan',branding:'Branding',industry:'Industry',modules:'Modules',team:'Team & Roles',data:'Data & Storage',account:'Account'}[k]}</button>`).join('');
   drawSettingsBody();
 }
 function setSettingsTab(k){ settingsTab=k; renderSettings(); }
@@ -9799,6 +9976,8 @@ function drawSettingsBody(){
       ${infiniteList('learned', systemNotes, f=>`<div class="list-row"><span style="font-size:12px;color:var(--ink-dim)">${esc(f.text)}</span><span style="color:var(--muted);font-size:10.5px;white-space:nowrap">${fmtDate(f.date)}</span></div>`, '<div class="empty">Nothing yet, this fills in as you use TecXFRA day to day.</div>', 300)}
     </div>`;
     setTimeout(initInfiniteLists, 0);
+  } else if(settingsTab==='teach'){
+    drawTeachMe(b);
   } else if(settingsTab==='industry'){
     b.innerHTML = `<div class="card">
       <div class="card-title">Your industry <span class="sub">this shapes labels and defaults across the whole app</span></div>
@@ -10031,7 +10210,7 @@ function drawSettingsBody(){
 async function changeAccountPassword(){
   const pw1 = document.getElementById('acctNewPw').value;
   const pw2 = document.getElementById('acctNewPw2').value;
-  if(pw1.length < 6){ showToast('Password needs to be at least 6 characters'); return; }
+  if(pw1.length < 10){ showToast('Password needs to be at least 10 characters'); return; }
   if(pw1 !== pw2){ showToast('Those two passwords don\'t match'); return; }
   try{
     const { error } = await sb.auth.updateUser({ password: pw1 });
