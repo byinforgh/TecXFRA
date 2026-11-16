@@ -166,6 +166,12 @@ input,select,textarea{font-family:inherit; font-size:16px;}
 #authScreen .wiz-card, #wizard .wiz-card{position:relative; z-index:2;
   box-shadow:0 0 0 1px rgba(74,168,184,.10), 0 30px 70px -24px rgba(0,0,0,.55), 0 0 46px -12px rgba(74,168,184,.28);}
 .wiz-card{width:100%; max-width:640px; background:var(--paper); border:1px solid var(--line); border-radius:var(--r-lg); padding:44px 40px; box-shadow:var(--shadow);}
+@media(max-width:480px){
+  #authScreen, #wizard, #setPwScreen{padding:16px 10px;}
+  .wiz-card{padding:26px 16px;}
+}
+#hcaptchaBox{max-width:100%; min-height:78px; display:flex; justify-content:center; overflow:visible;}
+#hcaptchaNote{font-size:12px; color:#c0584a; margin:-4px 0 10px; display:none; line-height:1.5}
 .wiz-brand{display:flex; align-items:center; gap:12px; margin-bottom:28px;}
 .wiz-brand .name{font-weight:700; font-size:19px; letter-spacing:-.2px;}
 .wiz-brand .tag{font-size:11px; color:var(--muted); letter-spacing:1.5px; text-transform:uppercase; margin-top:1px;}
@@ -580,9 +586,9 @@ tr.az-h td{position:sticky;top:0;z-index:2;background:var(--cream);font-size:11p
 
     <!-- EMAIL + PASSWORD -->
     <div id="authEmailBox">
-      <div class="field"><label>Email</label><input id="authEmail" type="email" placeholder="you@business.com" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email" onkeydown="if(event.key==='Enter'){authEnter();}"></div>
+      <div class="field"><label>Email</label><input id="authEmail" type="email" oninput="saveSignupEmail(this.value)" placeholder="you@business.com" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email" onkeydown="if(event.key==='Enter'){authEnter();}"></div>
       <div class="field" id="authEmail2Field"><label>Confirm email</label><input id="authEmail2" type="email" placeholder="Type your email again" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email" onkeydown="if(event.key==='Enter'){authEnter();}"></div>
-      <div class="field"><label>Password</label><input id="authPassword" type="password" placeholder="At least 6 characters" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter'){authEnter();}">
+      <div class="field"><label>Password</label><input id="authPassword" type="password" placeholder="At least 10 characters" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter'){authEnter();}">
         <div style="margin-top:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
           <button type="button" class="auth-link" id="authPwToggle" onclick="toggleAuthPw()">Show password</button>
           <button type="button" class="auth-link" id="authForgotLink" onclick="doForgotPassword()" style="display:none">Forgot password?</button>
@@ -597,6 +603,7 @@ tr.az-h td{position:sticky;top:0;z-index:2;background:var(--cream);font-size:11p
     </div>
 
     <div id="hcaptchaBox" style="display:none;margin-bottom:12px"></div>
+    <div id="hcaptchaNote" role="status"></div>
 
     <div id="authError" style="color:#c0584a;font-size:12px;margin-bottom:10px;display:none"></div>
 
@@ -636,7 +643,7 @@ tr.az-h td{position:sticky;top:0;z-index:2;background:var(--cream);font-size:11p
     <div class="wiz-eyebrow" id="setPwEyebrow">Almost there</div>
     <div class="wiz-h" id="setPwTitle" style="font-size:20px;font-weight:700;margin-bottom:8px">Set your password</div>
     <div class="wiz-sub" id="setPwSub"></div>
-    <div class="field"><label>New password</label><input id="setPwNew" type="password" placeholder="At least 6 characters" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter'){saveLinkPassword();}"></div>
+    <div class="field"><label>New password</label><input id="setPwNew" type="password" placeholder="At least 10 characters" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter'){saveLinkPassword();}"></div>
     <div class="field"><label>Type it again</label><input id="setPwNew2" type="password" placeholder="Same password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter'){saveLinkPassword();}"></div>
     <div style="margin:-6px 0 12px"><button type="button" class="auth-link" id="setPwToggle" onclick="toggleSetPw()">Show password</button></div>
     <div id="setPwError" style="font-size:12px;margin-bottom:10px;display:none"></div>
@@ -872,6 +879,7 @@ const supabaseReadyPromise = initSupabase();
 let SAVES_PENDING = 0;
 window.addEventListener('pageshow', function(e){
   if(!e.persisted) return;
+  const _as = document.getElementById('authScreen'); if(_as && _as.style.display === 'flex') return; // mid sign-up: keep what they typed
   // Never nuke an edit that's mid-save, wait for outstanding saves to
   // land first, then do the reload that fixes the stale-bfcache state.
   const tryReload = () => {
@@ -917,15 +925,43 @@ const SMS_PROVIDER_READY = false;
 const HCAPTCHA_SITE_KEY = 'ccdeb32a-fcf6-48ac-9344-cd10e656ad0c';
 const HCAPTCHA_CONFIGURED = HCAPTCHA_SITE_KEY.indexOf('REPLACE_ME')===-1 && HCAPTCHA_SITE_KEY.length>10;
 let HCAPTCHA_WIDGET_ID = null;
+let HCAPTCHA_TRIES = 0;
+function captchaNote(msg, withRetry){
+  const n = document.getElementById('hcaptchaNote'); if(!n) return;
+  if(!msg){ n.style.display='none'; n.textContent=''; return; }
+  n.textContent = msg + ' ';
+  if(withRetry){
+    const b = document.createElement('button'); b.type='button'; b.className='auth-link'; b.textContent='Try again';
+    b.onclick = captchaRetry; n.appendChild(b);
+  }
+  n.style.display='block';
+}
+function captchaRetry(){
+  captchaNote('');
+  if(HCAPTCHA_WIDGET_ID !== null && typeof hcaptcha!=='undefined'){ resetCaptcha(); return; }
+  HCAPTCHA_TRIES = 0; renderCaptcha();
+}
 function renderCaptcha(){
   if(!HCAPTCHA_CONFIGURED) return;
   const box = document.getElementById('hcaptchaBox');
-  box.style.display = 'block';
+  box.style.display = 'flex';
   if(HCAPTCHA_WIDGET_ID !== null) return; // already rendered once, just reuse it
-  if(typeof hcaptcha === 'undefined'){ setTimeout(renderCaptcha, 300); return; } // script still loading
+  if(typeof hcaptcha === 'undefined'){
+    // Script still loading. Stop after ~12s and say so, instead of waiting forever with a blank gap.
+    if(++HCAPTCHA_TRIES > 40){ captchaNote('The "I am human" check could not load. Check your internet connection.', true); return; }
+    setTimeout(renderCaptcha, 300); return;
+  }
   try{
-    HCAPTCHA_WIDGET_ID = hcaptcha.render('hcaptchaBox', { sitekey: HCAPTCHA_SITE_KEY });
-  }catch(e){ console.error('hCaptcha render failed', e); }
+    const narrow = (window.innerWidth || 400) < 400;
+    HCAPTCHA_WIDGET_ID = hcaptcha.render('hcaptchaBox', {
+      sitekey: HCAPTCHA_SITE_KEY,
+      size: narrow ? 'compact' : 'normal',
+      callback: function(){ captchaNote(''); },
+      'expired-callback': function(){ captchaNote('The check timed out. Please tick it again.'); },
+      'chalexpired-callback': function(){ captchaNote('The check timed out. Please tick it again.'); },
+      'error-callback': function(){ captchaNote('The check hit a problem. Tap try again.', true); }
+    });
+  }catch(e){ console.error('hCaptcha render failed', e); captchaNote('The "I am human" check could not start.', true); }
 }
 function getCaptchaToken(){
   if(!HCAPTCHA_CONFIGURED) return undefined;
@@ -1012,7 +1048,7 @@ async function goToAccountCreation(){
     plan: wizPlan || 'growth',
     trial: !!WIZ_TRIAL
   };
-  try{ localStorage.setItem('tecxfra_pending_setup', JSON.stringify(PENDING_SETUP)); }catch(e){}
+  try{ localStorage.setItem('tecxfra_pending_setup', JSON.stringify(PENDING_SETUP)); localStorage.setItem('tecxfra_pending_setup_at', String(Date.now())); }catch(e){}
   // CRITICAL SAFETY CHECK, added after a real incident: finishing the
   // wizard used to jump straight to the sign-up/log-in screen with no
   // check at all for whether this browser already had a valid session
@@ -1049,7 +1085,7 @@ async function goToAccountCreation(){
         document.getElementById('authScreen').style.display = 'none';
         await finishSetup(PENDING_SETUP);
         PENDING_SETUP = null;
-        try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
+        try{ localStorage.removeItem('tecxfra_pending_setup'); localStorage.removeItem('tecxfra_signup_email'); }catch(e){}
         return;
       }
       showExistingSessionWarning(session);
@@ -1109,7 +1145,7 @@ function cancelExistingSessionWarning(){
   const el = document.getElementById('existingSessionWarning');
   if(el) el.style.display = 'none';
   PENDING_SETUP = null;
-  try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
+  try{ localStorage.removeItem('tecxfra_pending_setup'); localStorage.removeItem('tecxfra_signup_email'); }catch(e){}
   // Back to whatever the still-signed-in account should actually be
   // showing, not the wizard, that account's own data hasn't gone
   // anywhere and this should feel like nothing happened.
@@ -1162,7 +1198,7 @@ function friendlyAuthError(err){
   if((err && err.status === 429) || m.includes('rate limit') || m.includes('too many')) return 'Too many attempts or emails in a short time. Please wait a few minutes and try once more.';
   if(m.includes('captcha')) return 'The "I am human" check expired. Please tick it again and retry.';
   if(m.includes('same password') || m.includes('different from the old')) return 'Choose a password that is different from your old one.';
-  if(m.includes('password') && (m.includes('weak') || m.includes('at least'))) return 'That password is too short or too easy to guess. Use at least 6 characters.';
+  if(m.includes('password') && (m.includes('weak') || m.includes('at least'))) return 'That password is too short or too easy to guess. Use at least 10 characters.';
   return raw || 'Something went wrong. Please try again.';
 }
 async function requireSupabase(){
@@ -1209,7 +1245,7 @@ async function doSignUp(){
     // confirmation link" for an email that would never arrive.
     if(data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0){
       PENDING_SETUP = null;
-      try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
+      try{ localStorage.removeItem('tecxfra_pending_setup'); localStorage.removeItem('tecxfra_signup_email'); }catch(e){}
       setAuthMode('login');
       document.getElementById('authEmail').value = email;
       authErr('This email already has a TecXFRA account. Log in here, or tap "Forgot password?" if you cannot remember it.');
@@ -1217,6 +1253,9 @@ async function doSignUp(){
     }
     if(data.session){ await afterAuth(data.session); }
     else { showPendingConfirm(email); }
+  }catch(e){
+    console.error('signUp failed', e); resetCaptcha();
+    authErr('Could not reach TecXFRA. Check your internet connection and tap Create account again. What you typed is still here.');
   }finally{ AUTH_BUSY = false; }
 }
 let RESEND_COOLDOWN_UNTIL = 0;
@@ -1274,6 +1313,9 @@ async function doSignIn(){
       return;
     }
     await afterAuth(data.session);
+  }catch(e){
+    console.error('signIn failed', e); resetCaptcha();
+    authErr('Could not reach TecXFRA. Check your internet connection and try again.');
   }finally{ AUTH_BUSY = false; }
 }
 let AUTH_MAIL_COOLDOWN_UNTIL = 0;
@@ -1356,7 +1398,7 @@ async function afterAuth(session){
     // answers into their first real, saved business.
     await finishSetup(PENDING_SETUP);
     PENDING_SETUP = null;
-    try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
+    try{ localStorage.removeItem('tecxfra_pending_setup'); localStorage.removeItem('tecxfra_signup_email'); }catch(e){}
     return;
   }
 
@@ -1379,7 +1421,7 @@ async function afterAuth(session){
 async function signOut(){
   await sb.auth.signOut();
   hideSignedInBanner();
-  try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
+  try{ localStorage.removeItem('tecxfra_pending_setup'); localStorage.removeItem('tecxfra_signup_email'); }catch(e){}
   CUR_VENUE_ID = null; CFG = null; DATA = null; PENDING_SETUP = null;
   hideBootLoading();
   document.getElementById('app').classList.remove('active');
@@ -1390,6 +1432,26 @@ async function signOut(){
   renderIndustryGrid(); populateWizCountry();
   document.getElementById('wizard').style.display = 'flex';
   wizGo(1);
+}
+function saveSignupEmail(v){ try{ if(AUTH_INTENT==='signup' && PENDING_SETUP) localStorage.setItem('tecxfra_signup_email', String(v||'').slice(0,120)); }catch(e){} }
+// Android often reloads a tab after the human check or when the person switches apps. The wizard answers are
+// already saved, so go straight back to the sign-up step (within 48 hours) instead of the very first page.
+function resumeSignupIfSaved(){
+  try{
+    const raw = localStorage.getItem('tecxfra_pending_setup'); if(!raw) return false;
+    const at = Number(localStorage.getItem('tecxfra_pending_setup_at')) || 0;
+    if(!at || Date.now() - at > 48*3600*1000) return false;
+    const p = JSON.parse(raw);
+    if(!p || typeof p.bizName!=='string' || !Array.isArray(p.modules) || typeof p.industry!=='string') return false;
+    PENDING_SETUP = p;
+    document.getElementById('wizard').style.display = 'none';
+    document.getElementById('authScreen').style.display = 'flex';
+    setAuthMode('signup');
+    const em = (localStorage.getItem('tecxfra_signup_email') || '').trim();
+    if(em){ document.getElementById('authEmail').value = em; document.getElementById('authEmail2').value = em; }
+    authInfo('Welcome back. Your business details are saved. Just finish creating your login.');
+    return true;
+  }catch(e){ return false; }
 }
 async function initAuthGate(){
   // The wizard is the front door. This checks for a returning session and
@@ -1411,6 +1473,7 @@ async function initAuthGate(){
       authErr(linkErrorMessage());
       return;
     }
+    if(resumeSignupIfSaved()) return;
     document.getElementById('wizard').style.display = 'flex';
     wizGo(1);
     return;
@@ -1458,7 +1521,7 @@ async function routeSignedIn(session){
   if(PENDING_SETUP){
     await finishSetup(PENDING_SETUP);
     PENDING_SETUP = null;
-    try{ localStorage.removeItem('tecxfra_pending_setup'); }catch(e){}
+    try{ localStorage.removeItem('tecxfra_pending_setup'); localStorage.removeItem('tecxfra_signup_email'); }catch(e){}
     clearSessionPending();
     return;
   }
@@ -1545,7 +1608,7 @@ function setPwErr(msg){
 async function saveLinkPassword(){
   const pw1 = document.getElementById('setPwNew').value;
   const pw2 = document.getElementById('setPwNew2').value;
-  if(pw1.length < 6){ setPwErr('Your password needs at least 6 characters.'); return; }
+  if(pw1.length < 10){ setPwErr('Your password needs at least 10 characters.'); return; }
   if(pw1 !== pw2){ setPwErr('The two passwords do not match. Type them again.'); return; }
   if(!(await requireSupabase())) return;
   const btn = document.getElementById('setPwBtn');
@@ -2352,6 +2415,21 @@ const WIZ_REF = (function(){
 // ---- Link tracking (migration 0061). Counts one visit per person per day for
 // each invite link, and stamps where a finished signup came from. Never blocks
 // the page: every call is wrapped and failures are only logged.
+// ---- Usage analytics (first party, our own database, no third-party tools). Records only WHICH page or
+// feature was opened and when, never business data. Never blocks the app: every call is wrapped.
+let TX_LAST_SENT = {}, TX_LAST_SESSION = 0;
+function txTrack(kind, name){
+  try{
+    if(typeof sb==='undefined' || !sb || !CUR_VENUE_ID) return;
+    name = String(name||'').toLowerCase().replace(/[^a-z0-9_]/g,'_').slice(0,40); if(!name) return;
+    const now = Date.now(), key = kind+':'+name;
+    if(TX_LAST_SENT[key] && now - TX_LAST_SENT[key] < 20000) return; // no spamming
+    TX_LAST_SENT[key] = now;
+    if(kind==='page' && now - TX_LAST_SESSION > 30*60*1000){ TX_LAST_SESSION = now; sb.rpc('log_usage_event',{p_kind:'session',p_name:'open'}).then(function(){},function(){}); }
+    sb.rpc('log_usage_event',{p_kind:kind,p_name:name}).then(function(){},function(){});
+  }catch(e){}
+}
+document.addEventListener('visibilitychange', function(){ try{ if(!document.hidden && CUR_VENUE_ID && Date.now()-TX_LAST_SESSION > 30*60*1000 && typeof CUR_PAGE!=='undefined') txTrack('page', CUR_PAGE); }catch(e){} });
 function linkSource(){ return WIZ_COHORT || (WIZ_TRIAL ? 'trial' : (WIZ_REF ? 'ref' : null)); }
 function txVisitorId(){
   let v = null;
@@ -3202,6 +3280,7 @@ function labelFor(key){
 }
 function navTo(page){
   if(!CFG.modules.includes(page) && page!=='settings') page='today';
+  txTrack('page', page);
   if(page!=='network' && NETWORK_PRESENCE_TIMER){ clearInterval(NETWORK_PRESENCE_TIMER); NETWORK_PRESENCE_TIMER = null; }
   CUR_PAGE = page;
   Object.keys(AZ_SCROLL).forEach(k=>{ AZ_SCROLL[k] = 0; });
@@ -5839,7 +5918,7 @@ const COOKIES_HTML = `
   </ul>
 
   <h4>2. Analytics Cookies</h4>
-  <p>TecXFRA does not currently use third-party analytics (e.g. Google Analytics) or marketing pixels. If this changes in future, this notice will be updated first, and, where required by law (for example for visitors in the UK/EU), we will ask for your consent before any non-essential cookie is set.</p>
+  <p>TecXFRA does not use third-party analytics (e.g. Google Analytics) or marketing pixels. We do keep a simple record inside our own system of which pages and features a signed-in account opens and when (never your business records, customers, amounts or messages), so we can fix and improve the product. If this changes in future, this notice will be updated first, and, where required by law (for example for visitors in the UK/EU), we will ask for your consent before any non-essential cookie is set.</p>
 
   <h4>3. Third-Party Cookies</h4>
   <p>Card payments, once enabled, are handled by Paystack on a page they control, which may set its own cookies under its own privacy policy. WhatsApp deep links open WhatsApp's own app or site, governed by WhatsApp's own policies, not ours.</p>
@@ -10146,7 +10225,7 @@ function drawSettingsBody(){
       <div class="card-title">Account</div>
       <div style="font-size:12px;color:var(--ink-dim);margin-bottom:14px">Signed in as this business's owner account. Signing out just locks the app on this device, nothing is deleted.</div>
       <div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">Change password</div>
-      <label class="lbl">New password</label><input class="inp" id="acctNewPw" type="password" placeholder="At least 6 characters" autocomplete="new-password">
+      <label class="lbl">New password</label><input class="inp" id="acctNewPw" type="password" placeholder="At least 10 characters" autocomplete="new-password">
       <label class="lbl">Confirm new password</label><input class="inp" id="acctNewPw2" type="password" placeholder="Type it again" autocomplete="new-password">
       <button class="btn btn-primary" style="margin-top:8px" onclick="changeAccountPassword()">Update password</button>
       <div style="border-top:1px solid var(--line);margin:16px 0 12px"></div>
@@ -10257,6 +10336,7 @@ async function loadMyTickets(){
 // ============================================================
 async function loadPartnerStatus(){
   const el = document.getElementById('partnerStatusCard'); if(!el) return;
+  txTrack('action','partner_open');
   try{
     const { data: status, error: e1 } = await sb.rpc('get_my_partner_status');
     if(e1) throw e1;
@@ -10306,6 +10386,7 @@ function renderPartnerStatus(status, fallbackCode){
     <div style="display:flex;gap:6px">
       <input class="inp" id="partnerRefLink" value="${esc(link)}" readonly style="font-size:11.5px">
       <button class="btn btn-ghost" onclick="copyPartnerLink()" style="flex-shrink:0">Copy</button>
+      <button class="btn btn-ghost" onclick="sharePartnerLink()" style="flex-shrink:0">Share</button>
     </div>
     <div style="background:var(--cream);border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-top:6px">
       <div style="font-size:12.5px;line-height:1.65;color:var(--ink-dim)"><b style="color:var(--navy)">What you earn:</b> once 3 or more shops you refer stay active for 2 months, you are paid every month. Starter shops pay you from GHS 15 a month, Growth shops from GHS 45 a month, plus a GHS 300 bonus for your first Enterprise shop and GHS 350 for each one after.</div>
@@ -10365,10 +10446,16 @@ function togglePartnerDetails(){
   btn.textContent = open ? 'Hide full earnings breakdown ▴' : 'View full earnings breakdown ▾';
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
+function sharePartnerLink(){
+  const inp = document.getElementById('partnerRefLink'); if(!inp || !inp.value) return;
+  txTrack('action','partner_link_share');
+  const text = 'Run your whole business from your phone with TecXFRA: ' + inp.value;
+  window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
+}
 function copyPartnerLink(){
   const inp = document.getElementById('partnerRefLink'); if(!inp) return;
   inp.select(); inp.setSelectionRange(0,99999);
-  try{ navigator.clipboard ? navigator.clipboard.writeText(inp.value) : document.execCommand('copy'); showToast('Referral link copied'); }
+  try{ navigator.clipboard ? navigator.clipboard.writeText(inp.value) : document.execCommand('copy'); showToast('Referral link copied'); txTrack('action','partner_link_copy'); }
   catch(e){ showToast('Could not copy, select and copy manually'); }
 }
 async function saveBusinessSettings(){
