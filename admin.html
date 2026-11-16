@@ -210,6 +210,7 @@
       <button class="tab" data-tab="admins" onclick="switchTab('admins')">Admins</button>
       <button class="tab" data-tab="network" onclick="switchTab('network')">Network</button>
       <button class="tab" data-tab="partners" onclick="switchTab('partners')">TecXPARTNER</button>
+      <button class="tab" data-tab="usage" onclick="switchTab('usage')">Usage</button>
       <button class="tab" data-tab="tickets" onclick="switchTab('tickets')">Support Tickets</button>
     </div>
 
@@ -394,6 +395,14 @@
       <div id="partnersTableWrap"></div>
     </div>
 
+    <div id="tab-usage" class="tab-panel">
+      <div class="row" style="justify-content:space-between;margin:0 0 12px">
+        <div class="sub" style="margin-bottom:0">How businesses really use TecXFRA. Counts unique businesses unless it says visits. Starts counting from the day tracking went live.</div>
+        <button class="refresh-link" onclick="loadUsage()">Refresh</button>
+      </div>
+      <div id="usageWrap"><div class="card empty">Loading…</div></div>
+    </div>
+
     <div id="tab-tickets" class="tab-panel">
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
         <div class="sub" style="margin-bottom:0">Problem reports sent from inside the app (Settings → Account → Report a Problem). The business owner sees your status update live on their side, no separate reply needed.</div>
@@ -559,8 +568,52 @@ async function afterLogin(){
   loadTickets();
   loadPartnersAdmin();
   loadRenewals();
+  loadUsage();
 }
 
+const USAGE_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const USAGE_PAGE_NAMES = {today:'Today',crm:'Customers (CRM)',bookings:'Pipeline / Bookings',pos:'Sales / Till',inventory:'Inventory',revenue:'Revenue & Analytics',expenses:'Expenses',followups:'Follow-ups',calendar:'Calendar',invoicing:'Invoicing',messages:'Messages',settings:'Settings',guides:'Guides',referrals:'Referrals',network:'Network',ai:'AI Assistant',system:'System',persona:'Persona'};
+function usageLabel(k){ return USAGE_PAGE_NAMES[k] || String(k).replace(/_/g,' ').replace(/^./,c=>c.toUpperCase()); }
+function usageBars(rows, labelFn, valueKey, extraKey, extraLabel){
+  const max = Math.max(1, ...rows.map(r=>Number(r[valueKey])||0));
+  return rows.map(r=>{
+    const v = Number(r[valueKey])||0, pct = Math.max(2, Math.round(v/max*100));
+    return `<div style="display:grid;grid-template-columns:minmax(110px,170px) 1fr auto;gap:10px;align-items:center;margin:6px 0;font-size:12.5px">
+      <div>${esc(labelFn(r))}</div>
+      <div style="background:var(--line);border-radius:6px;height:10px;overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--teal);border-radius:6px"></div></div>
+      <div style="white-space:nowrap"><b>${v}</b>${extraKey?` <span style="color:#6b7a7d">· ${Number(r[extraKey])||0} ${extraLabel}</span>`:''}</div></div>`;
+  }).join('');
+}
+async function loadUsage(){
+  const wrap = document.getElementById('usageWrap'); if(!wrap || !sb) return;
+  const { data, error } = await sb.rpc('admin_usage_summary');
+  if(error || !data){
+    const missing = error && /admin_usage_summary|function|schema cache/i.test(error.message||'');
+    wrap.innerHTML = `<div class="card empty">${missing ? 'Usage tracking is not switched on yet. Run usage_analytics_migration.sql once in Supabase (SQL Editor), then press Refresh.' : 'Could not load usage: '+esc((error&&error.message)||'no data')}</div>`;
+    return;
+  }
+  const d = data, n = v=>Number(v)||0, total = n(d.total_businesses);
+  const pct = v => total ? Math.round(n(v)/total*100) : 0;
+  const stat = (num,label,sub)=>`<div class="stat-card"><div class="n">${num}</div><div class="l">${label}${sub?`<div style="font-size:10.5px;color:#6b7a7d;margin-top:2px">${sub}</div>`:''}</div></div>`;
+  const pv = d.page_visits||{}, pt = d.partner||{};
+  const dowRows = USAGE_DAYS.map((name,i)=>{ const f=(d.by_weekday_30d||[]).find(x=>n(x.dow)===i)||{}; return {name, sessions:n(f.sessions), users:n(f.users)}; });
+  const best = dowRows.slice().sort((a,b)=>b.sessions-a.sessions)[0];
+  const weeks = d.weekly_users_4w||[];
+  const card = (title, note, body)=>`<div class="card" style="margin-top:14px"><div style="font-weight:700;margin-bottom:4px">${title}</div>${note?`<div class="sub" style="margin-bottom:10px">${note}</div>`:''}${body}</div>`;
+  wrap.innerHTML = `
+    <div class="stat-grid">
+      ${stat(n(d.activated), 'Activated accounts', pct(d.activated)+'% of '+total+' sign-ups opened the app')}
+      ${stat(n(d.active_7d), 'Active this week', pct(d.active_7d)+'% of all businesses')}
+      ${stat(n(d.active_30d), 'Active in 30 days', pct(d.active_30d)+'% of all businesses')}
+      ${stat(n(pv.today), 'Page visits today', n(pv['7d'])+' in 7 days · '+n(pv['30d'])+' in 30 days')}
+      ${stat(n(pt.opened_businesses), 'Opened TecXPARTNER', 'businesses, all time')}
+      ${stat(n(pt.copied_businesses)+n(pt.shared_businesses), 'Copied or shared partner link', n(pt.copied_times)+' copies · '+n(pt.shared_times)+' shares')}
+    </div>
+    ${card('Businesses using it each week','Last 4 weeks, unique businesses per week (weeks start Monday).', weeks.length ? usageBars(weeks, r=>'Week of '+fmtDate(r.week), 'users') : '<div class="empty">No activity recorded yet.</div>')}
+    ${card('Which features they actually use','Last 30 days. Big number is page visits, the small one is how many different businesses.', (d.features_30d||[]).length ? usageBars(d.features_30d, r=>usageLabel(r.name), 'views', 'businesses', 'businesses') : '<div class="empty">No activity recorded yet.</div>')}
+    ${card('Busiest days','Last 30 days, app openings per weekday.'+(best&&best.sessions?' Most active: <b>'+best.name+'</b>.':''), usageBars(dowRows, r=>r.name, 'sessions', 'users', 'businesses'))}
+    ${card('Actions inside the app','Last 30 days.', (d.actions_30d||[]).length ? usageBars(d.actions_30d, r=>usageLabel(r.name), 'times', 'businesses', 'businesses') : '<div class="empty">No actions recorded yet.</div>')}`;
+}
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.tab===name));
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('on', p.id==='tab-'+name));
@@ -576,6 +629,7 @@ function refreshTab(name){
   if(name==='overview') refreshOverview();
   else if(name==='businesses'){ loadBusinesses(); loadFoundingClaims(); }
   else if(name==='partners') loadPartnersAdmin();
+  else if(name==='usage') loadUsage();
   else if(name==='payments' && typeof loadRenewals==='function') loadRenewals();
 }
 function currentTabName(){ const t = document.querySelector('.tab.on'); return t ? t.dataset.tab : 'overview'; }
