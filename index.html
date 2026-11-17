@@ -2430,6 +2430,19 @@ function txTrack(kind, name){
   }catch(e){}
 }
 document.addEventListener('visibilitychange', function(){ try{ if(!document.hidden && CUR_VENUE_ID && Date.now()-TX_LAST_SESSION > 30*60*1000 && typeof CUR_PAGE!=='undefined') txTrack('page', CUR_PAGE); }catch(e){} });
+// Which features get used, across the WHOLE app. Counts the tap, not whether it succeeded.
+window.addEventListener('load', function(){
+  var map = {addContact:'customer_added', addFollowup:'followup_added', addExpense:'expense_added', checkout:'sale_checkout',
+    generateInvoice:'invoice_created', markInvoicePaidUI:'invoice_marked_paid', addEvent:'calendar_event_added', addDebtor:'debt_added',
+    recordDebtPayment:'debt_payment', sendPaymentReminder:'payment_reminder_sent', addStaff:'staff_added', addReminder:'reminder_added',
+    addJournal:'journal_added', logMessageFromForm:'message_logged', sendLoggedWhatsApp:'whatsapp_sent', sendAI:'ai_used',
+    postNetworkNeed:'network_post', sendConnectRequest:'network_connect', saveBranding:'branding_saved', savePersona:'persona_saved',
+    submitProblemReport:'problem_reported', saveBusinessSettings:'settings_saved'};
+  Object.keys(map).forEach(function(k){
+    var f = window[k]; if(typeof f !== 'function') return;
+    window[k] = function(){ try{ txTrack('action', map[k]); }catch(e){} return f.apply(this, arguments); };
+  });
+});
 function linkSource(){ return WIZ_COHORT || (WIZ_TRIAL ? 'trial' : (WIZ_REF ? 'ref' : null)); }
 function txVisitorId(){
   let v = null;
