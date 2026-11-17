@@ -599,6 +599,7 @@ async function loadUsage(){
   const dowRows = USAGE_DAYS.map((name,i)=>{ const f=(d.by_weekday_30d||[]).find(x=>n(x.dow)===i)||{}; return {name, sessions:n(f.sessions), users:n(f.users)}; });
   const best = dowRows.slice().sort((a,b)=>b.sessions-a.sessions)[0];
   const weeks = d.weekly_users_4w||[];
+  let byBiz = []; try{ const r = await sb.rpc('admin_usage_by_business'); if(!r.error && Array.isArray(r.data)) byBiz = r.data; }catch(e){}
   const card = (title, note, body)=>`<div class="card" style="margin-top:14px"><div style="font-weight:700;margin-bottom:4px">${title}</div>${note?`<div class="sub" style="margin-bottom:10px">${note}</div>`:''}${body}</div>`;
   wrap.innerHTML = `
     <div class="stat-grid">
@@ -612,6 +613,7 @@ async function loadUsage(){
     ${card('Businesses using it each week','Last 4 weeks, unique businesses per week (weeks start Monday).', weeks.length ? usageBars(weeks, r=>'Week of '+fmtDate(r.week), 'users') : '<div class="empty">No activity recorded yet.</div>')}
     ${card('Which features they actually use','Last 30 days. Big number is page visits, the small one is how many different businesses.', (d.features_30d||[]).length ? usageBars(d.features_30d, r=>usageLabel(r.name), 'views', 'businesses', 'businesses') : '<div class="empty">No activity recorded yet.</div>')}
     ${card('Busiest days','Last 30 days, app openings per weekday.'+(best&&best.sessions?' Most active: <b>'+best.name+'</b>.':''), usageBars(dowRows, r=>r.name, 'sessions', 'users', 'businesses'))}
+    ${card('Each business','Last 30 days. Sorted by most recently active. Businesses that never opened the app show Never.', byBiz.length ? `<div class="table-scroll"><table class="biz-table"><thead><tr><th>Account</th><th>Last active</th><th>Active days</th><th>Page visits</th><th>Favourite page</th></tr></thead><tbody>${byBiz.map(b=>`<tr><td>${esc(b.email||'')}</td><td>${b.last_seen?fmtDateTime(b.last_seen):'Never'}</td><td>${n(b.active_days_30d)}</td><td>${n(b.visits_30d)}</td><td>${b.top_feature?esc(usageLabel(b.top_feature)):'-'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Run the latest usage_analytics_migration.sql to see this list.</div>')}
     ${card('Actions inside the app','Last 30 days.', (d.actions_30d||[]).length ? usageBars(d.actions_30d, r=>usageLabel(r.name), 'times', 'businesses', 'businesses') : '<div class="empty">No actions recorded yet.</div>')}`;
 }
 function switchTab(name){
