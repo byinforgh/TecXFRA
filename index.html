@@ -19,8 +19,10 @@
      home-screen icons), upload favicon-32.png / favicon-180.png /
      favicon-512.png (provided alongside this file) to the repo root and
      swap these two href values for "favicon-32.png" and "favicon-180.png". -->
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<meta name="theme-color" content="#123642">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIwIiBmaWxsPSIjMTIzNjQyIi8+PGNpcmNsZSBjeD0iNTAiIGN5PSI0NCIgcj0iMTEiIGZpbGw9IiM0YWE4YjgiLz48cGF0aCBkPSJNNTAgNTUgQzQwIDcwIDQzIDg4IDUwIDEwMCBDNTcgODggNjAgNzAgNTAgNTUgWiIgZmlsbD0iIzRhYThiOCIvPjxjaXJjbGUgY3g9IjQ2LjUiIGN5PSIzOS41IiByPSI4IiBmaWxsPSIjMGMyNjJmIiBmaWxsLW9wYWNpdHk9Ii4zNSIvPjwvc3ZnPg==">
-<link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIwIiBmaWxsPSIjMTIzNjQyIi8+PGNpcmNsZSBjeD0iNTAiIGN5PSI0NCIgcj0iMTEiIGZpbGw9IiM0YWE4YjgiLz48cGF0aCBkPSJNNTAgNTUgQzQwIDcwIDQzIDg4IDUwIDEwMCBDNTcgODggNjAgNzAgNTAgNTUgWiIgZmlsbD0iIzRhYThiOCIvPjxjaXJjbGUgY3g9IjQ2LjUiIGN5PSIzOS41IiByPSI4IiBmaWxsPSIjMGMyNjJmIiBmaWxsLW9wYWNpdHk9Ii4zNSIvPjwvc3ZnPg==">
+<link rel="apple-touch-icon" sizes="180x180" href="favicon-180.png">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="TecXFRA">
 <meta property="og:title" content="TecXFRA, Complete Total Control">
@@ -3574,7 +3576,7 @@ const NETWORK_LOOKING_FOR_OPTIONS = ['Collaboration','Partnership','Investment',
 // live cross-tenant stored XSS. JS-escape first (so a literal quote
 // survives HTML entity decoding as an escaped quote, not a break-out),
 // then esc() the result to neutralise the outer attribute boundary too.
-function jsAttr(s){ return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' ')); }
+function jsAttr(s){ return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/[\r\n\u2028\u2029]/g,' ')); }
 
 function renderNetwork(){
   const pc = document.getElementById('pageContent');
