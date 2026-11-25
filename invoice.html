@@ -43,8 +43,8 @@ const SUPABASE_URL = 'https://bnbcozkrvqforiunwzrz.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_KwKhcg8loLN4Ai0WH7s7PQ_0WPFhcsB';
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function money(n, cur){ return `${cur||'GHS'} ${Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}`; }
-function fmtDate(s){ if(!s) return ''; try{ return new Date(s).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }catch(e){ return s; } }
+function money(n, cur){ return `${esc(cur||'GHS')} ${Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}`; }
+function fmtDate(s){ if(!s) return ''; try{ return new Date(s).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }catch(e){ return esc(s); } }
 
 async function loadInvoice(){
   const root = document.getElementById('root');
